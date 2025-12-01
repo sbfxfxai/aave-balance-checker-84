@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aave Avalanche Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.8.0/dist/web3.min.js"></script>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>Aave V3 Dashboard</h1>
+            <div id="wallet-status">Not connected</div>
+            <button id="connect-btn">Connect Trust Wallet</button>
+        </header>
+        
+        <section class="dashboard-section">
+            <h2>Your Positions</h2>
+            <div id="positions-container">
+                <div class="loading">Loading positions...</div>
+            </div>
+            <button id="refresh-positions">Refresh</button>
+        </section>
+        
+        <section class="dashboard-section">
+            <h2>Deposit</h2>
+            <input type="number" id="deposit-amount" placeholder="AVAX amount">
+            <button id="deposit-btn">Deposit</button>
+            <div id="deposit-status"></div>
+        </section>
+        
+        <section class="dashboard-section">
+            <h2>Withdraw</h2>
+            <input type="number" id="withdraw-amount" placeholder="USDC amount">
+            <button id="withdraw-btn">Withdraw</button>
+            <div id="withdraw-status"></div>
+        </section>
+    </div>
+    
+    <script src="/static/js/walletconnect.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
