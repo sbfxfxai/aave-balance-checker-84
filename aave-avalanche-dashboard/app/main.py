@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.dashboard import views as dashboard_views
 from app.wallet import endpoints as wallet_endpoints
 from app.transactions import endpoints as transactions_endpoints
@@ -16,7 +17,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# Serve React frontend (after building)
+app.mount("/", StaticFiles(directory="../frontend/dist", html=True), name="frontend")
+
+# Include API routers
 app.include_router(dashboard_views.router)
 app.include_router(wallet_endpoints.router)
 app.include_router(transactions_endpoints.router, prefix="/transactions")
