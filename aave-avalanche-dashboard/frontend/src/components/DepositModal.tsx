@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { readContract } from 'wagmi/actions';
+import { readContract } from '@wagmi/core';
 import { parseEther } from 'viem';
 import { avalanche } from 'wagmi/chains';
 import { CONTRACTS, ERC20_ABI, ROUTER_ABI, AAVE_POOL_ABI } from '@/config/contracts';

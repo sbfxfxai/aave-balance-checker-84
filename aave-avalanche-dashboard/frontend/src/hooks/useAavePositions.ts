@@ -1,5 +1,5 @@
 import { useAccount } from 'wagmi';
-import { readContract } from 'wagmi/actions';
+import { readContract } from '@wagmi/core';
 import { formatUnits } from 'viem';
 import { CONTRACTS, AAVE_POOL_ABI, AAVE_DATA_PROVIDER_ABI } from '@/config/contracts';
 import { useState, useEffect, useCallback } from 'react';
