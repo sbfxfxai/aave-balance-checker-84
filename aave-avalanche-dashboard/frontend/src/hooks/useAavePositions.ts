@@ -1,7 +1,7 @@
 import { useAccount } from 'wagmi';
 import { readContract } from '@wagmi/core';
 import { formatUnits } from 'viem';
-import { CONTRACTS, AAVE_POOL_ABI, AAVE_DATA_PROVIDER_ABI } from '@/config/contracts';
+import { CONTRACTS, AAVE_POOL_ABI, AAVE_DATA_PROVIDER_ABI, AAVE_POOL_ADDRESSES_PROVIDER_ABI } from '@/config/contracts';
 import { useState, useEffect, useCallback } from 'react';
 import { config } from '@/config/wagmi';
 
@@ -42,16 +42,25 @@ export function useAavePositions() {
     try {
       setIsLoading(true);
       
-      // Fetch account data
+      // Step 1: Get the real Pool address from PoolAddressesProvider
+      const { data: poolAddress } = await readContract(config, {
+        address: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER as `0x${string}`,
+        abi: AAVE_POOL_ADDRESSES_PROVIDER_ABI,
+        functionName: 'getPool',
+      }) as { data: `0x${string}` };
+      
+      console.log('Fetched Pool Address:', poolAddress);
+      
+      // Step 2: Fetch account data using the dynamic Pool address
       const { data: accountDataResult } = await readContract(config, {
-        address: CONTRACTS.AAVE_POOL as `0x${string}`,
+        address: poolAddress,
         abi: AAVE_POOL_ABI,
         functionName: 'getUserAccountData',
         args: [address],
       }) as { data: AccountDataTuple };
       setAccountData(accountDataResult);
 
-      // Fetch USDC reserve data
+      // Step 3: Fetch USDC reserve data
       const { data: reserveDataResult } = await readContract(config, {
         address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
         abi: AAVE_DATA_PROVIDER_ABI,
