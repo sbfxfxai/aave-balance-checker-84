@@ -42,21 +42,21 @@ export function useAavePositions() {
       setIsLoading(true);
       
       // Fetch account data
-      const accountDataResult = await readContract({
+      const { data: accountDataResult } = await readContract({
         address: CONTRACTS.AAVE_POOL as `0x${string}`,
         abi: AAVE_POOL_ABI,
         functionName: 'getUserAccountData',
         args: [address],
-      }) as AccountDataTuple;
+      }) as { data: AccountDataTuple };
       setAccountData(accountDataResult);
 
       // Fetch USDC reserve data
-      const reserveDataResult = await readContract({
+      const { data: reserveDataResult } = await readContract({
         address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
         abi: AAVE_DATA_PROVIDER_ABI,
         functionName: 'getUserReserveData',
         args: [CONTRACTS.USDC_E as `0x${string}`, address],
-      }) as ReserveDataTuple;
+      }) as { data: ReserveDataTuple };
       setUsdcReserveData(reserveDataResult);
     } catch (error) {
       console.error('Error fetching AAVE positions:', error);

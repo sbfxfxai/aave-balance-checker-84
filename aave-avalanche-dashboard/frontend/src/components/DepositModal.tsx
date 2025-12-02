@@ -27,24 +27,22 @@ export function DepositModal() {
   const [allowance, setAllowance] = React.useState<bigint>(0n);
 
   // Contract write hooks
-  const { write: writeSwap, data: swapHash, isLoading: isSwapLoading } = useWriteContract();
+  const writeSwap = useWriteContract();
+  const writeApprove = useWriteContract();
+  const writeSupply = useWriteContract();
 
-  const { write: writeApprove, data: approveHash, isLoading: isApproveLoading } = useWriteContract();
-
-  const { write: writeSupply, data: supplyHash, isLoading: isSupplyLoading } = useWriteContract();
-
-  const hash = swapHash || approveHash || supplyHash;
+  const hash = writeSwap.data || writeApprove.data || writeSupply.data;
   const { isLoading: isConfirming } = useWaitForTransactionReceipt({
     hash,
   });
 
-  const isLoading = isSwapLoading || isApproveLoading || isSupplyLoading || isConfirming;
+  const isLoading = writeSwap.isPending || writeApprove.isPending || writeSupply.isPending || isConfirming;
 
   // Fetch USDC balance
   const fetchUsdcBalance = React.useCallback(async () => {
     if (!address) return;
     try {
-      const balance = await readContract({
+      const { data: balance } = await readContract({
         address: CONTRACTS.USDC_E as `0x${string}`,
         abi: ERC20_ABI,
         functionName: 'balanceOf',
@@ -60,7 +58,7 @@ export function DepositModal() {
   const fetchAllowance = React.useCallback(async () => {
     if (!address) return;
     try {
-      const allowance = await readContract({
+      const { data: allowance } = await readContract({
         address: CONTRACTS.USDC_E as `0x${string}`,
         abi: ERC20_ABI,
         functionName: 'allowance',
