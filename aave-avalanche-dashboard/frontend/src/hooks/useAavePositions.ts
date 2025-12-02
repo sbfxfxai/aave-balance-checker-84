@@ -1,8 +1,7 @@
 import { useAccount } from 'wagmi';
-import { readContract } from '@wagmi/core';
+import { readContract, getClient } from '@wagmi/core';
 import { formatUnits } from 'viem';
 import { CONTRACTS, AAVE_POOL_ABI, AAVE_DATA_PROVIDER_ABI } from '@/config/contracts';
-import { config } from '@/config/wagmi';
 import { useState, useEffect, useCallback } from 'react';
 
 type AccountDataTuple = readonly [
@@ -42,8 +41,10 @@ export function useAavePositions() {
     try {
       setIsLoading(true);
       
+      const client = getClient();
+      
       // Fetch account data
-      const accountDataResult = await readContract(config, {
+      const accountDataResult = await readContract(client, {
         address: CONTRACTS.AAVE_POOL as `0x${string}`,
         abi: AAVE_POOL_ABI,
         functionName: 'getUserAccountData',
@@ -52,7 +53,7 @@ export function useAavePositions() {
       setAccountData(accountDataResult);
 
       // Fetch USDC reserve data
-      const reserveDataResult = await readContract(config, {
+      const reserveDataResult = await readContract(client, {
         address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
         abi: AAVE_DATA_PROVIDER_ABI,
         functionName: 'getUserReserveData',
