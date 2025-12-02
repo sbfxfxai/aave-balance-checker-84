@@ -65,6 +65,20 @@ export const AAVE_POOL_ADDRESSES_PROVIDER_ABI = [
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'address' }]
+  },
+  {
+    name: 'getPoolAddress',
+    type: 'function', 
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }]
+  },
+  {
+    name: 'getAddress',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'id', type: 'uint256' }],
+    outputs: [{ name: '', type: 'address' }]
   }
 ] as const;
 

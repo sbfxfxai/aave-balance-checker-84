@@ -63,7 +63,7 @@ export function DepositModal() {
       const poolAddress = await readContract(config, {
         address: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER as `0x${string}`,
         abi: AAVE_POOL_ADDRESSES_PROVIDER_ABI,
-        functionName: 'getPool',
+        functionName: 'getPoolAddress',
       }) as `0x${string}`;
 
       const allowance = await readContract(config, {
@@ -136,7 +136,7 @@ export function DepositModal() {
       const poolAddress = await readContract(config, {
         address: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER as `0x${string}`,
         abi: AAVE_POOL_ADDRESSES_PROVIDER_ABI,
-        functionName: 'getPool',
+        functionName: 'getPoolAddress',
       }) as `0x${string}`;
 
       writeApprove({
@@ -165,7 +165,7 @@ export function DepositModal() {
       const poolAddress = await readContract(config, {
         address: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER as `0x${string}`,
         abi: AAVE_POOL_ADDRESSES_PROVIDER_ABI,
-        functionName: 'getPool',
+        functionName: 'getPoolAddress',
       }) as `0x${string}`;
 
       writeSupply({

@@ -30,7 +30,7 @@ export function useAavePositions() {
   const { data: poolAddress } = useReadContract({
     address: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER as `0x${string}`,
     abi: AAVE_POOL_ADDRESSES_PROVIDER_ABI,
-    functionName: 'getPool',
+    functionName: 'getPoolAddress',
     query: { enabled: true },
   });
 
