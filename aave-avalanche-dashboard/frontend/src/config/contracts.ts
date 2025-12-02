@@ -1,3 +1,5 @@
+import { erc20Abi } from 'viem';
+
 // Avalanche C-Chain Contract Addresses
 
 export const CONTRACTS = {
@@ -13,6 +15,8 @@ export const CONTRACTS = {
   // DEX Routers
   TRADER_JOE_ROUTER: '0x60aE616a2155Ee3d9A68541Ba4544862310933d4',
 } as const;
+
+export const ERC20_ABI = erc20Abi;
 
 export const AAVE_POOL_ABI = [
   {
@@ -74,50 +78,6 @@ export const AAVE_DATA_PROVIDER_ABI = [
       { name: 'stableRateLastUpdated', type: 'uint40' },
       { name: 'usageAsCollateralEnabled', type: 'bool' }
     ]
-  }
-] as const;
-
-export const ERC20_ABI = [
-  {
-    name: 'approve',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'spender', type: 'address' },
-      { name: 'amount', type: 'uint256' }
-    ],
-    outputs: [{ name: '', type: 'bool' }]
-  },
-  {
-    name: 'allowance',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [
-      { name: 'owner', type: 'address' },
-      { name: 'spender', type: 'address' }
-    ],
-    outputs: [{ name: '', type: 'uint256' }]
-  },
-  {
-    name: 'balanceOf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'account', type: 'address' }],
-    outputs: [{ name: '', type: 'uint256' }]
-  },
-  {
-    name: 'decimals',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint8' }]
-  },
-  {
-    name: 'symbol',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'string' }]
   }
 ] as const;
 
