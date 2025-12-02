@@ -3,6 +3,7 @@ import { readContract } from 'wagmi/actions';
 import { formatUnits } from 'viem';
 import { CONTRACTS, AAVE_POOL_ABI, AAVE_DATA_PROVIDER_ABI } from '@/config/contracts';
 import { useState, useEffect, useCallback } from 'react';
+import { config } from '@/config/wagmi';
 
 type AccountDataTuple = readonly [
   bigint,
@@ -42,7 +43,7 @@ export function useAavePositions() {
       setIsLoading(true);
       
       // Fetch account data
-      const { data: accountDataResult } = await readContract({
+      const { data: accountDataResult } = await readContract(config, {
         address: CONTRACTS.AAVE_POOL as `0x${string}`,
         abi: AAVE_POOL_ABI,
         functionName: 'getUserAccountData',
@@ -51,7 +52,7 @@ export function useAavePositions() {
       setAccountData(accountDataResult);
 
       // Fetch USDC reserve data
-      const { data: reserveDataResult } = await readContract({
+      const { data: reserveDataResult } = await readContract(config, {
         address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
         abi: AAVE_DATA_PROVIDER_ABI,
         functionName: 'getUserReserveData',

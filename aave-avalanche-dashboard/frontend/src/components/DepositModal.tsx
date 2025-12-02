@@ -17,6 +17,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { config } from '@/config/wagmi';
 
 export function DepositModal() {
   const [amount, setAmount] = useState('');
@@ -42,7 +43,7 @@ export function DepositModal() {
   const fetchUsdcBalance = React.useCallback(async () => {
     if (!address) return;
     try {
-      const { data: balance } = await readContract({
+      const { data: balance } = await readContract(config, {
         address: CONTRACTS.USDC_E as `0x${string}`,
         abi: ERC20_ABI,
         functionName: 'balanceOf',
@@ -58,7 +59,7 @@ export function DepositModal() {
   const fetchAllowance = React.useCallback(async () => {
     if (!address) return;
     try {
-      const { data: allowance } = await readContract({
+      const { data: allowance } = await readContract(config, {
         address: CONTRACTS.USDC_E as `0x${string}`,
         abi: ERC20_ABI,
         functionName: 'allowance',
