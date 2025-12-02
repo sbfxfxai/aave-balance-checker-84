@@ -1,6 +1,6 @@
 import { useAccount, useReadContract } from 'wagmi';
 import { formatUnits } from 'viem';
-import { CONTRACTS, AAVE_POOL_ABI, AAVE_DATA_PROVIDER_ABI, AAVE_POOL_ADDRESSES_PROVIDER_ABI } from '@/config/contracts';
+import { CONTRACTS, AAVE_POOL_ABI, AAVE_DATA_PROVIDER_ABI } from '@/config/contracts';
 
 type AccountDataTuple = readonly [
   bigint,
@@ -26,27 +26,19 @@ type ReserveDataTuple = readonly [
 export function useAavePositions() {
   const { address, isConnected } = useAccount();
 
-  // Step 1: Get current Pool address
-  const { data: poolAddress } = useReadContract({
-    address: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER as `0x${string}`,
-    abi: AAVE_POOL_ADDRESSES_PROVIDER_ABI,
-    functionName: 'getPool',
-    query: { enabled: true },
-  });
-
-  // Step 2: Get user positions from actual Pool
+  // Step 1: Get user positions from Pool directly
   const { data: rawData, isLoading: positionsLoading, error } = useReadContract({
-    address: poolAddress,
+    address: CONTRACTS.AAVE_POOL as `0x${string}`,
     abi: AAVE_POOL_ABI,
     functionName: 'getUserAccountData',
     args: address ? [address] : undefined,
     query: {
-      enabled: !!poolAddress && isConnected && !!address,
+      enabled: isConnected && !!address,
       refetchInterval: 30_000,
     },
   });
 
-  // Step 3: Get USDC reserve data
+  // Step 2: Get USDC reserve data
   const { data: reserveData, isLoading: reserveLoading } = useReadContract({
     address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
     abi: AAVE_DATA_PROVIDER_ABI,

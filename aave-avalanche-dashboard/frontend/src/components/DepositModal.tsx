@@ -3,7 +3,7 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagm
 import { readContract } from '@wagmi/core';
 import { parseEther } from 'viem';
 import { avalanche } from 'wagmi/chains';
-import { CONTRACTS, ERC20_ABI, ROUTER_ABI, AAVE_POOL_ABI, AAVE_POOL_ADDRESSES_PROVIDER_ABI } from '@/config/contracts';
+import { CONTRACTS, ERC20_ABI, ROUTER_ABI, AAVE_POOL_ABI } from '@/config/contracts';
 import { toast } from 'sonner';
 import { Loader2, ArrowDown, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -59,18 +59,11 @@ export function DepositModal() {
   const fetchAllowance = React.useCallback(async () => {
     if (!address) return;
     try {
-      // Get the dynamic Pool address first
-      const poolAddress = await readContract(config, {
-        address: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER as `0x${string}`,
-        abi: AAVE_POOL_ADDRESSES_PROVIDER_ABI,
-        functionName: 'getPool',
-      }) as `0x${string}`;
-
       const allowance = await readContract(config, {
         address: CONTRACTS.USDC_E as `0x${string}`,
         abi: ERC20_ABI,
         functionName: 'allowance',
-        args: [address, poolAddress],
+        args: [address, CONTRACTS.AAVE_POOL as `0x${string}`],
       });
       setAllowance(allowance as bigint);
     } catch (error) {
@@ -132,18 +125,11 @@ export function DepositModal() {
     }
 
     try {
-      // Get the dynamic Pool address first
-      const poolAddress = await readContract(config, {
-        address: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER as `0x${string}`,
-        abi: AAVE_POOL_ADDRESSES_PROVIDER_ABI,
-        functionName: 'getPool',
-      }) as `0x${string}`;
-
       writeApprove({
         address: CONTRACTS.USDC_E as `0x${string}`,
         abi: ERC20_ABI,
         functionName: 'approve',
-        args: [poolAddress, usdcBalance],
+        args: [CONTRACTS.AAVE_POOL as `0x${string}`, usdcBalance],
       });
 
       toast.success('Approval initiated!');
@@ -161,15 +147,8 @@ export function DepositModal() {
     if (!usdcBalance || !address) return;
 
     try {
-      // Get the dynamic Pool address first
-      const poolAddress = await readContract(config, {
-        address: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER as `0x${string}`,
-        abi: AAVE_POOL_ADDRESSES_PROVIDER_ABI,
-        functionName: 'getPool',
-      }) as `0x${string}`;
-
       writeSupply({
-        address: poolAddress,
+        address: CONTRACTS.AAVE_POOL as `0x${string}`,
         abi: AAVE_POOL_ABI,
         functionName: 'supply',
         args: [CONTRACTS.USDC_E as `0x${string}`, usdcBalance as bigint, address, 0],
