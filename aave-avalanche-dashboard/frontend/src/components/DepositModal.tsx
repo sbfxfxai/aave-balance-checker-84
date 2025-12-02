@@ -43,7 +43,7 @@ export function DepositModal() {
   const fetchUsdcBalance = React.useCallback(async () => {
     if (!address) return;
     try {
-      const { data: balance } = await readContract(config, {
+      const balance = await readContract(config, {
         address: CONTRACTS.USDC_E as `0x${string}`,
         abi: ERC20_ABI,
         functionName: 'balanceOf',
@@ -60,13 +60,13 @@ export function DepositModal() {
     if (!address) return;
     try {
       // Get the dynamic Pool address first
-      const { data: poolAddress } = await readContract(config, {
+      const poolAddress = await readContract(config, {
         address: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER as `0x${string}`,
         abi: AAVE_POOL_ADDRESSES_PROVIDER_ABI,
         functionName: 'getPool',
-      }) as { data: `0x${string}` };
+      }) as `0x${string}`;
 
-      const { data: allowance } = await readContract(config, {
+      const allowance = await readContract(config, {
         address: CONTRACTS.USDC_E as `0x${string}`,
         abi: ERC20_ABI,
         functionName: 'allowance',
@@ -132,11 +132,18 @@ export function DepositModal() {
     }
 
     try {
+      // Get the dynamic Pool address first
+      const poolAddress = await readContract(config, {
+        address: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER as `0x${string}`,
+        abi: AAVE_POOL_ADDRESSES_PROVIDER_ABI,
+        functionName: 'getPool',
+      }) as `0x${string}`;
+
       writeApprove({
         address: CONTRACTS.USDC_E as `0x${string}`,
         abi: ERC20_ABI,
         functionName: 'approve',
-        args: [CONTRACTS.AAVE_POOL as `0x${string}`, usdcBalance],
+        args: [poolAddress, usdcBalance],
       });
 
       toast.success('Approval initiated!');
@@ -155,11 +162,11 @@ export function DepositModal() {
 
     try {
       // Get the dynamic Pool address first
-      const { data: poolAddress } = await readContract(config, {
+      const poolAddress = await readContract(config, {
         address: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER as `0x${string}`,
         abi: AAVE_POOL_ADDRESSES_PROVIDER_ABI,
         functionName: 'getPool',
-      }) as { data: `0x${string}` };
+      }) as `0x${string}`;
 
       writeSupply({
         address: poolAddress,
