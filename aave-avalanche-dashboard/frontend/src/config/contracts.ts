@@ -15,25 +15,146 @@ export const CONTRACTS = {
 } as const;
 
 export const AAVE_POOL_ABI = [
-  'function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode)',
-  'function withdraw(address asset, uint256 amount, address to) returns (uint256)',
-  'function getUserAccountData(address user) view returns (uint256 totalCollateralBase, uint256 totalDebtBase, uint256 availableBorrowsBase, uint256 currentLiquidationThreshold, uint256 ltv, uint256 healthFactor)',
+  {
+    name: 'supply',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'asset', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'onBehalfOf', type: 'address' },
+      { name: 'referralCode', type: 'uint16' }
+    ],
+    outputs: []
+  },
+  {
+    name: 'withdraw',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'asset', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'to', type: 'address' }
+    ],
+    outputs: [{ name: '', type: 'uint256' }]
+  },
+  {
+    name: 'getUserAccountData',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'user', type: 'address' }],
+    outputs: [
+      { name: 'totalCollateralBase', type: 'uint256' },
+      { name: 'totalDebtBase', type: 'uint256' },
+      { name: 'availableBorrowsBase', type: 'uint256' },
+      { name: 'currentLiquidationThreshold', type: 'uint256' },
+      { name: 'ltv', type: 'uint256' },
+      { name: 'healthFactor', type: 'uint256' }
+    ]
+  }
 ] as const;
 
 export const AAVE_DATA_PROVIDER_ABI = [
-  'function getUserReserveData(address asset, address user) view returns (uint256 currentATokenBalance, uint256 currentStableDebt, uint256 currentVariableDebt, uint256 principalStableDebt, uint256 scaledVariableDebt, uint256 stableBorrowRate, uint256 liquidityRate, uint40 stableRateLastUpdated, bool usageAsCollateralEnabled)',
+  {
+    name: 'getUserReserveData',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'asset', type: 'address' },
+      { name: 'user', type: 'address' }
+    ],
+    outputs: [
+      { name: 'currentATokenBalance', type: 'uint256' },
+      { name: 'currentStableDebt', type: 'uint256' },
+      { name: 'currentVariableDebt', type: 'uint256' },
+      { name: 'principalStableDebt', type: 'uint256' },
+      { name: 'scaledVariableDebt', type: 'uint256' },
+      { name: 'stableBorrowRate', type: 'uint256' },
+      { name: 'liquidityRate', type: 'uint256' },
+      { name: 'stableRateLastUpdated', type: 'uint40' },
+      { name: 'usageAsCollateralEnabled', type: 'bool' }
+    ]
+  }
 ] as const;
 
 export const ERC20_ABI = [
-  'function approve(address spender, uint256 amount) returns (bool)',
-  'function allowance(address owner, address spender) view returns (uint256)',
-  'function balanceOf(address account) view returns (uint256)',
-  'function decimals() view returns (uint8)',
-  'function symbol() view returns (string)',
+  {
+    name: 'approve',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' }
+    ],
+    outputs: [{ name: '', type: 'bool' }]
+  },
+  {
+    name: 'allowance',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' }
+    ],
+    outputs: [{ name: '', type: 'uint256' }]
+  },
+  {
+    name: 'balanceOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }]
+  },
+  {
+    name: 'decimals',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint8' }]
+  },
+  {
+    name: 'symbol',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'string' }]
+  }
 ] as const;
 
 export const ROUTER_ABI = [
-  'function swapExactAVAXForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) payable returns (uint[] memory amounts)',
-  'function swapExactTokensForAVAX(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline) returns (uint[] memory amounts)',
-  'function getAmountsOut(uint amountIn, address[] calldata path) view returns (uint[] memory amounts)',
+  {
+    name: 'swapExactAVAXForTokens',
+    type: 'function',
+    stateMutability: 'payable',
+    inputs: [
+      { name: 'amountOutMin', type: 'uint256' },
+      { name: 'path', type: 'address[]' },
+      { name: 'to', type: 'address' },
+      { name: 'deadline', type: 'uint256' }
+    ],
+    outputs: [{ name: 'amounts', type: 'uint256[]' }]
+  },
+  {
+    name: 'swapExactTokensForAVAX',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'amountIn', type: 'uint256' },
+      { name: 'amountOutMin', type: 'uint256' },
+      { name: 'path', type: 'address[]' },
+      { name: 'to', type: 'address' },
+      { name: 'deadline', type: 'uint256' }
+    ],
+    outputs: [{ name: 'amounts', type: 'uint256[]' }]
+  },
+  {
+    name: 'getAmountsOut',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'amountIn', type: 'uint256' },
+      { name: 'path', type: 'address[]' }
+    ],
+    outputs: [{ name: 'amounts', type: 'uint256[]' }]
+  }
 ] as const;
