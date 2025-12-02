@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useAccount, useContractWrite, useWaitForTransaction } from 'wagmi';
-import { readContract } from '@wagmi/core';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { readContract } from 'wagmi/actions';
 import { parseEther } from 'viem';
 import { avalanche } from 'wagmi/chains';
 import { CONTRACTS, ERC20_ABI, ROUTER_ABI, AAVE_POOL_ABI } from '@/config/contracts';
@@ -27,26 +27,14 @@ export function DepositModal() {
   const [allowance, setAllowance] = React.useState<bigint>(0n);
 
   // Contract write hooks
-  const { write: writeSwap, data: swapHash, isLoading: isSwapLoading } = useContractWrite({
-    address: CONTRACTS.TRADER_JOE_ROUTER as `0x${string}`,
-    abi: ROUTER_ABI,
-    functionName: 'swapExactAVAXForTokens',
-  });
+  const { write: writeSwap, data: swapHash, isLoading: isSwapLoading } = useWriteContract();
 
-  const { write: writeApprove, data: approveHash, isLoading: isApproveLoading } = useContractWrite({
-    address: CONTRACTS.USDC_E as `0x${string}`,
-    abi: ERC20_ABI,
-    functionName: 'approve',
-  });
+  const { write: writeApprove, data: approveHash, isLoading: isApproveLoading } = useWriteContract();
 
-  const { write: writeSupply, data: supplyHash, isLoading: isSupplyLoading } = useContractWrite({
-    address: CONTRACTS.AAVE_POOL as `0x${string}`,
-    abi: AAVE_POOL_ABI,
-    functionName: 'supply',
-  });
+  const { write: writeSupply, data: supplyHash, isLoading: isSupplyLoading } = useWriteContract();
 
-  const hash = swapHash?.hash || approveHash?.hash || supplyHash?.hash;
-  const { isLoading: isConfirming } = useWaitForTransaction({
+  const hash = swapHash || approveHash || supplyHash;
+  const { isLoading: isConfirming } = useWaitForTransactionReceipt({
     hash,
   });
 
@@ -111,6 +99,9 @@ export function DepositModal() {
       const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
 
       writeSwap({
+        address: CONTRACTS.TRADER_JOE_ROUTER as `0x${string}`,
+        abi: ROUTER_ABI,
+        functionName: 'swapExactAVAXForTokens',
         args: [
           0, // amountOutMin (we should calculate this properly in production)
           path,
@@ -136,6 +127,9 @@ export function DepositModal() {
 
     try {
       writeApprove({
+        address: CONTRACTS.USDC_E as `0x${string}`,
+        abi: ERC20_ABI,
+        functionName: 'approve',
         args: [CONTRACTS.AAVE_POOL as `0x${string}`, usdcBalance],
       });
 
@@ -155,6 +149,9 @@ export function DepositModal() {
 
     try {
       writeSupply({
+        address: CONTRACTS.AAVE_POOL as `0x${string}`,
+        abi: AAVE_POOL_ABI,
+        functionName: 'supply',
         args: [CONTRACTS.USDC_E as `0x${string}`, usdcBalance as bigint, address, 0],
       });
 

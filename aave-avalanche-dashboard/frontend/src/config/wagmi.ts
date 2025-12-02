@@ -1,35 +1,20 @@
-import { createConfig } from 'wagmi';
-import { avalanche } from 'wagmi/chains';
-import { InjectedConnector } from 'wagmi/connectors/injected';
-import { WalletConnectConnector } from 'wagmi/connectors/walletConnect';
-import { createPublicClient, http } from 'viem';
+import { http, createConfig } from 'wagmi'
+import { avalanche } from 'wagmi/chains'
+import { injected, walletConnect } from 'wagmi/connectors'
 
 // WalletConnect project ID - get one free at https://cloud.walletconnect.com
-const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
-
-const connectors = [
-  new InjectedConnector({
-    chains: [avalanche],
-    options: {
-      shimDisconnect: true,
-    },
-  }),
-  new WalletConnectConnector({
-    chains: [avalanche],
-    options: {
-      projectId,
-      showQrModal: true,
-    },
-  }),
-];
-
-const publicClient = createPublicClient({
-  chain: avalanche,
-  transport: http(),
-});
+const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || 'c0daaf12b05ec82413fc8c92c1635a76'
 
 export const config = createConfig({
-  autoConnect: true,
-  connectors,
-  publicClient,
-});
+  chains: [avalanche],
+  connectors: [
+    injected(),
+    walletConnect({
+      projectId,
+      showQrModal: true,
+    }),
+  ],
+  transports: {
+    [avalanche.id]: http(),
+  },
+})

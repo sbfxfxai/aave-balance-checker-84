@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAccount, useContractWrite, useWaitForTransaction } from 'wagmi';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { parseUnits } from 'viem';
 import { avalanche } from 'wagmi/chains';
 import { Button } from '@/components/ui/button';
@@ -22,11 +22,19 @@ export function WithdrawModal() {
   const [isOpen, setIsOpen] = useState(false);
   const [step, setStep] = useState<'withdraw' | 'approve' | 'swap'>('withdraw');
   const { address } = useAccount();
-  const { write: writeContract, data: hash, isPending } = useContractWrite();
+  const { write: writeWithdraw, data: withdrawHash, isLoading: isWithdrawLoading } = useWriteContract();
   
-  const { isLoading: isConfirming } = useWaitForTransaction({
+  const { write: writeApprove, data: approveHash, isLoading: isApproveLoading } = useWriteContract();
+  
+  const { write: writeSwap, data: swapHash, isLoading: isSwapLoading } = useWriteContract();
+  
+  const hash = withdrawHash || approveHash || swapHash;
+  
+  const { isLoading: isConfirming } = useWaitForTransactionReceipt({
     hash,
   });
+
+  const isLoading = isWithdrawLoading || isApproveLoading || isSwapLoading || isConfirming;
 
   const handleWithdraw = () => {
     if (!amount || !address) return;
@@ -34,13 +42,11 @@ export function WithdrawModal() {
     try {
       const amountInWei = parseUnits(amount, 6); // USDC has 6 decimals
 
-      writeContract({
+      writeWithdraw({
         address: CONTRACTS.AAVE_POOL as `0x${string}`,
         abi: AAVE_POOL_ABI,
         functionName: 'withdraw',
         args: [CONTRACTS.USDC_E as `0x${string}`, amountInWei, address],
-        chain: avalanche,
-        account: address,
       });
 
       toast.success('Withdrawal initiated!');
@@ -57,13 +63,11 @@ export function WithdrawModal() {
     try {
       const amountInWei = parseUnits(amount, 6);
 
-      writeContract({
+      writeApprove({
         address: CONTRACTS.USDC_E as `0x${string}`,
         abi: ERC20_ABI,
         functionName: 'approve',
         args: [CONTRACTS.TRADER_JOE_ROUTER as `0x${string}`, amountInWei],
-        chain: avalanche,
-        account: address,
       });
 
       toast.success('Approval successful!');
@@ -82,13 +86,11 @@ export function WithdrawModal() {
       const path = [CONTRACTS.USDC_E, CONTRACTS.WAVAX];
       const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
 
-      writeContract({
+      writeSwap({
         address: CONTRACTS.TRADER_JOE_ROUTER as `0x${string}`,
         abi: ROUTER_ABI,
         functionName: 'swapExactTokensForAVAX',
         args: [amountInWei, 0n, path as `0x${string}`[], address, BigInt(deadline)],
-        chain: avalanche,
-        account: address,
       });
 
       toast.success('Swapped to AVAX successfully!');
@@ -100,8 +102,6 @@ export function WithdrawModal() {
       console.error(error);
     }
   };
-
-  const isLoading = isPending || isConfirming;
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
