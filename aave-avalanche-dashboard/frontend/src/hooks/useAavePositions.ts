@@ -1,6 +1,6 @@
 import { useAccount, useReadContract } from 'wagmi';
 import { formatUnits } from 'viem';
-import { CONTRACTS, AAVE_POOL_ABI, AAVE_DATA_PROVIDER_ABI } from '@/config/contracts';
+import { CONTRACTS, AAVE_POOL_ABI, AAVE_DATA_PROVIDER_ABI, AAVE_POOL_ADDRESSES_PROVIDER_ABI } from '@/config/contracts';
 
 type AccountDataTuple = readonly [
   bigint,
@@ -26,19 +26,27 @@ type ReserveDataTuple = readonly [
 export function useAavePositions() {
   const { address, isConnected } = useAccount();
 
-  // Direct Pool call - no Provider needed for now
+  // Step 1: Get current Pool address from CORRECT Provider
+  const { data: poolAddress, isLoading: poolLoading } = useReadContract({
+    address: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER as `0x${string}`,
+    abi: AAVE_POOL_ADDRESSES_PROVIDER_ABI,
+    functionName: 'getPool',
+    query: { enabled: true },
+  });
+
+  // Step 2: Get user positions from dynamic Pool address
   const { data: rawData, isLoading: positionsLoading, error } = useReadContract({
-    address: CONTRACTS.AAVE_POOL as `0x${string}`,
+    address: poolAddress,
     abi: AAVE_POOL_ABI,
     functionName: 'getUserAccountData',
     args: address ? [address] : undefined,
     query: {
-      enabled: isConnected && !!address,
+      enabled: !!poolAddress && isConnected && !!address,
       refetchInterval: 30_000,
     },
   });
 
-  // Get USDC reserve data
+  // Step 3: Get USDC reserve data
   const { data: reserveData, isLoading: reserveLoading } = useReadContract({
     address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
     abi: AAVE_DATA_PROVIDER_ABI,
@@ -57,6 +65,17 @@ export function useAavePositions() {
       totalCollateral: '0',
       usdcSupply: '0',
       isLoading: false,
+    };
+  }
+
+  if (poolLoading || !poolAddress) {
+    return { 
+      healthFactor: null, 
+      totalDebt: '0', 
+      totalCollateral: '0', 
+      usdcSupply: '0', 
+      usdcBorrowed: '0',
+      isLoading: true 
     };
   }
 
