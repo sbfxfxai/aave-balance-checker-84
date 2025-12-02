@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAccount, useContractWrite, useWaitForTransaction } from 'wagmi';
-import { readContract, getClient } from '@wagmi/core';
+import { readContract } from '@wagmi/core';
 import { parseEther } from 'viem';
 import { avalanche } from 'wagmi/chains';
 import { CONTRACTS, ERC20_ABI, ROUTER_ABI, AAVE_POOL_ABI } from '@/config/contracts';
@@ -56,8 +56,7 @@ export function DepositModal() {
   const fetchUsdcBalance = React.useCallback(async () => {
     if (!address) return;
     try {
-      const client = getClient();
-      const balance = await readContract(client, {
+      const balance = await readContract({
         address: CONTRACTS.USDC_E as `0x${string}`,
         abi: ERC20_ABI,
         functionName: 'balanceOf',
@@ -73,8 +72,7 @@ export function DepositModal() {
   const fetchAllowance = React.useCallback(async () => {
     if (!address) return;
     try {
-      const client = getClient();
-      const allowance = await readContract(client, {
+      const allowance = await readContract({
         address: CONTRACTS.USDC_E as `0x${string}`,
         abi: ERC20_ABI,
         functionName: 'allowance',
