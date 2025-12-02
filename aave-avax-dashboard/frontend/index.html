@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aave Avalanche Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.8.0/dist/web3.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; background: #2a71d0; color: white; border: none; border-radius: 4px; }
+        input { padding: 10px; width: 200px; margin-right: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        .section { margin-bottom: 30px; padding: 20px; border: 1px solid #eee; border-radius: 8px; }
+        .error { color: #e74c3c; }
+        .success { color: #27ae60; }
+        .wallet-info { font-weight: bold; margin-bottom: 15px; }
+        .position-item { margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Aave Avalanche Dashboard</h1>
+    
+    <div class="section">
+        <button id="connectBtn">Connect Trust Wallet</button>
+        <div id="walletStatus" class="wallet-info">Not connected</div>
+    </div>
+    
+    <div class="section">
+        <h2>Your Positions</h2>
+        <div id="positions">Loading positions...</div>
+        <button id="refreshBtn">Refresh Positions</button>
+    </div>
+    
+    <div class="section">
+        <h2>Deposit AVAX</h2>
+        <input type="number" id="depositAmount" placeholder="Amount in AVAX" step="0.01">
+        <button id="depositBtn">Deposit</button>
+        <div id="depositStatus"></div>
+    </div>
+    
+    <div class="section">
+        <h2>Withdraw USDC</h2>
+        <input type="number" id="withdrawAmount" placeholder="Amount in USDC" step="0.01">
+        <button id="withdrawBtn">Withdraw</button>
+        <div id="withdrawStatus"></div>
+    </div>
+
+    <script>
+        let web3, provider, accounts;
+        const backendUrl = "http://localhost:8000";
+        
+        async function initWalletConnect() {
+            try {
+                provider = new WalletConnectProvider.default({
+                    rpc: { 
+                        43114: "https://api.avax.network/ext/bc/C/rpc" 
+                    },
+                    chainId: 43114
+                });
+                
+                await provider.enable();
+                web3 = new Web3(provider);
+                accounts = await web3.eth.getAccounts();
+                document.getElementById("walletStatus").innerHTML = 
+                    `Connected: ${accounts[0].substring(0,6)}...${accounts[0].substring(38)}`;
+                loadPositions();
+            } catch (error) {
+                console.error("Wallet connection failed:", error);
+                document.getElementById("walletStatus").innerHTML = 
+                    `<span class="error">Connection failed: ${error.message}</span>`;
+            }
+        }
+        
+        async function loadPositions() {
+            if (!accounts) return;
+            
+            try {
+                document.getElementById("positions").innerHTML = "Loading positions...";
+                const response = await fetch(`${backendUrl}/positions/${accounts[0]}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const positions = await response.json();
+                
+                let html = `<div class="position-item"><strong>USDC Supplied:</strong> ${positions.usdc_supplied || 0}</div>`;
+                html += `<div class="position-item"><strong>Total Debt:</strong> ${positions.total_debt || 0}</div>`;
+                html += `<div class="position-item"><strong>Health Factor:</strong> ${positions.health_factor || 'N/A'}</div>`;
+                
+                document.getElementById("positions").innerHTML = html;
+            } catch (error) {
+                console.error("Error loading positions:", error);
+                document.getElementById("positions").innerHTML = 
+                    `<p class="error">Failed to load positions: ${error.message}</p>`;
+            }
+        }
+        
+        async function deposit() {
+            const amount = document.getElementById("depositAmount").value;
+            if (!amount || amount <= 0) {
+                alert("Please enter a valid AVAX amount");
+                return;
+            }
+            
+            try {
+                document.getElementById("depositStatus").innerHTML = "Starting deposit...";
+                const response = await fetch(`${backendUrl}/deposit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        wallet: { address: accounts[0] },
+                        amount_avax: parseFloat(amount)
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const { transactions } = await response.json();
+                await executeTransactions(transactions, "depositStatus");
+                loadPositions();
+            } catch (error) {
+                console.error("Deposit failed:", error);
+                document.getElementById("depositStatus").innerHTML = 
+                    `<span class="error">Deposit failed: ${error.message}</span>`;
+            }
+        }
+        
+        async function withdraw() {
+            const amount = document.getElementById("withdrawAmount").value;
+            if (!amount || amount <= 0) {
+                alert("Please enter a valid USDC amount");
+                return;
+            }
+            
+            try {
+                document.getElementById("withdrawStatus").innerHTML = "Starting withdrawal...";
+                const response = await fetch(`${backendUrl}/withdraw`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        wallet: { address: accounts[0] },
+                        amount_usdc: parseFloat(amount)
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const { transactions } = await response.json();
+                await executeTransactions(transactions, "withdrawStatus");
+                loadPositions();
+            } catch (error) {
+                console.error("Withdraw failed:", error);
+                document.getElementById("withdrawStatus").innerHTML = 
+                    `<span class="error">Withdraw failed: ${error.message}</span>`;
+            }
+        }
+        
+        async function executeTransactions(txs, statusElementId) {
+            const statusElement = document.getElementById(statusElementId);
+            statusElement.innerHTML = "Processing transactions...";
+            
+            try {
+                for (const tx of txs) {
+                    statusElement.innerHTML = `Signing transaction...`;
+                    const result = await web3.eth.sendTransaction(tx);
+                    statusElement.innerHTML = `Transaction mined: ${result.transactionHash.substring(0,20)}...`;
+                }
+                statusElement.innerHTML = `<span class="success">All transactions completed successfully!</span>`;
+            } catch (error) {
+                console.error("Transaction failed:", error);
+                statusElement.innerHTML = 
+                    `<span class="error">Transaction failed: ${error.message}</span>`;
+            }
+        }
+        
+        // Event listeners
+        document.getElementById("connectBtn").addEventListener("click", initWalletConnect);
+        document.getElementById("refreshBtn").addEventListener("click", loadPositions);
+        document.getElementById("depositBtn").addEventListener("click", deposit);
+        document.getElementById("withdrawBtn").addEventListener("click", withdraw);
+    </script>
+</body>
+</html>

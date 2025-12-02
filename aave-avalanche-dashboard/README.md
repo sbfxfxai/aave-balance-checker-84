@@ -18,6 +18,8 @@ Production-grade dashboard for interacting with Aave V3 on Avalanche C-Chain. Fe
 - Web3.py (blockchain interactions)
 - HTML/CSS/JS (frontend)
 
+---
+
 ## Setup and Running the Application
 
 1. **Install dependencies**:

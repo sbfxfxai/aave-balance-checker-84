@@ -1,4 +1,5 @@
 from eth_defi.aave_v3.withdraw import withdraw_erc20
+from app.config import AAVE_V3_POOL
 from app.wallet.provider import get_web3_provider
 
 # Withdraw tokens from Aave
