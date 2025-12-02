@@ -28,16 +28,16 @@ export function DepositModal() {
   const [allowance, setAllowance] = React.useState<bigint>(0n);
 
   // Contract write hooks
-  const writeSwap = useWriteContract();
-  const writeApprove = useWriteContract();
-  const writeSupply = useWriteContract();
+  const writeSwapHook = useWriteContract();
+  const writeApproveHook = useWriteContract();
+  const writeSupplyHook = useWriteContract();
 
-  const hash = writeSwap.data || writeApprove.data || writeSupply.data;
+  const hash = writeSwapHook.data || writeApproveHook.data || writeSupplyHook.data;
   const { isLoading: isConfirming } = useWaitForTransactionReceipt({
     hash,
   });
 
-  const isLoading = writeSwap.isPending || writeApprove.isPending || writeSupply.isPending || isConfirming;
+  const isLoading = writeSwapHook.isPending || writeApproveHook.isPending || writeSupplyHook.isPending || isConfirming;
 
   // Fetch USDC balance
   const fetchUsdcBalance = React.useCallback(async () => {
@@ -97,7 +97,7 @@ export function DepositModal() {
       const path = [CONTRACTS.WAVAX, CONTRACTS.USDC_E];
       const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
 
-      writeSwap({
+      writeSwapHook({
         address: CONTRACTS.TRADER_JOE_ROUTER as `0x${string}`,
         abi: ROUTER_ABI,
         functionName: 'swapExactAVAXForTokens',
@@ -125,7 +125,7 @@ export function DepositModal() {
     }
 
     try {
-      writeApprove({
+      writeApproveHook({
         address: CONTRACTS.USDC_E as `0x${string}`,
         abi: ERC20_ABI,
         functionName: 'approve',
@@ -147,7 +147,7 @@ export function DepositModal() {
     if (!usdcBalance || !address) return;
 
     try {
-      writeSupply({
+      writeSupplyHook({
         address: CONTRACTS.AAVE_POOL as `0x${string}`,
         abi: AAVE_POOL_ABI,
         functionName: 'supply',
