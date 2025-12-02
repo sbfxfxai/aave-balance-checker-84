@@ -8,7 +8,7 @@ import { useWalletBalances } from '@/hooks/useWalletBalances';
 
 export function WalletConnect() {
   const { address, isConnected } = useAccount();
-  const { connect, connectors, isPending } = useConnect();
+  const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
   const [isConnecting, setIsConnecting] = useState(false);
   const { avaxBalance, usdcBalance, isLoading, avaxSymbol, usdcSymbol } = useWalletBalances();
@@ -16,7 +16,7 @@ export function WalletConnect() {
   const handleConnect = async (connector: any) => {
     setIsConnecting(true);
     try {
-      connect({ connector });
+      await connect({ connector });
       toast.success('Wallet connected successfully!');
     } catch (error) {
       toast.error('Failed to connect wallet');
@@ -115,11 +115,11 @@ export function WalletConnect() {
             <Button
               key={connector.id}
               onClick={() => handleConnect(connector)}
-              disabled={isPending || isConnecting}
+              disabled={isConnecting}
               className="w-full bg-gradient-primary hover:opacity-90 transition-opacity"
               size="lg"
             >
-              {isPending || isConnecting ? (
+              {isConnecting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Connecting...
