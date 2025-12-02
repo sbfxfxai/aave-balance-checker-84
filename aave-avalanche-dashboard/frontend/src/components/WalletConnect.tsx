@@ -13,14 +13,20 @@ export function WalletConnect() {
   const [isConnecting, setIsConnecting] = useState(false);
   const { avaxBalance, usdcBalance, isLoading, avaxSymbol, usdcSymbol } = useWalletBalances();
 
-  const handleConnect = async (connector: any) => {
+  const handleConnect = async () => {
     setIsConnecting(true);
     try {
-      await connect({ connector });
-      toast.success('Wallet connected successfully!');
+      // Use the first (and only) WalletConnect connector
+      const walletConnectConnector = connectors.find(c => c.id === 'walletConnect');
+      if (walletConnectConnector) {
+        await connect({ connector: walletConnectConnector });
+        toast.success('Wallet connected successfully!');
+      } else {
+        toast.error('WalletConnect not available');
+      }
     } catch (error) {
+      console.error('Connection error:', error);
       toast.error('Failed to connect wallet');
-      console.error(error);
     } finally {
       setIsConnecting(false);
     }
@@ -110,29 +116,24 @@ export function WalletConnect() {
             Connect your wallet to start using Aave on Avalanche
           </p>
         </div>
-        <div className="flex flex-col gap-2 w-full max-w-xs">
-          {connectors.map((connector) => (
-            <Button
-              key={connector.id}
-              onClick={() => handleConnect(connector)}
-              disabled={isConnecting}
-              className="w-full bg-gradient-primary hover:opacity-90 transition-opacity"
-              size="lg"
-            >
-              {isConnecting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Connecting...
-                </>
-              ) : (
-                <>
-                  <Wallet className="mr-2 h-4 w-4" />
-                  {connector.name}
-                </>
-              )}
-            </Button>
-          ))}
-        </div>
+        <Button
+          onClick={handleConnect}
+          disabled={isConnecting}
+          className="w-full bg-gradient-primary hover:opacity-90 transition-opacity"
+          size="lg"
+        >
+          {isConnecting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Connecting...
+            </>
+          ) : (
+            <>
+              <Wallet className="mr-2 h-4 w-4" />
+              Connect Wallet
+            </>
+          )}
+        </Button>
       </div>
     </Card>
   );
