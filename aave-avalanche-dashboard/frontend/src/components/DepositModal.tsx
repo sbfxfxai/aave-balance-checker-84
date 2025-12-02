@@ -1,57 +1,123 @@
 import React, { useState } from 'react';
-import { useAccount, useContractWrite, useContractRead, useWaitForTransaction } from 'wagmi';
-import { createPublicClient, http, encodeFunctionData, parseEther } from 'viem';
-import { avalanche } from 'viem/chains';
+import { useAccount, useContractWrite, useWaitForTransaction } from 'wagmi';
+import { readContract } from '@wagmi/core';
+import { parseEther } from 'viem';
+import { avalanche } from 'wagmi/chains';
 import { CONTRACTS, ERC20_ABI, ROUTER_ABI, AAVE_POOL_ABI } from '@/config/contracts';
+import { config } from '@/config/wagmi';
 import { toast } from 'sonner';
 import { Loader2, ArrowDown, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { waitForTransaction } from 'wagmi/actions';
-
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 
 export function DepositModal() {
   const [amount, setAmount] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [step, setStep] = useState<'swap' | 'approve' | 'supply'>('swap');
-  const [nonce, setNonce] = useState<number>(0);
-  const [isLoading, setIsLoading] = useState(false);
   const { address } = useAccount();
-  const { write: writeContract, data: hash, isPending } = useContractWrite();
-  
+  const [usdcBalance, setUsdcBalance] = React.useState<bigint>(0n);
+  const [allowance, setAllowance] = React.useState<bigint>(0n);
+
+  // Contract write hooks
+  const { write: writeSwap, data: swapHash, isLoading: isSwapLoading } = useContractWrite({
+    address: CONTRACTS.TRADER_JOE_ROUTER as `0x${string}`,
+    abi: ROUTER_ABI,
+    functionName: 'swapExactAVAXForTokens',
+  });
+
+  const { write: writeApprove, data: approveHash, isLoading: isApproveLoading } = useContractWrite({
+    address: CONTRACTS.USDC_E as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: 'approve',
+  });
+
+  const { write: writeSupply, data: supplyHash, isLoading: isSupplyLoading } = useContractWrite({
+    address: CONTRACTS.AAVE_POOL as `0x${string}`,
+    abi: AAVE_POOL_ABI,
+    functionName: 'supply',
+  });
+
+  const hash = swapHash?.hash || approveHash?.hash || supplyHash?.hash;
   const { isLoading: isConfirming } = useWaitForTransaction({
     hash,
   });
 
-  const { data: usdcBalance } = useContractRead({
-    address: CONTRACTS.USDC_E as `0x${string}`,
-    abi: ERC20_ABI,
-    functionName: 'balanceOf',
-    args: address ? [address] : undefined,
-  });
+  const isLoading = isSwapLoading || isApproveLoading || isSupplyLoading || isConfirming;
 
-  const { data: allowance } = useContractRead({
-    address: CONTRACTS.USDC_E as `0x${string}`,
-    abi: ERC20_ABI,
-    functionName: 'allowance',
-    args: address ? [address, CONTRACTS.AAVE_POOL as `0x${string}`] : undefined,
-  });
+  // Fetch USDC balance
+  const fetchUsdcBalance = React.useCallback(async () => {
+    if (!address) return;
+    try {
+      const balance = await readContract(config, {
+        address: CONTRACTS.USDC_E as `0x${string}`,
+        abi: ERC20_ABI,
+        functionName: 'balanceOf',
+        args: [address],
+      });
+      setUsdcBalance(balance as bigint);
+    } catch (error) {
+      console.error('Error fetching USDC balance:', error);
+    }
+  }, [address]);
 
+  // Fetch allowance
+  const fetchAllowance = React.useCallback(async () => {
+    if (!address) return;
+    try {
+      const allowance = await readContract(config, {
+        address: CONTRACTS.USDC_E as `0x${string}`,
+        abi: ERC20_ABI,
+        functionName: 'allowance',
+        args: [address, CONTRACTS.AAVE_POOL as `0x${string}`],
+      });
+      setAllowance(allowance as bigint);
+    } catch (error) {
+      console.error('Error fetching allowance:', error);
+    }
+  }, [address]);
 
-  const handleSwap = () => {
+  // Set up polling for data
+  React.useEffect(() => {
+    fetchUsdcBalance();
+    fetchAllowance();
+    const interval = setInterval(() => {
+      fetchUsdcBalance();
+      fetchAllowance();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [fetchUsdcBalance, fetchAllowance]);
+
+  // Refresh data after successful transaction
+  React.useEffect(() => {
+    if (hash && !isConfirming) {
+      fetchUsdcBalance();
+      fetchAllowance();
+    }
+  }, [hash, isConfirming, fetchUsdcBalance, fetchAllowance]);
+
+  const handleSwap = async () => {
     if (!amount || !address) return;
 
     try {
       const path = [CONTRACTS.WAVAX, CONTRACTS.USDC_E];
       const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
 
-      writeContract({
-        address: CONTRACTS.TRADER_JOE_ROUTER as `0x${string}`,
-        abi: ROUTER_ABI,
-        functionName: 'swapExactAVAXForTokens',
-        args: [0n, path as `0x${string}`[], address, BigInt(deadline)],
+      writeSwap({
+        args: [
+          0, // amountOutMin (we should calculate this properly in production)
+          path,
+          address,
+          deadline,
+        ],
         value: parseEther(amount),
       });
 
@@ -70,35 +136,17 @@ export function DepositModal() {
     }
 
     try {
-      if (allowance > 0n) {
-        await writeContract({
-          address: CONTRACTS.USDC_E as `0x${string}`,
-          abi: ERC20_ABI,
-          functionName: 'approve',
-          args: [CONTRACTS.AAVE_POOL as `0x${string}`, 0n],
-          gas: 100000n
-        });
-      }
-
-      const txHash = await writeContract({
-        address: CONTRACTS.USDC_E as `0x${string}`,
-        abi: ERC20_ABI,
-        functionName: 'approve',
+      writeApprove({
         args: [CONTRACTS.AAVE_POOL as `0x${string}`, usdcBalance],
-        gas: 300000n,
-        maxFeePerGas: 25000000000n,
-        maxPriorityFeePerGas: 2500000000n
       });
 
-      const receipt = await waitForTransaction({ hash: txHash });
-      if (receipt.status === 'success') {
-        toast.success('Approval confirmed!');
-        setStep('supply');
-      } else {
-        toast.error('Approval transaction failed');
-      }
-    } catch (err: any) {
-      toast.error(`Approval failed: ${err.shortMessage || err.message}`);
+      toast.success('Approval initiated!');
+      setStep('supply');
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'message' in err
+        ? String((err as { message?: string }).message)
+        : 'Unknown error';
+      toast.error(`Approval failed: ${message}`);
       console.error('Approval error:', err);
     }
   };
@@ -107,14 +155,11 @@ export function DepositModal() {
     if (!usdcBalance || !address) return;
 
     try {
-      writeContract({
-        address: CONTRACTS.AAVE_POOL as `0x${string}`,
-        abi: AAVE_POOL_ABI,
-        functionName: 'supply',
+      writeSupply({
         args: [CONTRACTS.USDC_E as `0x${string}`, usdcBalance as bigint, address, 0],
       });
 
-      toast.success('Supplied to Aave successfully!');
+      toast.success('Supply initiated!');
       setIsOpen(false);
       setAmount('');
       setStep('swap');
@@ -128,12 +173,12 @@ export function DepositModal() {
     toast.info('Speed up feature coming soon');
   };
 
-  const handleCancel = async (txHash: `0x${string}`, nonce: number) => {
+  const handleCancel = async (txHash: `0x${string}`) => {
     toast.info('Cancel feature coming soon');
   };
 
   const needsApproval = allowance !== undefined && usdcBalance !== undefined && allowance < usdcBalance;
-  const isTransactionLoading = isPending || isConfirming;
+  const isTransactionLoading = isLoading || isConfirming;
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -160,7 +205,7 @@ export function DepositModal() {
               type="number"
               placeholder="0.0"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAmount(e.target.value)}
               disabled={step !== 'swap' || isTransactionLoading}
               className="text-lg"
             />
@@ -261,7 +306,7 @@ export function DepositModal() {
               Speed Up
             </Button>
             <Button
-              onClick={() => handleCancel(hash, nonce)}
+              onClick={() => handleCancel(hash)}
               variant="outline"
               size="sm"
               className="text-red-500"
