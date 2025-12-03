@@ -1,0 +1,5 @@
+{
+  "typescript.tsserver.experimental.enableProjectDiagnostics": false,
+  "typescript.enablePromptUseWorkspaceTsdk": false,
+  "typescript.preferences.includePackageJsonAutoImports": "off"
+}
