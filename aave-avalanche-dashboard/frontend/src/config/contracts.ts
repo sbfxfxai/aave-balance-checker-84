@@ -10,8 +10,9 @@ export const CONTRACTS = {
   
   // Aave V3 Avalanche Mainnet - CORRECT ADDRESSES
   AAVE_POOL_ADDRESSES_PROVIDER: '0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb',
-  AAVE_POOL: '0x794a6146e358838adc3a7a95b8c7b5e2cb9d09d9',
+  AAVE_POOL: '0x794a61358D6845594F94dc1DB02A252b5b4814aD', // CORRECT POOL ADDRESS
   AAVE_POOL_DATA_PROVIDER: '0x69FA688f1Dc47d4B5d8029D5a35FB7a548310654',
+  AAVE_UI_POOL_DATA_PROVIDER: '0x53430E0f88cC6d7b204535B3AF47538C0e0a3d48', // UI Data Provider for frontend
   
   // DEX Routers
   TRADER_JOE_ROUTER: '0x60aE616a2155Ee3d9A68541Ba4544862310933d4',
@@ -40,6 +41,31 @@ export const AAVE_POOL_ABI = [
       { name: 'asset', type: 'address' },
       { name: 'amount', type: 'uint256' },
       { name: 'to', type: 'address' }
+    ],
+    outputs: [{ name: '', type: 'uint256' }]
+  },
+  {
+    name: 'borrow',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'asset', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'interestRateMode', type: 'uint256' },
+      { name: 'referralCode', type: 'uint16' },
+      { name: 'onBehalfOf', type: 'address' }
+    ],
+    outputs: []
+  },
+  {
+    name: 'repay',
+    type: 'function',
+    stateMutability: 'payable',
+    inputs: [
+      { name: 'asset', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'rateMode', type: 'uint256' },
+      { name: 'onBehalfOf', type: 'address' }
     ],
     outputs: [{ name: '', type: 'uint256' }]
   },
@@ -102,6 +128,26 @@ export const AAVE_DATA_PROVIDER_ABI = [
       { name: 'liquidityRate', type: 'uint256' },
       { name: 'stableRateLastUpdated', type: 'uint40' },
       { name: 'usageAsCollateralEnabled', type: 'bool' }
+    ]
+  },
+  {
+    name: 'getReserveData',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'asset', type: 'address' }],
+    outputs: [
+      { name: 'unbacked', type: 'uint256' },
+      { name: 'accruedToTreasuryScaled', type: 'uint256' },
+      { name: 'totalAToken', type: 'uint256' },
+      { name: 'totalStableDebt', type: 'uint256' },
+      { name: 'totalVariableDebt', type: 'uint256' },
+      { name: 'liquidityRate', type: 'uint256' },
+      { name: 'variableBorrowRate', type: 'uint256' },
+      { name: 'stableBorrowRate', type: 'uint256' },
+      { name: 'averageStableBorrowRate', type: 'uint256' },
+      { name: 'liquidityIndex', type: 'uint256' },
+      { name: 'variableBorrowIndex', type: 'uint256' },
+      { name: 'lastUpdateTimestamp', type: 'uint40' }
     ]
   }
 ] as const;

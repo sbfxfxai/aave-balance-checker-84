@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable", "es2016"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "Bundler",
@@ -18,8 +18,11 @@
     "types": ["vite/client", "@types/react", "@types/react-dom"],
     "strict": true,
     "forceConsistentCasingInFileNames": true,
-    "downlevelIteration": true
+    "downlevelIteration": true,
+    "allowSyntheticDefaultImports": true,
+    "exactOptionalPropertyTypes": false,
+    "noResolve": false
   },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist", "build"]
+  "include": ["src", "src/types"],
+  "exclude": ["node_modules", "dist", "build", "**/node_modules/**", "**/*.d.ts"]
 }

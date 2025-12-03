@@ -18,4 +18,10 @@ export default defineConfig(({ mode }) => ({
   build: {
     target: "es2020",
   },
+  optimizeDeps: {
+    exclude: ["@noble/curves"]
+  },
+  ssr: {
+    noExternal: []
+  }
 }));

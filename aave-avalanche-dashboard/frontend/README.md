@@ -60,9 +60,45 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Environment Variables (Production)
+
+For production deployment, configure these environment variables in Vercel or your hosting platform:
+
+### Required Variables
+
+- **`VITE_WALLETCONNECT_PROJECT_ID`** (Required in production)
+  - Get a free project ID at https://cloud.walletconnect.com
+  - Used for WalletConnect QR code wallet connections
+  - Example: `c0daaf12b05ec82413fc8c92c1635a76`
+
+### Optional Variables
+
+- **`VITE_AVALANCHE_RPC_URL`** (Optional, recommended for production)
+  - Dedicated RPC provider URL for better reliability and rate limits
+  - Default: `https://api.avax.network/ext/bc/C/rpc` (public Avalanche RPC)
+  - Recommended providers: Infura, Alchemy, QuickNode, or Ankr
+  - Example: `https://avalanche-mainnet.infura.io/v3/YOUR_API_KEY`
+
+### Setting Environment Variables
+
+**For Vercel:**
+1. Go to your project settings
+2. Navigate to "Environment Variables"
+3. Add each variable with the `VITE_` prefix
+4. Redeploy your application
+
+**For local development:**
+Create a `.env` file in the `frontend/` directory:
+```env
+VITE_AVALANCHE_RPC_URL=https://api.avax.network/ext/bc/C/rpc
+VITE_WALLETCONNECT_PROJECT_ID=your_project_id_here
+```
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/5984adeb-813b-4511-b385-6cbb43806d8f) and click on Share -> Publish.
+
+**Important:** Before deploying to production, ensure you've set `VITE_WALLETCONNECT_PROJECT_ID` in your hosting platform's environment variables.
 
 ## Can I connect a custom domain to my Lovable project?
 

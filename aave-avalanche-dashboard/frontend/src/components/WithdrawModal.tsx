@@ -22,11 +22,11 @@ export function WithdrawModal() {
   const [isOpen, setIsOpen] = useState(false);
   const [step, setStep] = useState<'withdraw' | 'approve' | 'swap'>('withdraw');
   const { address } = useAccount();
-  const { write: writeWithdraw, data: withdrawHash, isLoading: isWithdrawLoading } = useWriteContract();
-  
-  const { write: writeApprove, data: approveHash, isLoading: isApproveLoading } = useWriteContract();
-  
-  const { write: writeSwap, data: swapHash, isLoading: isSwapLoading } = useWriteContract();
+  const { writeContract: writeWithdraw, data: withdrawHash, isPending: isWithdrawLoading } = useWriteContract();
+
+  const { writeContract: writeApprove, data: approveHash, isPending: isApproveLoading } = useWriteContract();
+
+  const { writeContract: writeSwap, data: swapHash, isPending: isSwapLoading } = useWriteContract();
   
   const hash = withdrawHash || approveHash || swapHash;
   
@@ -46,7 +46,7 @@ export function WithdrawModal() {
         address: CONTRACTS.AAVE_POOL as `0x${string}`,
         abi: AAVE_POOL_ABI,
         functionName: 'withdraw',
-        args: [CONTRACTS.USDC_E as `0x${string}`, amountInWei, address],
+        args: [CONTRACTS.USDC as `0x${string}`, amountInWei, address], // Native USDC for Aave V3
       });
 
       toast.success('Withdrawal initiated!');
@@ -64,7 +64,7 @@ export function WithdrawModal() {
       const amountInWei = parseUnits(amount, 6);
 
       writeApprove({
-        address: CONTRACTS.USDC_E as `0x${string}`,
+        address: CONTRACTS.USDC as `0x${string}`, // Native USDC for Aave V3
         abi: ERC20_ABI,
         functionName: 'approve',
         args: [CONTRACTS.TRADER_JOE_ROUTER as `0x${string}`, amountInWei],
@@ -83,7 +83,7 @@ export function WithdrawModal() {
 
     try {
       const amountInWei = parseUnits(amount, 6);
-      const path = [CONTRACTS.USDC_E, CONTRACTS.WAVAX];
+      const path = [CONTRACTS.USDC, CONTRACTS.WAVAX]; // Native USDC for Aave V3
       const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
 
       writeSwap({

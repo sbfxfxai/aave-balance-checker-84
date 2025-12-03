@@ -16,7 +16,7 @@ export function WalletConnect() {
   const handleConnect = async () => {
     setIsConnecting(true);
     try {
-      // Use the first (and only) WalletConnect connector
+      // Use the WalletConnect connector
       const walletConnectConnector = connectors.find(c => c.id === 'walletConnect');
       if (walletConnectConnector) {
         await connect({ connector: walletConnectConnector });
@@ -77,7 +77,7 @@ export function WalletConnect() {
                   {isLoading ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
                   ) : (
-                    `${parseFloat(avaxBalance).toFixed(4)} ${avaxSymbol}`
+                    `${avaxBalance ? parseFloat(avaxBalance).toFixed(4) : '0.0000'} ${avaxSymbol}`
                   )}
                 </p>
               </div>
