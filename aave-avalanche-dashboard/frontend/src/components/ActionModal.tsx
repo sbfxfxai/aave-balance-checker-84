@@ -1023,23 +1023,20 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
             console.log('Using type(uint256).max for full repayment to avoid interest accrual issues');
             toast.info(`Repaying full debt: ${currentDebtFormatted} AVAX`);
           } else if (repayAmountWei > currentAvaxDebt) {
-            // Cap to debt if exceeds
+            // Cap to debt if exceeds - args amount cannot exceed debt
             console.log(`Repay amount ${repayAmountWei.toString()} exceeds debt ${currentAvaxDebt.toString()}, capping to debt amount`);
             finalRepayAmount = currentAvaxDebt;
             toast.info(`Repay amount capped to current debt: ${currentDebtFormatted} AVAX`);
-          } else {
-            // For partial repayments, add 0.5% buffer to account for interest accrual
-            // This prevents transaction reverts due to interest accumulating between check and execution
-            const buffer = (finalRepayAmount * 5n) / 1000n; // 0.5% buffer
-            finalRepayAmount = finalRepayAmount + buffer;
-            console.log(`Added 0.5% buffer to partial repayment to account for interest accrual`);
           }
+          // Note: finalRepayAmount is capped to debt to prevent revert
+          // The value sent can be slightly more to cover interest accrual
           
-          // For max repayment, value should be enough to cover debt + some buffer
-          // For partial repayment, we've already added buffer to finalRepayAmount
+          // For max repayment, value should be enough to cover debt + buffer
+          // For partial repayment, add small buffer to value to account for interest accrual
+          // The args amount stays at finalRepayAmount (capped to debt), but value can be slightly more
           const valueToSend = useMaxRepay && currentAvaxDebt > 0n 
             ? currentAvaxDebt + (currentAvaxDebt / 100n) // Add 1% buffer for interest
-            : finalRepayAmount;
+            : finalRepayAmount + (finalRepayAmount * 5n) / 1000n; // Add 0.5% buffer for partial repayment
           
           // Ensure value doesn't exceed balance
           if (valueToSend > avaxBalanceWei - minAvaxForGasWei) {
