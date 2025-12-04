@@ -1008,35 +1008,23 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           const currentDebtFormatted = formatUnits(currentAvaxDebt, 18);
           console.log('Current AVAX debt:', currentDebtFormatted, 'Requested repay:', amount);
           
-          // Use type(uint256).max for full repayment to avoid issues with interest accrual
-          // If user is repaying close to full debt (within 1%), use max for full repayment
+          // Always use type(uint256).max for repayment to avoid precision and interest accrual issues
+          // This is the standard approach in DeFi - Aave will only take what's needed and refund the rest
+          // Partial repayments are problematic due to interest accrual between check and execution
           const MAX_UINT256 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
-          let useMaxRepay = false;
-          let finalRepayAmount = repayAmountWei;
+          const finalRepayAmount = MAX_UINT256;
           
-          // If repay amount is >= 95% of debt, use max for full repayment
-          // This avoids issues with interest accrual making the exact amount fail
-          const ninetyFivePercent = (currentAvaxDebt * 95n) / 100n;
-          if (repayAmountWei >= ninetyFivePercent) {
-            useMaxRepay = true;
-            finalRepayAmount = MAX_UINT256;
-            console.log('Using type(uint256).max for full repayment to avoid interest accrual issues');
+          // Value should be enough to cover the requested amount (or full debt if requesting more)
+          // Add 1% buffer to account for interest accrual
+          const requestedOrDebt = repayAmountWei > currentAvaxDebt ? currentAvaxDebt : repayAmountWei;
+          const valueToSend = requestedOrDebt + (requestedOrDebt / 100n); // Add 1% buffer
+          
+          console.log('Using max repayment (type(uint256).max) to avoid precision issues');
+          if (repayAmountWei < currentAvaxDebt) {
+            toast.info(`Repaying ${formatUnits(requestedOrDebt, 18)} AVAX (requested: ${amount}). Aave will take only what's needed.`);
+          } else {
             toast.info(`Repaying full debt: ${currentDebtFormatted} AVAX`);
-          } else if (repayAmountWei > currentAvaxDebt) {
-            // Cap to debt if exceeds - args amount cannot exceed debt
-            console.log(`Repay amount ${repayAmountWei.toString()} exceeds debt ${currentAvaxDebt.toString()}, capping to debt amount`);
-            finalRepayAmount = currentAvaxDebt;
-            toast.info(`Repay amount capped to current debt: ${currentDebtFormatted} AVAX`);
           }
-          // Note: finalRepayAmount is capped to debt to prevent revert
-          // The value sent can be slightly more to cover interest accrual
-          
-          // For max repayment, value should be enough to cover debt + buffer
-          // For partial repayment, value must match amount exactly - Aave validates this
-          // The buffer is only needed for max repayments where we're repaying the full debt
-          const valueToSend = useMaxRepay && currentAvaxDebt > 0n 
-            ? currentAvaxDebt + (currentAvaxDebt / 100n) // Add 1% buffer for interest on full repayment
-            : finalRepayAmount; // For partial repayment, value must match amount exactly
           
           // Ensure value doesn't exceed balance
           if (valueToSend > avaxBalanceWei - minAvaxForGasWei) {
