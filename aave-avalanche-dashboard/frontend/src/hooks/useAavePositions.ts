@@ -91,7 +91,12 @@ export function useAavePositions() {
   });
 
   // Step 7: Get WAVAX user reserve data for AVAX supply and borrows
-  const { data: wavaxReserveData, isLoading: wavaxReserveLoading, refetch: refetchWavaxReserveData } = useReadContract({
+  const { 
+    data: wavaxReserveData, 
+    isLoading: wavaxReserveLoading, 
+    error: wavaxReserveError,
+    refetch: refetchWavaxReserveData 
+  } = useReadContract({
     address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
     abi: AAVE_DATA_PROVIDER_ABI,
     functionName: 'getUserReserveData',
@@ -100,6 +105,19 @@ export function useAavePositions() {
       enabled: isConnected && !!address,
       refetchInterval: 30_000,
     },
+  });
+  
+  // Debug: Log query state
+  console.log('[useAavePositions] WAVAX query state:', {
+    isConnected,
+    address,
+    enabled: isConnected && !!address,
+    isLoading: wavaxReserveLoading,
+    hasData: wavaxReserveData !== undefined,
+    hasError: !!wavaxReserveError,
+    error: wavaxReserveError,
+    dataProviderAddress: CONTRACTS.AAVE_POOL_DATA_PROVIDER,
+    wavaxAddress: CONTRACTS.WAVAX,
   });
 
   if (!isConnected || !address) {
@@ -157,14 +175,23 @@ export function useAavePositions() {
   let avaxSupply = '0';
   let avaxBorrowed = '0';
   
-  // Debug: Log the raw data structure
+  // Debug: Log the raw data structure and errors
+  if (wavaxReserveError) {
+    console.error('[useAavePositions] WAVAX reserve data ERROR:', wavaxReserveError);
+  }
+  
   if (wavaxReserveData !== undefined) {
     console.log('[useAavePositions] WAVAX reserve data received:', {
       type: typeof wavaxReserveData,
       isArray: Array.isArray(wavaxReserveData),
       length: Array.isArray(wavaxReserveData) ? wavaxReserveData.length : 'N/A',
       raw: wavaxReserveData,
+      stringified: JSON.stringify(wavaxReserveData, (key, value) => 
+        typeof value === 'bigint' ? value.toString() : value
+      ),
     });
+  } else if (!wavaxReserveLoading) {
+    console.warn('[useAavePositions] WAVAX reserve data is undefined and not loading!');
   }
   
   if (wavaxReserveData) {

@@ -1,4 +1,4 @@
-import { useAccount, useDisconnect } from 'wagmi';
+import { useAccount, useDisconnect, useReadContract } from 'wagmi';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Wallet, LogOut, ArrowDownUp, Plus, Minus, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react';
@@ -7,8 +7,10 @@ import { useAavePositions } from '@/hooks/useAavePositions';
 import { useWalletBalances } from '@/hooks/useWalletBalances';
 import { ActionModal } from '@/components/ActionModal';
 import { WalletConnect } from '@/components/WalletConnect';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { CONTRACTS, AAVE_DATA_PROVIDER_ABI } from '@/config/contracts';
+import { formatUnits } from 'viem';
 
 export function SimpleDashboard() {
   const { address, isConnected } = useAccount();
@@ -19,6 +21,41 @@ export function SimpleDashboard() {
   
   const [activeAction, setActiveAction] = useState<'swap' | 'supply' | 'withdraw' | 'borrow' | 'repay' | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // Direct test read of WAVAX reserve data to debug
+  const { data: directWavaxData, error: directWavaxError } = useReadContract({
+    address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
+    abi: AAVE_DATA_PROVIDER_ABI,
+    functionName: 'getUserReserveData',
+    args: address ? [CONTRACTS.WAVAX as `0x${string}`, address] : undefined,
+    query: {
+      enabled: isConnected && !!address,
+    },
+  });
+  
+  // Log direct read for debugging
+  useEffect(() => {
+    if (directWavaxData) {
+      console.log('[SimpleDashboard] DIRECT WAVAX read:', {
+        raw: directWavaxData,
+        isArray: Array.isArray(directWavaxData),
+        length: Array.isArray(directWavaxData) ? directWavaxData.length : 'N/A',
+      });
+      if (Array.isArray(directWavaxData) && directWavaxData.length >= 3) {
+        const stableDebt = directWavaxData[1] as bigint;
+        const variableDebt = directWavaxData[2] as bigint;
+        const totalDebt = stableDebt + variableDebt;
+        console.log('[SimpleDashboard] DIRECT calculated debt:', {
+          stableDebt: formatUnits(stableDebt, 18),
+          variableDebt: formatUnits(variableDebt, 18),
+          totalDebt: formatUnits(totalDebt, 18),
+        });
+      }
+    }
+    if (directWavaxError) {
+      console.error('[SimpleDashboard] DIRECT WAVAX read error:', directWavaxError);
+    }
+  }, [directWavaxData, directWavaxError]);
   
   const handleRefresh = async () => {
     setIsRefreshing(true);
