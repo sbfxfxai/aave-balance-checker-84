@@ -20,6 +20,32 @@ export const CONTRACTS = {
 
 export const ERC20_ABI = erc20Abi;
 
+// WAVAX (Wrapped AVAX) ABI - for wrapping native AVAX
+export const WAVAX_ABI = [
+  {
+    name: 'deposit',
+    type: 'function',
+    stateMutability: 'payable',
+    inputs: [],
+    outputs: []
+  },
+  {
+    name: 'withdraw',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'wad', type: 'uint256' }],
+    outputs: []
+  },
+  {
+    name: 'balanceOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }]
+  },
+  ...erc20Abi
+] as const;
+
 export const AAVE_POOL_ABI = [
   {
     name: 'supply',

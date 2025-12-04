@@ -8,7 +8,7 @@ import { useAccount, useReadContract, useBalance } from 'wagmi';
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { parseUnits, formatUnits } from 'viem';
 import { readContract, waitForTransactionReceipt } from '@wagmi/core';
-import { CONTRACTS, ERC20_ABI, AAVE_DATA_PROVIDER_ABI } from '@/config/contracts';
+import { CONTRACTS, ERC20_ABI, AAVE_DATA_PROVIDER_ABI, WAVAX_ABI } from '@/config/contracts';
 import { toast } from 'sonner';
 import { getExplorerTxLink } from '@/lib/blockchain';
 import { avalanche } from 'wagmi/chains';
@@ -91,6 +91,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
   const [amount, setAmount] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState<'approve' | 'supply'>('approve');
+  const [repayMode, setRepayMode] = useState<'full' | 'partial'>('full'); // For repay: full debt or partial
 
   // Get dynamic Pool address
   const { data: poolAddress } = useReadContract({
@@ -982,31 +983,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           }
 
           // Check WAVAX balance - user must hold WAVAX tokens to repay
-          if (!wavaxBalance || !wavaxBalance.value) {
-            toast.error('Unable to fetch WAVAX balance. Please ensure you have WAVAX tokens to repay.', {
-              duration: 8000,
-              action: {
-                label: 'Learn More',
-                onClick: () => {
-                  toast.info('You need WAVAX (Wrapped AVAX) tokens to repay. Wrap your AVAX to WAVAX first using a DEX like Trader Joe.');
-                },
-              },
-            });
-            setIsProcessing(false);
-            return;
-          }
-
-          const wavaxBalanceWei = BigInt(wavaxBalance.value);
+          const wavaxBalanceWei = wavaxBalance?.value ? BigInt(wavaxBalance.value) : 0n;
           const repayAmountWei = parseUnits(amount, 18);
           
-          // Check if user has enough WAVAX balance
-          if (wavaxBalanceWei < repayAmountWei) {
-            toast.error(`Insufficient WAVAX balance. You have ${parseFloat(wavaxBalance.formatted).toFixed(4)} WAVAX, need ${amount} WAVAX`);
-            setIsProcessing(false);
-            return;
-          }
-
-          // Check AVAX balance for gas fees
+          // Check AVAX balance for gas fees first
           if (!avaxBalance || !avaxBalance.value) {
             toast.error('Unable to fetch AVAX balance for gas fees. Please try again.');
             setIsProcessing(false);
@@ -1019,6 +999,86 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
             setIsProcessing(false);
             return;
           }
+
+          // If user doesn't have enough WAVAX, check if they have AVAX to wrap
+          if (wavaxBalanceWei < repayAmountWei) {
+            const avaxBalanceWei = BigInt(avaxBalance.value);
+            const neededWavaxWei = repayAmountWei - wavaxBalanceWei;
+            const neededAvaxWei = neededWavaxWei + minAvaxForGasWei; // Need AVAX for wrap + gas
+
+            if (avaxBalanceWei >= neededAvaxWei) {
+              // User has AVAX, offer to wrap it
+              toast.info(`You need ${formatUnits(neededWavaxWei, 18)} WAVAX but only have ${wavaxBalance ? wavaxBalance.formatted : '0'} WAVAX. Wrapping AVAX to WAVAX...`, {
+                duration: 10000,
+              });
+
+              try {
+                // Wrap AVAX to WAVAX
+                const wrapHash = await writeContractAsync({
+                  address: CONTRACTS.WAVAX as `0x${string}`,
+                  abi: WAVAX_ABI,
+                  functionName: 'deposit',
+                  value: neededWavaxWei, // Send native AVAX to wrap
+                  gas: 100000n,
+                  gasPrice: BigInt(Math.ceil(27 * 1e9)),
+                });
+
+                if (!wrapHash) {
+                  throw new Error('Wrap transaction failed - no hash returned');
+                }
+
+                toast.success('Wrapping AVAX to WAVAX... Waiting for confirmation...', {
+                  action: {
+                    label: 'View on Explorer',
+                    onClick: () => window.open(getExplorerTxLink(avalanche.id, wrapHash), '_blank'),
+                  },
+                });
+
+                // Wait for wrap confirmation
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                
+                const wrapReceipt = await waitForTransactionReceipt(config, {
+                  hash: wrapHash,
+                  timeout: 120_000,
+                  pollingInterval: 2_000,
+                });
+
+                if (wrapReceipt.status !== 'success') {
+                  throw new Error('Wrap transaction failed');
+                }
+
+                toast.success('AVAX wrapped to WAVAX successfully!');
+                await refetchWavaxBalance();
+                
+                // Refetch balance to get updated WAVAX amount
+                const updatedBalance = await readContract(config, {
+                  address: CONTRACTS.WAVAX as `0x${string}`,
+                  abi: ERC20_ABI,
+                  functionName: 'balanceOf',
+                  args: [address!],
+                });
+                
+                if (updatedBalance && BigInt(updatedBalance as bigint) < repayAmountWei) {
+                  toast.error(`Still insufficient WAVAX after wrap. Please try again or wrap more AVAX.`);
+                  setIsProcessing(false);
+                  return;
+                }
+                
+                // Continue with repay after wrap
+              } catch (wrapError) {
+                console.error('Wrap error:', wrapError);
+                toast.error(`Failed to wrap AVAX: ${wrapError instanceof Error ? wrapError.message : 'Unknown error'}`);
+                setIsProcessing(false);
+                return;
+              }
+            } else {
+              // Not enough AVAX either
+              toast.error(`Insufficient balance. You have ${wavaxBalance ? wavaxBalance.formatted : '0'} WAVAX and ${avaxBalance.formatted} AVAX, need ${formatUnits(repayAmountWei, 18)} WAVAX total (including gas)`);
+              setIsProcessing(false);
+              return;
+            }
+          }
+
 
           // Get current AVAX debt to validate repay amount
           let currentAvaxDebt = 0n;
@@ -1049,7 +1109,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           }
 
           const currentDebtFormatted = formatUnits(currentAvaxDebt, 18);
-          console.log('Current AVAX debt:', currentDebtFormatted, 'Requested repay:', amount);
+          console.log('Current AVAX debt:', currentDebtFormatted, 'Requested repay:', amount, 'Mode:', repayMode);
           
           // Cap repay amount to debt if it exceeds
           let finalRepayAmount = repayAmountWei;
@@ -1058,9 +1118,21 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
             toast.info(`Repay amount capped to current debt: ${currentDebtFormatted} AVAX`);
           }
 
-          // Always use type(uint256).max for repayment to avoid precision and interest accrual issues
           const MAX_UINT256 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
-          const repayAmountParam = MAX_UINT256; // Use max for the repay function
+          
+          // Choose repay amount based on mode
+          // Full mode: use max to repay entire debt (safest, avoids interest accrual issues)
+          // Partial mode: use exact amount (user requested specific amount)
+          const repayAmountParam = repayMode === 'full' 
+            ? MAX_UINT256 
+            : finalRepayAmount; // For partial, use exact amount but add small buffer for interest
+          
+          if (repayMode === 'partial') {
+            // For partial repay, add 0.5% buffer to account for interest accrual
+            const buffer = (finalRepayAmount * 5n) / 1000n;
+            finalRepayAmount = finalRepayAmount + buffer;
+            console.log(`Partial repay mode: using ${formatUnits(finalRepayAmount, 18)} WAVAX (requested: ${amount} + 0.5% buffer)`);
+          }
           
           // Check and handle WAVAX approval
           const currentAllowance = (wavaxAllowance as bigint) || 0n;
@@ -1263,6 +1335,112 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                 </Button>
               </div>
             </div>
+          )}
+
+          {/* Balance Display for Repay */}
+          {action === 'repay' && (
+            <>
+              {wavaxBalance && (
+                <div className="bg-orange-50 p-2 rounded border border-orange-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs text-gray-600">WAVAX Balance</div>
+                      <div className="text-base font-semibold text-orange-700">
+                        {parseFloat(wavaxBalance.formatted).toFixed(4)} WAVAX
+                      </div>
+                    </div>
+                    {avaxBalance && parseFloat(avaxBalance.formatted) > 0.01 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            setIsProcessing(true);
+                            const wrapAmount = parseFloat(avaxBalance.formatted) - 0.01; // Leave 0.01 for gas
+                            const wrapAmountWei = parseUnits(wrapAmount.toFixed(4), 18);
+                            
+                            const wrapHash = await writeContractAsync({
+                              address: CONTRACTS.WAVAX as `0x${string}`,
+                              abi: WAVAX_ABI,
+                              functionName: 'deposit',
+                              value: wrapAmountWei,
+                              gas: 100000n,
+                              gasPrice: BigInt(Math.ceil(27 * 1e9)),
+                            });
+
+                            toast.success('Wrapping AVAX to WAVAX...', {
+                              action: {
+                                label: 'View on Explorer',
+                                onClick: () => window.open(getExplorerTxLink(avalanche.id, wrapHash), '_blank'),
+                              },
+                            });
+
+                            await waitForTransactionReceipt(config, {
+                              hash: wrapHash,
+                              timeout: 120_000,
+                              pollingInterval: 2_000,
+                            });
+
+                            toast.success('AVAX wrapped to WAVAX successfully!');
+                            await refetchWavaxBalance();
+                          } catch (error) {
+                            toast.error(`Wrap failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                          } finally {
+                            setIsProcessing(false);
+                          }
+                        }}
+                        disabled={isProcessing}
+                        className="text-xs"
+                      >
+                        Wrap AVAX
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+              {positions.avaxBorrowed && parseFloat(positions.avaxBorrowed) > 0 && (
+                <div className="bg-red-50 p-2 rounded border border-red-200">
+                  <div className="text-xs text-gray-600">Current Debt</div>
+                  <div className="text-base font-semibold text-red-700">
+                    {parseFloat(positions.avaxBorrowed).toFixed(4)} AVAX
+                  </div>
+                </div>
+              )}
+              {/* Repay Mode Toggle */}
+              <div className="flex items-center gap-2 p-2 bg-gray-50 rounded border">
+                <Label className="text-xs flex-1">Repay Mode:</Label>
+                <div className="flex gap-1">
+                  <Button
+                    type="button"
+                    variant={repayMode === 'full' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setRepayMode('full')}
+                    disabled={isProcessing}
+                    className="text-xs h-7"
+                  >
+                    Full Debt
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={repayMode === 'partial' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setRepayMode('partial')}
+                    disabled={isProcessing}
+                    className="text-xs h-7"
+                  >
+                    Partial
+                  </Button>
+                </div>
+              </div>
+              {repayMode === 'full' && (
+                <Alert className="py-2 bg-yellow-50 border-yellow-200">
+                  <AlertDescription className="text-xs">
+                    Full debt repayment (recommended) - repays entire debt to avoid interest accrual issues
+                  </AlertDescription>
+                </Alert>
+              )}
+            </>
           )}
 
           <div>
