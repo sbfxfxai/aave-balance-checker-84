@@ -152,6 +152,13 @@ export function useAavePositions() {
   }
 
   const [totalCollateralBase, totalDebtBase, availableBorrowsBase, , , healthFactor] = rawData;
+  
+  // Debug: Log totalDebtBase to see if we can get debt from getUserAccountData
+  console.log('[useAavePositions] getUserAccountData totalDebtBase:', {
+    raw: totalDebtBase,
+    type: typeof totalDebtBase,
+    formattedUSD: totalDebtBase ? `$${(Number(totalDebtBase) / 1e8).toFixed(2)}` : '$0.00',
+  });
 
   // Calculate USDC supply from both native USDC and USDC.e
   let usdcSupply = '0';
@@ -251,9 +258,21 @@ export function useAavePositions() {
       if (Array.isArray(wavaxReserveData)) {
         // Standard array format
         if (wavaxReserveData.length >= 3) {
-          currentATokenBalance = (wavaxReserveData[0] as bigint) || 0n;
-          currentStableDebt = (wavaxReserveData[1] as bigint) || 0n;
-          currentVariableDebt = (wavaxReserveData[2] as bigint) || 0n;
+          // Try multiple ways to extract the values
+          const val0 = wavaxReserveData[0];
+          const val1 = wavaxReserveData[1];
+          const val2 = wavaxReserveData[2];
+          
+          // Convert to bigint if needed
+          currentATokenBalance = typeof val0 === 'bigint' ? val0 : BigInt(val0 || 0);
+          currentStableDebt = typeof val1 === 'bigint' ? val1 : BigInt(val1 || 0);
+          currentVariableDebt = typeof val2 === 'bigint' ? val2 : BigInt(val2 || 0);
+          
+          console.log('[useAavePositions] Extracted values:', {
+            'val0 (aToken)': { raw: val0, type: typeof val0, bigint: currentATokenBalance.toString() },
+            'val1 (stableDebt)': { raw: val1, type: typeof val1, bigint: currentStableDebt.toString() },
+            'val2 (variableDebt)': { raw: val2, type: typeof val2, bigint: currentVariableDebt.toString() },
+          });
         } else {
           console.warn('[useAavePositions] WAVAX reserve data array too short:', wavaxReserveData.length);
         }
