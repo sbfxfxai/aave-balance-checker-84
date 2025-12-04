@@ -8,7 +8,7 @@ import { useAccount, useReadContract, useBalance } from 'wagmi';
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { parseUnits, formatUnits } from 'viem';
 import { readContract, waitForTransactionReceipt } from '@wagmi/core';
-import { CONTRACTS, ERC20_ABI } from '@/config/contracts';
+import { CONTRACTS, ERC20_ABI, AAVE_DATA_PROVIDER_ABI } from '@/config/contracts';
 import { toast } from 'sonner';
 import { getExplorerTxLink } from '@/lib/blockchain';
 import { avalanche } from 'wagmi/chains';
@@ -958,18 +958,53 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
             return;
           }
 
+          // Get current AVAX debt to validate repay amount
+          let currentAvaxDebt = 0n;
+          try {
+            const wavaxUserReserveData = await readContract(config, {
+              address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
+              abi: AAVE_DATA_PROVIDER_ABI,
+              functionName: 'getUserReserveData',
+              args: [CONTRACTS.WAVAX as `0x${string}`, address!],
+            });
+            
+            if (wavaxUserReserveData && Array.isArray(wavaxUserReserveData)) {
+              const [, currentStableDebt, currentVariableDebt] = wavaxUserReserveData;
+              currentAvaxDebt = (currentStableDebt as bigint) + (currentVariableDebt as bigint);
+            }
+          } catch (error) {
+            console.warn('Could not fetch current AVAX debt:', error);
+          }
+
           // Repay AVAX to Aave
-          const repayAmountWei = parseUnits(amount, 18);
+          let repayAmountWei = parseUnits(amount, 18);
+          
+          // Cap repay amount to actual debt if it exceeds
+          if (currentAvaxDebt > 0n && repayAmountWei > currentAvaxDebt) {
+            console.log(`Repay amount ${repayAmountWei.toString()} exceeds debt ${currentAvaxDebt.toString()}, capping to debt amount`);
+            repayAmountWei = currentAvaxDebt;
+            toast.info(`Repay amount capped to current debt: ${formatUnits(currentAvaxDebt, 18)} AVAX`);
+          }
+          
+          if (repayAmountWei === 0n) {
+            toast.error('No debt to repay or invalid amount');
+            setIsProcessing(false);
+            return;
+          }
           
           // Avalanche C-Chain uses legacy gasPrice (not EIP-1559)
           const minGasPriceGwei = 27; // 27 gwei minimum for Avalanche
           const gasPriceWei = BigInt(Math.ceil(minGasPriceGwei * 1e9));
           
+          // For native AVAX repayment, use native token address (0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE)
+          // This allows repaying with native AVAX instead of requiring WAVAX tokens
+          const NATIVE_TOKEN_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' as `0x${string}`;
+          
           const repayHash = await writeContractAsync({
             address: poolAddress, // Use dynamic pool address
             abi: AAVE_POOL_ABI,
             functionName: 'repay',
-            args: [CONTRACTS.WAVAX as `0x${string}`, repayAmountWei, 2n, address as `0x${string}`],
+            args: [NATIVE_TOKEN_ADDRESS, repayAmountWei, 2n, address as `0x${string}`],
             value: repayAmountWei,
             gas: 500000n,
             gasPrice: gasPriceWei, // Legacy gasPrice for Avalanche
