@@ -1036,9 +1036,9 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           
           console.log('Repay parameters:', {
             debt: currentDebtFormatted,
-            repayAmount: formatUnits(finalRepayAmount, 18),
+            repayAmount: 'type(uint256).max (full repayment)',
             valueToSend: formatUnits(valueToSend, 18),
-            useMaxRepay,
+            requestedAmount: amount,
           });
           
           // Avalanche C-Chain uses legacy gasPrice (not EIP-1559)
