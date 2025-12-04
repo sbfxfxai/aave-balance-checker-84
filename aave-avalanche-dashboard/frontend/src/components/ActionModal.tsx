@@ -877,13 +877,77 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           // Borrow AVAX from Aave
           const borrowAmountWei = parseUnits(amount, 18);
           
-          await writeContract({
+          // Avalanche C-Chain uses legacy gasPrice (not EIP-1559)
+          const minGasPriceGwei = 27; // 27 gwei minimum for Avalanche
+          const gasPriceWei = BigInt(Math.ceil(minGasPriceGwei * 1e9));
+          
+          const borrowHash = await writeContractAsync({
             address: poolAddress, // Use dynamic pool address
             abi: AAVE_POOL_ABI,
             functionName: 'borrow',
             args: [CONTRACTS.WAVAX as `0x${string}`, borrowAmountWei, 2n, 0, address as `0x${string}`],
+            gas: 500000n,
+            gasPrice: gasPriceWei, // Legacy gasPrice for Avalanche
           });
-          toast.success('Borrow transaction submitted!');
+          
+          console.log('Borrow transaction hash:', borrowHash);
+          
+          if (!borrowHash) {
+            throw new Error('Borrow transaction failed - no hash returned. Check if wallet rejected the transaction.');
+          }
+          
+          toast.success('Borrow transaction submitted! Waiting for confirmation...', {
+            action: {
+              label: 'View on Explorer',
+              onClick: () => window.open(getExplorerTxLink(avalanche.id, borrowHash), '_blank'),
+            },
+          });
+          
+          // Wait for borrow confirmation
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          try {
+            const receipt = await waitForTransactionReceipt(config, {
+              hash: borrowHash,
+              timeout: 120_000,
+              pollingInterval: 2_000,
+            });
+            
+            if (receipt.status === 'success') {
+              toast.success(`Successfully borrowed ${amount} AVAX from Aave!`);
+              // Refetch balances and positions
+              queryClient.invalidateQueries({ queryKey: ['balance'] });
+              queryClient.invalidateQueries({ queryKey: ['aavePositions'] });
+              queryClient.invalidateQueries({ queryKey: ['userBalancesExtended'] });
+              setAmount('');
+              setIsProcessing(false);
+              onClose();
+            } else {
+              throw new Error('Borrow transaction failed');
+            }
+          } catch (timeoutError: unknown) {
+            const error = timeoutError as { name?: string; message?: string };
+            const isTimeout = error?.name === 'WaitForTransactionReceiptTimeoutError' || error?.message?.includes('Timed out');
+            const isUnfinalized = error?.message?.includes('cannot query unfinalized data');
+            
+            if (isTimeout || isUnfinalized) {
+              toast.success('Borrow transaction submitted! Check explorer for status.', {
+                action: {
+                  label: 'View on Explorer',
+                  onClick: () => window.open(getExplorerTxLink(avalanche.id, borrowHash), '_blank'),
+                },
+                duration: 10000,
+              });
+              queryClient.invalidateQueries({ queryKey: ['balance'] });
+              queryClient.invalidateQueries({ queryKey: ['aavePositions'] });
+              queryClient.invalidateQueries({ queryKey: ['userBalancesExtended'] });
+              setAmount('');
+              setIsProcessing(false);
+              onClose();
+            } else {
+              throw timeoutError;
+            }
+          }
           break;
         }
 
@@ -897,14 +961,78 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           // Repay AVAX to Aave
           const repayAmountWei = parseUnits(amount, 18);
           
-          await writeContract({
+          // Avalanche C-Chain uses legacy gasPrice (not EIP-1559)
+          const minGasPriceGwei = 27; // 27 gwei minimum for Avalanche
+          const gasPriceWei = BigInt(Math.ceil(minGasPriceGwei * 1e9));
+          
+          const repayHash = await writeContractAsync({
             address: poolAddress, // Use dynamic pool address
             abi: AAVE_POOL_ABI,
             functionName: 'repay',
             args: [CONTRACTS.WAVAX as `0x${string}`, repayAmountWei, 2n, address as `0x${string}`],
             value: repayAmountWei,
+            gas: 500000n,
+            gasPrice: gasPriceWei, // Legacy gasPrice for Avalanche
           });
-          toast.success('Repay transaction submitted!');
+          
+          console.log('Repay transaction hash:', repayHash);
+          
+          if (!repayHash) {
+            throw new Error('Repay transaction failed - no hash returned. Check if wallet rejected the transaction.');
+          }
+          
+          toast.success('Repay transaction submitted! Waiting for confirmation...', {
+            action: {
+              label: 'View on Explorer',
+              onClick: () => window.open(getExplorerTxLink(avalanche.id, repayHash), '_blank'),
+            },
+          });
+          
+          // Wait for repay confirmation
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          try {
+            const receipt = await waitForTransactionReceipt(config, {
+              hash: repayHash,
+              timeout: 120_000,
+              pollingInterval: 2_000,
+            });
+            
+            if (receipt.status === 'success') {
+              toast.success(`Successfully repaid ${amount} AVAX to Aave!`);
+              // Refetch balances and positions
+              queryClient.invalidateQueries({ queryKey: ['balance'] });
+              queryClient.invalidateQueries({ queryKey: ['aavePositions'] });
+              queryClient.invalidateQueries({ queryKey: ['userBalancesExtended'] });
+              setAmount('');
+              setIsProcessing(false);
+              onClose();
+            } else {
+              throw new Error('Repay transaction failed');
+            }
+          } catch (timeoutError: unknown) {
+            const error = timeoutError as { name?: string; message?: string };
+            const isTimeout = error?.name === 'WaitForTransactionReceiptTimeoutError' || error?.message?.includes('Timed out');
+            const isUnfinalized = error?.message?.includes('cannot query unfinalized data');
+            
+            if (isTimeout || isUnfinalized) {
+              toast.success('Repay transaction submitted! Check explorer for status.', {
+                action: {
+                  label: 'View on Explorer',
+                  onClick: () => window.open(getExplorerTxLink(avalanche.id, repayHash), '_blank'),
+                },
+                duration: 10000,
+              });
+              queryClient.invalidateQueries({ queryKey: ['balance'] });
+              queryClient.invalidateQueries({ queryKey: ['aavePositions'] });
+              queryClient.invalidateQueries({ queryKey: ['userBalancesExtended'] });
+              setAmount('');
+              setIsProcessing(false);
+              onClose();
+            } else {
+              throw timeoutError;
+            }
+          }
           break;
         }
       }
