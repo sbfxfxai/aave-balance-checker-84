@@ -1240,11 +1240,56 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
             
             if (receipt.status === 'success') {
               toast.success(`Successfully repaid ${amount} AVAX to Aave!`);
+              
+              // Wait a moment for blockchain state to propagate
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              
+              // Explicitly refetch WAVAX user reserve data to get updated debt
+              try {
+                const updatedWavaxReserveData = await readContract(config, {
+                  address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
+                  abi: AAVE_DATA_PROVIDER_ABI,
+                  functionName: 'getUserReserveData',
+                  args: [CONTRACTS.WAVAX as `0x${string}`, address!],
+                });
+                
+                if (updatedWavaxReserveData && Array.isArray(updatedWavaxReserveData)) {
+                  const [, updatedStableDebt, updatedVariableDebt] = updatedWavaxReserveData;
+                  const updatedDebt = (updatedStableDebt as bigint) + (updatedVariableDebt as bigint);
+                  console.log('Updated AVAX debt after repay:', formatUnits(updatedDebt, 18));
+                  
+                  if (updatedDebt > 0n) {
+                    toast.info(`Remaining debt: ${formatUnits(updatedDebt, 18)} AVAX`);
+                  } else {
+                    toast.success('All debt repaid! Position closed.');
+                  }
+                }
+              } catch (error) {
+                console.warn('Could not fetch updated debt:', error);
+              }
+              
               // Refetch balances and positions
               await refetchWavaxBalance();
+              
+              // Explicitly refetch WAVAX reserve data to get updated debt
+              if (positions.refetch) {
+                await positions.refetch();
+              }
+              
+              // Force refetch all position-related queries
               queryClient.invalidateQueries({ queryKey: ['balance'] });
               queryClient.invalidateQueries({ queryKey: ['aavePositions'] });
               queryClient.invalidateQueries({ queryKey: ['userBalancesExtended'] });
+              
+              // Also invalidate all wagmi queries to force fresh reads
+              queryClient.invalidateQueries({ 
+                queryKey: ['readContract'],
+                exact: false 
+              });
+              
+              // Wait a bit more for queries to refetch before closing
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              
               setAmount('');
               setIsProcessing(false);
               onClose();
@@ -1264,10 +1309,37 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                 },
                 duration: 10000,
               });
+              
+              // Wait for blockchain state to propagate
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              
+              // Try to fetch updated debt
+              try {
+                const updatedWavaxReserveData = await readContract(config, {
+                  address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
+                  abi: AAVE_DATA_PROVIDER_ABI,
+                  functionName: 'getUserReserveData',
+                  args: [CONTRACTS.WAVAX as `0x${string}`, address!],
+                });
+                
+                if (updatedWavaxReserveData && Array.isArray(updatedWavaxReserveData)) {
+                  const [, updatedStableDebt, updatedVariableDebt] = updatedWavaxReserveData;
+                  const updatedDebt = (updatedStableDebt as bigint) + (updatedVariableDebt as bigint);
+                  console.log('Updated AVAX debt after repay:', formatUnits(updatedDebt, 18));
+                }
+              } catch (error) {
+                console.warn('Could not fetch updated debt:', error);
+              }
+              
               await refetchWavaxBalance();
               queryClient.invalidateQueries({ queryKey: ['balance'] });
               queryClient.invalidateQueries({ queryKey: ['aavePositions'] });
               queryClient.invalidateQueries({ queryKey: ['userBalancesExtended'] });
+              queryClient.invalidateQueries({ 
+                queryKey: ['readContract'],
+                exact: false 
+              });
+              
               setAmount('');
               setIsProcessing(false);
               onClose();

@@ -1,21 +1,47 @@
 import { useAccount, useDisconnect } from 'wagmi';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Wallet, LogOut, ArrowDownUp, Plus, Minus, TrendingUp, TrendingDown } from 'lucide-react';
+import { Wallet, LogOut, ArrowDownUp, Plus, Minus, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAavePositions } from '@/hooks/useAavePositions';
 import { useWalletBalances } from '@/hooks/useWalletBalances';
 import { ActionModal } from '@/components/ActionModal';
 import { WalletConnect } from '@/components/WalletConnect';
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 export function SimpleDashboard() {
   const { address, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
   const { avaxBalance, usdcBalance, usdcEBalance, needsMigration, isLoading: balanceLoading } = useWalletBalances();
   const positions = useAavePositions();
+  const queryClient = useQueryClient();
   
   const [activeAction, setActiveAction] = useState<'swap' | 'supply' | 'withdraw' | 'borrow' | 'repay' | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      // Invalidate all queries
+      queryClient.invalidateQueries({ queryKey: ['balance'] });
+      queryClient.invalidateQueries({ queryKey: ['aavePositions'] });
+      queryClient.invalidateQueries({ queryKey: ['userBalancesExtended'] });
+      queryClient.invalidateQueries({ queryKey: ['readContract'], exact: false });
+      
+      // Explicitly refetch positions if refetch function is available
+      if (positions.refetch) {
+        await positions.refetch();
+      }
+      
+      toast.success('Positions refreshed!');
+    } catch (error) {
+      toast.error('Failed to refresh positions');
+      console.error('Refresh error:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const handleDisconnect = () => {
     disconnect();
@@ -74,7 +100,19 @@ export function SimpleDashboard() {
 
       {/* Aave Positions */}
       <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4">Your Aave Positions</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Your Aave Positions</h3>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-4 rounded-lg bg-green-500/5 border border-green-500/20">
             <p className="font-medium text-green-500">USDC Supplied</p>

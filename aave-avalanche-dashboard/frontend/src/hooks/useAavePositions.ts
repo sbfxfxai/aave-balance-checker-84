@@ -91,7 +91,7 @@ export function useAavePositions() {
   });
 
   // Step 7: Get WAVAX user reserve data for AVAX supply and borrows
-  const { data: wavaxReserveData, isLoading: wavaxReserveLoading } = useReadContract({
+  const { data: wavaxReserveData, isLoading: wavaxReserveLoading, refetch: refetchWavaxReserveData } = useReadContract({
     address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
     abi: AAVE_DATA_PROVIDER_ABI,
     functionName: 'getUserReserveData',
@@ -209,5 +209,6 @@ export function useAavePositions() {
     avaxAvailableToBorrow: avaxAvailableToBorrow,
     usdcAvailableToBorrow: usdcAvailableToBorrow,
     isLoading: poolAddressLoading || positionsLoading || reserveLoading || reserveLoadingE || usdcReserveLoading || avaxReserveLoading || wavaxReserveLoading,
+    refetch: refetchWavaxReserveData, // Expose refetch function for manual refresh
   };
 }
