@@ -123,6 +123,12 @@ export function SimpleDashboard() {
             <p className="font-medium text-red-500">AVAX Borrowed</p>
             <p className="text-2xl font-bold">{parseFloat(positions.avaxBorrowed || '0').toFixed(4)}</p>
             <p className="text-sm text-gray-600">Pay {(positions.avaxBorrowApy || 3.55).toFixed(2)}% APY</p>
+            {/* Debug info - remove in production */}
+            {process.env.NODE_ENV === 'development' && (
+              <p className="text-xs text-gray-400 mt-1">
+                Raw: {positions.avaxBorrowed || '0'} | Loading: {positions.isLoading ? 'Yes' : 'No'}
+              </p>
+            )}
           </div>
         </div>
       </Card>

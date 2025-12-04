@@ -157,37 +157,63 @@ export function useAavePositions() {
   let avaxSupply = '0';
   let avaxBorrowed = '0';
   
+  // Debug: Log the raw data structure
+  if (wavaxReserveData !== undefined) {
+    console.log('[useAavePositions] WAVAX reserve data received:', {
+      type: typeof wavaxReserveData,
+      isArray: Array.isArray(wavaxReserveData),
+      length: Array.isArray(wavaxReserveData) ? wavaxReserveData.length : 'N/A',
+      raw: wavaxReserveData,
+    });
+  }
+  
   if (wavaxReserveData) {
     try {
-      // Ensure wavaxReserveData is an array
-      const reserveDataArray = Array.isArray(wavaxReserveData) ? wavaxReserveData : [wavaxReserveData];
+      // Wagmi returns getUserReserveData as a tuple/array
+      // Structure: [currentATokenBalance, currentStableDebt, currentVariableDebt, ...]
+      let currentATokenBalance: bigint = 0n;
+      let currentStableDebt: bigint = 0n;
+      let currentVariableDebt: bigint = 0n;
       
-      if (reserveDataArray.length >= 3) {
-        const currentATokenBalance = reserveDataArray[0] as bigint || 0n;
-        const currentStableDebt = reserveDataArray[1] as bigint || 0n;
-        const currentVariableDebt = reserveDataArray[2] as bigint || 0n;
-        
-        avaxSupply = formatUnits(currentATokenBalance, 18); // WAVAX has 18 decimals
-        const totalDebt = currentStableDebt + currentVariableDebt;
-        avaxBorrowed = formatUnits(totalDebt, 18);
-        
-        // Debug logging
-        if (totalDebt > 0n) {
-          console.log('AVAX Borrow detected:', {
-            stableDebt: formatUnits(currentStableDebt, 18),
-            variableDebt: formatUnits(currentVariableDebt, 18),
-            totalDebt: avaxBorrowed,
-          });
+      if (Array.isArray(wavaxReserveData)) {
+        // Standard array format
+        if (wavaxReserveData.length >= 3) {
+          currentATokenBalance = (wavaxReserveData[0] as bigint) || 0n;
+          currentStableDebt = (wavaxReserveData[1] as bigint) || 0n;
+          currentVariableDebt = (wavaxReserveData[2] as bigint) || 0n;
+        } else {
+          console.warn('[useAavePositions] WAVAX reserve data array too short:', wavaxReserveData.length);
         }
+      } else if (typeof wavaxReserveData === 'object' && wavaxReserveData !== null) {
+        // Check if it's an object with named properties (unlikely but possible)
+        const obj = wavaxReserveData as any;
+        currentATokenBalance = BigInt(obj.currentATokenBalance || obj[0] || 0);
+        currentStableDebt = BigInt(obj.currentStableDebt || obj[1] || 0);
+        currentVariableDebt = BigInt(obj.currentVariableDebt || obj[2] || 0);
+        console.log('[useAavePositions] Parsed WAVAX data from object format');
       } else {
-        console.warn('WAVAX reserve data structure unexpected:', reserveDataArray);
+        console.warn('[useAavePositions] Unexpected WAVAX reserve data format:', typeof wavaxReserveData, wavaxReserveData);
       }
+      
+      avaxSupply = formatUnits(currentATokenBalance, 18); // WAVAX has 18 decimals
+      const totalDebt = currentStableDebt + currentVariableDebt;
+      avaxBorrowed = formatUnits(totalDebt, 18);
+      
+      // Debug logging - always log to help debug
+      console.log('[useAavePositions] AVAX position calculated:', {
+        aTokenBalance: formatUnits(currentATokenBalance, 18),
+        stableDebt: formatUnits(currentStableDebt, 18),
+        variableDebt: formatUnits(currentVariableDebt, 18),
+        totalDebt: avaxBorrowed,
+        totalDebtWei: totalDebt.toString(),
+      });
+      
     } catch (error) {
-      console.error('Error parsing WAVAX reserve data:', error, wavaxReserveData);
+      console.error('[useAavePositions] Error parsing WAVAX reserve data:', error, wavaxReserveData);
     }
   } else if (!wavaxReserveLoading) {
     // Only log if we're not loading - if loading, it's expected to be undefined
-    console.log('WAVAX reserve data is undefined (not loading)');
+    console.log('[useAavePositions] WAVAX reserve data is undefined (not loading)');
   }
 
   // Extract APYs from reserve data
