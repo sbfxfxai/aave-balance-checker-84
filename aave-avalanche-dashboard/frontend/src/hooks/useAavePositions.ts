@@ -183,22 +183,59 @@ export function useAavePositions() {
   if (wavaxReserveData !== undefined) {
     // Log each element of the array with its index and value
     const arrayData = Array.isArray(wavaxReserveData) ? wavaxReserveData : [];
-    const arrayDetails = arrayData.map((item, index) => ({
-      index,
-      value: item,
-      type: typeof item,
-      isBigInt: typeof item === 'bigint',
-      stringValue: typeof item === 'bigint' ? item.toString() : String(item),
-      formatted: typeof item === 'bigint' ? formatUnits(item, 18) : String(item),
-    }));
     
-    console.log('[useAavePositions] WAVAX reserve data received:', {
-      type: typeof wavaxReserveData,
-      isArray: Array.isArray(wavaxReserveData),
-      length: arrayData.length,
-      elements: arrayDetails,
-      raw: wavaxReserveData,
+    // Log each element individually so they're not collapsed
+    console.log('[useAavePositions] WAVAX reserve data - Full array breakdown:');
+    arrayData.forEach((item, index) => {
+      const fieldNames = [
+        'currentATokenBalance',
+        'currentStableDebt',
+        'currentVariableDebt',
+        'principalStableDebt',
+        'scaledVariableDebt',
+        'stableBorrowRate',
+        'liquidityRate',
+        'stableRateLastUpdated',
+        'usageAsCollateralEnabled'
+      ];
+      const fieldName = fieldNames[index] || `unknown[${index}]`;
+      const isBigInt = typeof item === 'bigint';
+      const stringValue = isBigInt ? item.toString() : String(item);
+      const formatted = isBigInt ? formatUnits(item, 18) : String(item);
+      
+      console.log(`  [${index}] ${fieldName}:`, {
+        raw: item,
+        type: typeof item,
+        isBigInt,
+        stringValue,
+        formatted: isBigInt ? formatted : 'N/A (not bigint)',
+      });
     });
+    
+    // Also log the specific values we care about
+    if (arrayData.length >= 3) {
+      const aTokenBalance = arrayData[0];
+      const stableDebt = arrayData[1];
+      const variableDebt = arrayData[2];
+      
+      console.log('[useAavePositions] Key values extracted:', {
+        'aTokenBalance[0]': {
+          raw: aTokenBalance,
+          type: typeof aTokenBalance,
+          formatted: typeof aTokenBalance === 'bigint' ? formatUnits(aTokenBalance, 18) : 'N/A',
+        },
+        'stableDebt[1]': {
+          raw: stableDebt,
+          type: typeof stableDebt,
+          formatted: typeof stableDebt === 'bigint' ? formatUnits(stableDebt, 18) : 'N/A',
+        },
+        'variableDebt[2]': {
+          raw: variableDebt,
+          type: typeof variableDebt,
+          formatted: typeof variableDebt === 'bigint' ? formatUnits(variableDebt, 18) : 'N/A',
+        },
+      });
+    }
   } else if (!wavaxReserveLoading) {
     console.warn('[useAavePositions] WAVAX reserve data is undefined and not loading!');
   }
