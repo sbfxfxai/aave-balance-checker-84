@@ -1,6 +1,9 @@
-fastapi
-uvicorn
-python-dotenv
+fastapi==0.104.1
+uvicorn==0.24.0
+mangum==0.17.0
+square==30.0.0.20230816
+pydantic==2.5.0
+python-dotenv==1.0.0
+requests
 web3
 eth-defi[aave,uniswap]
-requests
