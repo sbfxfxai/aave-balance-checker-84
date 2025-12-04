@@ -1032,11 +1032,11 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           // The value sent can be slightly more to cover interest accrual
           
           // For max repayment, value should be enough to cover debt + buffer
-          // For partial repayment, add small buffer to value to account for interest accrual
-          // The args amount stays at finalRepayAmount (capped to debt), but value can be slightly more
+          // For partial repayment, value must match amount exactly - Aave validates this
+          // The buffer is only needed for max repayments where we're repaying the full debt
           const valueToSend = useMaxRepay && currentAvaxDebt > 0n 
-            ? currentAvaxDebt + (currentAvaxDebt / 100n) // Add 1% buffer for interest
-            : finalRepayAmount + (finalRepayAmount * 5n) / 1000n; // Add 0.5% buffer for partial repayment
+            ? currentAvaxDebt + (currentAvaxDebt / 100n) // Add 1% buffer for interest on full repayment
+            : finalRepayAmount; // For partial repayment, value must match amount exactly
           
           // Ensure value doesn't exceed balance
           if (valueToSend > avaxBalanceWei - minAvaxForGasWei) {
