@@ -181,14 +181,23 @@ export function useAavePositions() {
   }
   
   if (wavaxReserveData !== undefined) {
+    // Log each element of the array with its index and value
+    const arrayData = Array.isArray(wavaxReserveData) ? wavaxReserveData : [];
+    const arrayDetails = arrayData.map((item, index) => ({
+      index,
+      value: item,
+      type: typeof item,
+      isBigInt: typeof item === 'bigint',
+      stringValue: typeof item === 'bigint' ? item.toString() : String(item),
+      formatted: typeof item === 'bigint' ? formatUnits(item, 18) : String(item),
+    }));
+    
     console.log('[useAavePositions] WAVAX reserve data received:', {
       type: typeof wavaxReserveData,
       isArray: Array.isArray(wavaxReserveData),
-      length: Array.isArray(wavaxReserveData) ? wavaxReserveData.length : 'N/A',
+      length: arrayData.length,
+      elements: arrayDetails,
       raw: wavaxReserveData,
-      stringified: JSON.stringify(wavaxReserveData, (key, value) => 
-        typeof value === 'bigint' ? value.toString() : value
-      ),
     });
   } else if (!wavaxReserveLoading) {
     console.warn('[useAavePositions] WAVAX reserve data is undefined and not loading!');
