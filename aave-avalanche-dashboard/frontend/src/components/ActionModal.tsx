@@ -111,6 +111,29 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
     },
   });
 
+  // Get WAVAX balance for repay action
+  const { data: wavaxBalance, refetch: refetchWavaxBalance } = useBalance({
+    address,
+    token: action === 'repay' ? (CONTRACTS.WAVAX as `0x${string}`) : undefined,
+    chainId: avalanche.id,
+    query: {
+      enabled: isConnected && !!address && action === 'repay',
+      refetchInterval: 15_000,
+    },
+  });
+
+  // Check WAVAX allowance for repay
+  const { data: wavaxAllowance, refetch: refetchWavaxAllowance } = useReadContract({
+    address: action === 'repay' ? (CONTRACTS.WAVAX as `0x${string}`) : undefined,
+    abi: ERC20_ABI,
+    functionName: 'allowance',
+    args: address && poolAddress && action === 'repay' ? [address, poolAddress] : undefined,
+    query: {
+      enabled: isConnected && !!address && !!poolAddress && action === 'repay',
+      refetchInterval: 20_000,
+    },
+  });
+
   // Get native USDC balance for supply action (Aave V3 uses native USDC, not USDC.e)
   const { data: usdcBalance, refetch: refetchUsdcBalance } = useBalance({
     address,
@@ -958,21 +981,41 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
             return;
           }
 
-          // Check AVAX balance first
-          if (!avaxBalance || !avaxBalance.value) {
-            toast.error('Unable to fetch AVAX balance. Please try again.');
+          // Check WAVAX balance - user must hold WAVAX tokens to repay
+          if (!wavaxBalance || !wavaxBalance.value) {
+            toast.error('Unable to fetch WAVAX balance. Please ensure you have WAVAX tokens to repay.', {
+              duration: 8000,
+              action: {
+                label: 'Learn More',
+                onClick: () => {
+                  toast.info('You need WAVAX (Wrapped AVAX) tokens to repay. Wrap your AVAX to WAVAX first using a DEX like Trader Joe.');
+                },
+              },
+            });
             setIsProcessing(false);
             return;
           }
 
-          const avaxBalanceWei = BigInt(avaxBalance.value);
+          const wavaxBalanceWei = BigInt(wavaxBalance.value);
           const repayAmountWei = parseUnits(amount, 18);
           
-          // Check if user has enough AVAX balance (including gas fees)
+          // Check if user has enough WAVAX balance
+          if (wavaxBalanceWei < repayAmountWei) {
+            toast.error(`Insufficient WAVAX balance. You have ${parseFloat(wavaxBalance.formatted).toFixed(4)} WAVAX, need ${amount} WAVAX`);
+            setIsProcessing(false);
+            return;
+          }
+
+          // Check AVAX balance for gas fees
+          if (!avaxBalance || !avaxBalance.value) {
+            toast.error('Unable to fetch AVAX balance for gas fees. Please try again.');
+            setIsProcessing(false);
+            return;
+          }
+
           const minAvaxForGasWei = parseUnits('0.01', 18); // Minimum 0.01 AVAX for gas
-          if (avaxBalanceWei < repayAmountWei + minAvaxForGasWei) {
-            const available = formatUnits(avaxBalanceWei - minAvaxForGasWei, 18);
-            toast.error(`Insufficient AVAX balance. You have ${parseFloat(avaxBalance.formatted).toFixed(4)} AVAX, need at least ${formatUnits(repayAmountWei + minAvaxForGasWei, 18)} AVAX (including gas)`);
+          if (BigInt(avaxBalance.value) < minAvaxForGasWei) {
+            toast.error(`Insufficient AVAX for gas fees. You need at least 0.01 AVAX for gas`);
             setIsProcessing(false);
             return;
           }
@@ -1008,36 +1051,79 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           const currentDebtFormatted = formatUnits(currentAvaxDebt, 18);
           console.log('Current AVAX debt:', currentDebtFormatted, 'Requested repay:', amount);
           
-          // Always use type(uint256).max for repayment to avoid precision and interest accrual issues
-          // This is the standard approach in DeFi - Aave will only take what's needed and refund the rest
-          // Partial repayments are problematic due to interest accrual between check and execution
-          const MAX_UINT256 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
-          const finalRepayAmount = MAX_UINT256;
-          
-          // Value should be enough to cover the requested amount (or full debt if requesting more)
-          // Add 1% buffer to account for interest accrual
-          const requestedOrDebt = repayAmountWei > currentAvaxDebt ? currentAvaxDebt : repayAmountWei;
-          const valueToSend = requestedOrDebt + (requestedOrDebt / 100n); // Add 1% buffer
-          
-          console.log('Using max repayment (type(uint256).max) to avoid precision issues');
-          if (repayAmountWei < currentAvaxDebt) {
-            toast.info(`Repaying ${formatUnits(requestedOrDebt, 18)} AVAX (requested: ${amount}). Aave will take only what's needed.`);
-          } else {
-            toast.info(`Repaying full debt: ${currentDebtFormatted} AVAX`);
+          // Cap repay amount to debt if it exceeds
+          let finalRepayAmount = repayAmountWei;
+          if (repayAmountWei > currentAvaxDebt) {
+            finalRepayAmount = currentAvaxDebt;
+            toast.info(`Repay amount capped to current debt: ${currentDebtFormatted} AVAX`);
           }
+
+          // Always use type(uint256).max for repayment to avoid precision and interest accrual issues
+          const MAX_UINT256 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
+          const repayAmountParam = MAX_UINT256; // Use max for the repay function
           
-          // Ensure value doesn't exceed balance
-          if (valueToSend > avaxBalanceWei - minAvaxForGasWei) {
-            const maxRepayable = avaxBalanceWei - minAvaxForGasWei;
-            toast.error(`Insufficient AVAX balance. Maximum repayable: ${formatUnits(maxRepayable, 18)} AVAX (after reserving gas)`);
-            setIsProcessing(false);
-            return;
+          // Check and handle WAVAX approval
+          const currentAllowance = (wavaxAllowance as bigint) || 0n;
+          if (currentAllowance < finalRepayAmount) {
+            console.log('WAVAX allowance insufficient, approving...');
+            toast.info('Approving WAVAX for repayment...');
+            
+            // Approve WAVAX for repayment
+            const maxApproval = MAX_UINT256;
+            const approveHash = await writeContractAsync({
+              address: CONTRACTS.WAVAX as `0x${string}`,
+              abi: ERC20_ABI,
+              functionName: 'approve',
+              args: [poolAddress, maxApproval],
+              gas: 100000n,
+              gasPrice: BigInt(Math.ceil(27 * 1e9)), // Legacy gasPrice for Avalanche
+            });
+
+            if (!approveHash) {
+              throw new Error('WAVAX approval failed - no hash returned');
+            }
+
+            toast.success('WAVAX approval submitted! Waiting for confirmation...', {
+              action: {
+                label: 'View on Explorer',
+                onClick: () => window.open(getExplorerTxLink(avalanche.id, approveHash), '_blank'),
+              },
+            });
+
+            // Wait for approval confirmation
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            try {
+              const approveReceipt = await waitForTransactionReceipt(config, {
+                hash: approveHash,
+                timeout: 120_000,
+                pollingInterval: 2_000,
+              });
+              
+              if (approveReceipt.status !== 'success') {
+                throw new Error('WAVAX approval transaction failed');
+              }
+              
+              toast.success('WAVAX approved! Proceeding to repay...');
+              await refetchWavaxAllowance();
+            } catch (timeoutError: unknown) {
+              const error = timeoutError as { name?: string; message?: string };
+              const isTimeout = error?.name === 'WaitForTransactionReceiptTimeoutError' || error?.message?.includes('Timed out');
+              const isUnfinalized = error?.message?.includes('cannot query unfinalized data');
+              
+              if (isTimeout || isUnfinalized) {
+                toast.info('WAVAX approval submitted. Proceeding to repay...');
+                await refetchWavaxAllowance();
+              } else {
+                throw timeoutError;
+              }
+            }
           }
           
           console.log('Repay parameters:', {
             debt: currentDebtFormatted,
             repayAmount: 'type(uint256).max (full repayment)',
-            valueToSend: formatUnits(valueToSend, 18),
+            wavaxBalance: wavaxBalance.formatted,
             requestedAmount: amount,
           });
           
@@ -1045,14 +1131,14 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           const minGasPriceGwei = 27; // 27 gwei minimum for Avalanche
           const gasPriceWei = BigInt(Math.ceil(minGasPriceGwei * 1e9));
           
-          // For AVAX repayment on Avalanche, use WAVAX address and send native AVAX as value
-          // Aave V3 will automatically wrap the native AVAX to WAVAX for repayment
+          // Repay using WAVAX tokens (ERC-20) - NO native AVAX value sent
+          // The pool will take WAVAX tokens from user's wallet via transferFrom
           const repayHash = await writeContractAsync({
             address: poolAddress, // Use dynamic pool address
             abi: AAVE_POOL_ABI,
             functionName: 'repay',
-            args: [CONTRACTS.WAVAX as `0x${string}`, finalRepayAmount, 2n, address as `0x${string}`],
-            value: valueToSend, // Send native AVAX, Aave will wrap it to WAVAX
+            args: [CONTRACTS.WAVAX as `0x${string}`, repayAmountParam, 2n, address as `0x${string}`],
+            // NO value field - we're using WAVAX ERC-20 tokens, not native AVAX
             gas: 500000n,
             gasPrice: gasPriceWei, // Legacy gasPrice for Avalanche
           });
@@ -1083,6 +1169,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
             if (receipt.status === 'success') {
               toast.success(`Successfully repaid ${amount} AVAX to Aave!`);
               // Refetch balances and positions
+              await refetchWavaxBalance();
               queryClient.invalidateQueries({ queryKey: ['balance'] });
               queryClient.invalidateQueries({ queryKey: ['aavePositions'] });
               queryClient.invalidateQueries({ queryKey: ['userBalancesExtended'] });
@@ -1105,6 +1192,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                 },
                 duration: 10000,
               });
+              await refetchWavaxBalance();
               queryClient.invalidateQueries({ queryKey: ['balance'] });
               queryClient.invalidateQueries({ queryKey: ['aavePositions'] });
               queryClient.invalidateQueries({ queryKey: ['userBalancesExtended'] });
