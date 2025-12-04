@@ -979,33 +979,50 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           // Repay AVAX to Aave
           let repayAmountWei = parseUnits(amount, 18);
           
-          // Cap repay amount to actual debt if it exceeds
-          if (currentAvaxDebt > 0n && repayAmountWei > currentAvaxDebt) {
-            console.log(`Repay amount ${repayAmountWei.toString()} exceeds debt ${currentAvaxDebt.toString()}, capping to debt amount`);
-            repayAmountWei = currentAvaxDebt;
-            toast.info(`Repay amount capped to current debt: ${formatUnits(currentAvaxDebt, 18)} AVAX`);
+          // Use type(uint256).max for full repayment to avoid issues with interest accrual
+          // If user is repaying close to full debt (within 1%), use max for full repayment
+          const MAX_UINT256 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
+          let useMaxRepay = false;
+          
+          if (currentAvaxDebt > 0n) {
+            // If repay amount is >= 99% of debt, use max for full repayment
+            const ninetyNinePercent = (currentAvaxDebt * 99n) / 100n;
+            if (repayAmountWei >= ninetyNinePercent) {
+              useMaxRepay = true;
+              repayAmountWei = MAX_UINT256;
+              console.log('Using type(uint256).max for full repayment to avoid interest accrual issues');
+            } else if (repayAmountWei > currentAvaxDebt) {
+              // Cap to debt if exceeds but not close enough for full repayment
+              console.log(`Repay amount ${repayAmountWei.toString()} exceeds debt ${currentAvaxDebt.toString()}, capping to debt amount`);
+              repayAmountWei = currentAvaxDebt;
+              toast.info(`Repay amount capped to current debt: ${formatUnits(currentAvaxDebt, 18)} AVAX`);
+            }
           }
           
-          if (repayAmountWei === 0n) {
+          if (!useMaxRepay && repayAmountWei === 0n) {
             toast.error('No debt to repay or invalid amount');
             setIsProcessing(false);
             return;
           }
           
+          // For max repayment, value should be enough to cover debt + some buffer
+          // For specific amount, use the exact amount
+          const valueToSend = useMaxRepay && currentAvaxDebt > 0n 
+            ? currentAvaxDebt + (currentAvaxDebt / 100n) // Add 1% buffer for interest
+            : repayAmountWei;
+          
           // Avalanche C-Chain uses legacy gasPrice (not EIP-1559)
           const minGasPriceGwei = 27; // 27 gwei minimum for Avalanche
           const gasPriceWei = BigInt(Math.ceil(minGasPriceGwei * 1e9));
           
-          // For native AVAX repayment, use native token address (0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE)
-          // This allows repaying with native AVAX instead of requiring WAVAX tokens
-          const NATIVE_TOKEN_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' as `0x${string}`;
-          
+          // For AVAX repayment on Avalanche, use WAVAX address and send native AVAX as value
+          // Aave V3 will automatically wrap the native AVAX to WAVAX for repayment
           const repayHash = await writeContractAsync({
             address: poolAddress, // Use dynamic pool address
             abi: AAVE_POOL_ABI,
             functionName: 'repay',
-            args: [NATIVE_TOKEN_ADDRESS, repayAmountWei, 2n, address as `0x${string}`],
-            value: repayAmountWei,
+            args: [CONTRACTS.WAVAX as `0x${string}`, repayAmountWei, 2n, address as `0x${string}`],
+            value: valueToSend, // Send native AVAX, Aave will wrap it to WAVAX
             gas: 500000n,
             gasPrice: gasPriceWei, // Legacy gasPrice for Avalanche
           });
