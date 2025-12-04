@@ -158,9 +158,36 @@ export function useAavePositions() {
   let avaxBorrowed = '0';
   
   if (wavaxReserveData) {
-    const [currentATokenBalance, currentStableDebt, currentVariableDebt] = wavaxReserveData;
-    avaxSupply = formatUnits(currentATokenBalance || 0n, 18); // WAVAX has 18 decimals
-    avaxBorrowed = formatUnits((currentStableDebt + currentVariableDebt) || 0n, 18);
+    try {
+      // Ensure wavaxReserveData is an array
+      const reserveDataArray = Array.isArray(wavaxReserveData) ? wavaxReserveData : [wavaxReserveData];
+      
+      if (reserveDataArray.length >= 3) {
+        const currentATokenBalance = reserveDataArray[0] as bigint || 0n;
+        const currentStableDebt = reserveDataArray[1] as bigint || 0n;
+        const currentVariableDebt = reserveDataArray[2] as bigint || 0n;
+        
+        avaxSupply = formatUnits(currentATokenBalance, 18); // WAVAX has 18 decimals
+        const totalDebt = currentStableDebt + currentVariableDebt;
+        avaxBorrowed = formatUnits(totalDebt, 18);
+        
+        // Debug logging
+        if (totalDebt > 0n) {
+          console.log('AVAX Borrow detected:', {
+            stableDebt: formatUnits(currentStableDebt, 18),
+            variableDebt: formatUnits(currentVariableDebt, 18),
+            totalDebt: avaxBorrowed,
+          });
+        }
+      } else {
+        console.warn('WAVAX reserve data structure unexpected:', reserveDataArray);
+      }
+    } catch (error) {
+      console.error('Error parsing WAVAX reserve data:', error, wavaxReserveData);
+    }
+  } else if (!wavaxReserveLoading) {
+    // Only log if we're not loading - if loading, it's expected to be undefined
+    console.log('WAVAX reserve data is undefined (not loading)');
   }
 
   // Extract APYs from reserve data
