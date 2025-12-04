@@ -16,22 +16,7 @@ import { useAavePositions } from '@/hooks/useAavePositions';
 import { useQueryClient } from '@tanstack/react-query';
 import { config } from '@/config/wagmi';
 import { parseError, getErrorMessage } from '@/utils/errorParser';
-
-// Trader Joe Router ABI
-const TRADER_JOE_ROUTER_ABI = [
-  {
-    name: 'swapExactAVAXForTokens',
-    type: 'function',
-    stateMutability: 'payable',
-    inputs: [
-      { name: 'amountOutMin', type: 'uint256' },
-      { name: 'path', type: 'address[]' },
-      { name: 'to', type: 'address' },
-      { name: 'deadline', type: 'uint256' }
-    ],
-    outputs: [{ name: 'amounts', type: 'uint256[]' }]
-  }
-] as const;
+import { TRADER_JOE_ROUTER_ABI } from '@/lib/constants';
 
 
 // Aave Pool ABI
@@ -546,21 +531,109 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
         case 'swap': {
           // AVAX → USDC swap
           const avaxAmountWei = parseUnits(amount, 18);
-          const usdcAmountWei = parseUnits((parseFloat(amount) * 30).toString(), 6); // 1 AVAX ≈ 30 USDC
           
-          await writeContract({
+          // Get swap quote for slippage protection
+          let amountOutMin = 0n;
+          try {
+            const amountsOut = await readContract(config, {
+              address: CONTRACTS.TRADER_JOE_ROUTER as `0x${string}`,
+              abi: TRADER_JOE_ROUTER_ABI,
+              functionName: 'getAmountsOut',
+              args: [avaxAmountWei, [CONTRACTS.WAVAX, CONTRACTS.USDC]],
+            });
+            
+            if (Array.isArray(amountsOut) && amountsOut.length >= 2) {
+              const expectedAmountWei = amountsOut[amountsOut.length - 1] as bigint;
+              // Apply 0.5% slippage tolerance
+              const slippageMultiplier = BigInt(Math.floor(99.5 * 100)); // 9950 for 0.5% slippage
+              amountOutMin = (expectedAmountWei * slippageMultiplier) / 10000n;
+              console.log('Swap quote:', {
+                expectedUSDC: formatUnits(expectedAmountWei, 6),
+                minUSDC: formatUnits(amountOutMin, 6),
+                slippage: '0.5%'
+              });
+            }
+          } catch (quoteError) {
+            console.warn('Failed to get swap quote, using fallback calculation:', quoteError);
+            // Fallback: use 30 USDC per AVAX with 5% slippage
+            const fallbackUsdc = parseUnits((parseFloat(amount) * 30).toString(), 6);
+            amountOutMin = (fallbackUsdc * 95n) / 100n; // 5% slippage for fallback
+          }
+          
+          if (amountOutMin === 0n) {
+            toast.error('Unable to calculate swap quote. Please try again.');
+            setIsProcessing(false);
+            return;
+          }
+          
+          // Avalanche C-Chain uses legacy gasPrice (not EIP-1559)
+          const minGasPriceGwei = 27; // 27 gwei minimum for Avalanche
+          const gasPriceWei = BigInt(Math.ceil(minGasPriceGwei * 1e9));
+          
+          console.log('Executing swap with gas parameters:', {
+            gasPrice: `${minGasPriceGwei} gwei`,
+            amountIn: formatUnits(avaxAmountWei, 18) + ' AVAX',
+            minAmountOut: formatUnits(amountOutMin, 6) + ' USDC',
+          });
+          
+          const swapHash = await writeContractAsync({
             address: CONTRACTS.TRADER_JOE_ROUTER as `0x${string}`,
             abi: TRADER_JOE_ROUTER_ABI,
             functionName: 'swapExactAVAXForTokens',
             args: [
-              usdcAmountWei,
-              [CONTRACTS.WAVAX, CONTRACTS.USDC],
+              amountOutMin,
+              [CONTRACTS.WAVAX, CONTRACTS.USDC], // Native USDC for Aave V3
               address,
-              BigInt(Math.floor(Date.now() / 1000) + 3600)
+              BigInt(Math.floor(Date.now() / 1000) + 60 * 20) // 20 minutes deadline
             ],
             value: avaxAmountWei,
+            gas: 500000n,
+            gasPrice: gasPriceWei, // Legacy gasPrice for Avalanche
           });
-          toast.success('Swap transaction submitted!');
+          
+          console.log('Swap transaction hash:', swapHash);
+          
+          // Wait for swap confirmation
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          try {
+            const receipt = await waitForTransactionReceipt(config, {
+              hash: swapHash,
+              timeout: 120_000,
+              pollingInterval: 2_000,
+            });
+            
+            if (receipt.status === 'success') {
+              toast.success(`Successfully swapped ${amount} AVAX → USDC!`);
+              // Refetch balances
+              queryClient.invalidateQueries({ queryKey: ['balance'] });
+              setAmount('');
+              setIsProcessing(false);
+              onClose();
+            } else {
+              throw new Error('Swap transaction failed');
+            }
+          } catch (timeoutError: unknown) {
+            const error = timeoutError as { name?: string; message?: string };
+            const isTimeout = error?.name === 'WaitForTransactionReceiptTimeoutError' || error?.message?.includes('Timed out');
+            const isUnfinalized = error?.message?.includes('cannot query unfinalized data');
+            
+            if (isTimeout || isUnfinalized) {
+              toast.success('Swap transaction submitted! Check explorer for status.', {
+                action: {
+                  label: 'View on Explorer',
+                  onClick: () => window.open(getExplorerTxLink(avalanche.id, swapHash), '_blank'),
+                },
+                duration: 10000,
+              });
+              queryClient.invalidateQueries({ queryKey: ['balance'] });
+              setAmount('');
+              setIsProcessing(false);
+              onClose();
+            } else {
+              throw timeoutError;
+            }
+          }
           break;
         }
 
@@ -720,13 +793,77 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           // Withdraw USDC from Aave
           const withdrawAmountWei = parseUnits(amount, 6);
           
-          await writeContract({
+          // Avalanche C-Chain uses legacy gasPrice (not EIP-1559)
+          const minGasPriceGwei = 27; // 27 gwei minimum for Avalanche
+          const gasPriceWei = BigInt(Math.ceil(minGasPriceGwei * 1e9));
+          
+          const withdrawHash = await writeContractAsync({
             address: poolAddress, // Use dynamic pool address
             abi: AAVE_POOL_ABI,
             functionName: 'withdraw',
             args: [CONTRACTS.USDC as `0x${string}`, withdrawAmountWei, address], // Native USDC for Aave V3
+            gas: 500000n,
+            gasPrice: gasPriceWei, // Legacy gasPrice for Avalanche
           });
-          toast.success('Withdraw transaction submitted!');
+          
+          console.log('Withdraw transaction hash:', withdrawHash);
+          
+          if (!withdrawHash) {
+            throw new Error('Withdraw transaction failed - no hash returned. Check if wallet rejected the transaction.');
+          }
+          
+          toast.success('Withdraw transaction submitted! Waiting for confirmation...', {
+            action: {
+              label: 'View on Explorer',
+              onClick: () => window.open(getExplorerTxLink(avalanche.id, withdrawHash), '_blank'),
+            },
+          });
+          
+          // Wait for withdrawal confirmation
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          try {
+            const receipt = await waitForTransactionReceipt(config, {
+              hash: withdrawHash,
+              timeout: 120_000,
+              pollingInterval: 2_000,
+            });
+            
+            if (receipt.status === 'success') {
+              toast.success(`Successfully withdrew ${amount} USDC from Aave!`);
+              // Refetch balances and positions
+              queryClient.invalidateQueries({ queryKey: ['balance'] });
+              queryClient.invalidateQueries({ queryKey: ['aavePositions'] });
+              queryClient.invalidateQueries({ queryKey: ['userBalancesExtended'] });
+              setAmount('');
+              setIsProcessing(false);
+              onClose();
+            } else {
+              throw new Error('Withdraw transaction failed');
+            }
+          } catch (timeoutError: unknown) {
+            const error = timeoutError as { name?: string; message?: string };
+            const isTimeout = error?.name === 'WaitForTransactionReceiptTimeoutError' || error?.message?.includes('Timed out');
+            const isUnfinalized = error?.message?.includes('cannot query unfinalized data');
+            
+            if (isTimeout || isUnfinalized) {
+              toast.success('Withdraw transaction submitted! Check explorer for status.', {
+                action: {
+                  label: 'View on Explorer',
+                  onClick: () => window.open(getExplorerTxLink(avalanche.id, withdrawHash), '_blank'),
+                },
+                duration: 10000,
+              });
+              queryClient.invalidateQueries({ queryKey: ['balance'] });
+              queryClient.invalidateQueries({ queryKey: ['aavePositions'] });
+              queryClient.invalidateQueries({ queryKey: ['userBalancesExtended'] });
+              setAmount('');
+              setIsProcessing(false);
+              onClose();
+            } else {
+              throw timeoutError;
+            }
+          }
           break;
         }
 
