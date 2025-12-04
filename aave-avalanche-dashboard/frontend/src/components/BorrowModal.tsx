@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAaveBorrow } from '@/hooks/useAaveBorrow';
 import { useAavePositions } from '@/hooks/useAavePositions';
+import { useWalletBalances } from '@/hooks/useWalletBalances';
 import { toast } from 'sonner';
 
 interface BorrowModalProps {
@@ -27,6 +28,7 @@ export function BorrowModal({ isOpen, onClose }: BorrowModalProps) {
   } = useAaveBorrow();
 
   const positions = useAavePositions();
+  const { usdcBalance, avaxBalance } = useWalletBalances();
 
   const [amount, setAmount] = useState('');
   const [asset, setAsset] = useState<'USDC' | 'AVAX'>('USDC');
@@ -80,8 +82,8 @@ export function BorrowModal({ isOpen, onClose }: BorrowModalProps) {
 
     // Check if user has sufficient balance for repayment
     const userBalance = asset === 'USDC' ? 
-      Number(positions.usdcSupply || '0') : // Using supply as proxy for wallet balance
-      0; // Would need actual wallet balance check
+      Number(usdcBalance || '0') : 
+      Number(avaxBalance || '0');
     
     if (Number(amount) > userBalance) {
       toast.error(`Insufficient ${asset} balance for repayment. Available: ${userBalance.toFixed(6)} ${asset}`);

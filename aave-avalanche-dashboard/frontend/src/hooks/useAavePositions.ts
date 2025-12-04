@@ -276,12 +276,13 @@ export function useAavePositions() {
         } else {
           console.warn('[useAavePositions] WAVAX reserve data array too short:', wavaxReserveData.length);
         }
-      } else if (typeof wavaxReserveData === 'object' && wavaxReserveData !== null) {
+      } else if (typeof wavaxReserveData === 'object' && wavaxReserveData !== null && !Array.isArray(wavaxReserveData)) {
         // Check if it's an object with named properties (unlikely but possible)
-        const obj = wavaxReserveData as any;
-        currentATokenBalance = BigInt(obj.currentATokenBalance || obj[0] || 0);
-        currentStableDebt = BigInt(obj.currentStableDebt || obj[1] || 0);
-        currentVariableDebt = BigInt(obj.currentVariableDebt || obj[2] || 0);
+        // Use unknown intermediate type to satisfy TypeScript
+        const obj = wavaxReserveData as unknown as Record<string, unknown>;
+        currentATokenBalance = BigInt(Number(obj.currentATokenBalance || obj[0] || 0));
+        currentStableDebt = BigInt(Number(obj.currentStableDebt || obj[1] || 0));
+        currentVariableDebt = BigInt(Number(obj.currentVariableDebt || obj[2] || 0));
         console.log('[useAavePositions] Parsed WAVAX data from object format');
       } else {
         console.warn('[useAavePositions] Unexpected WAVAX reserve data format:', typeof wavaxReserveData, wavaxReserveData);
@@ -323,18 +324,29 @@ export function useAavePositions() {
     usdcBorrowApy = (Number(variableBorrowRate || 0n) / 1e27) * 100;
   }
 
-  // WAVAX APYs and available liquidity
+  // WAVAX APYs
   if (avaxReserveData && Array.isArray(avaxReserveData) && avaxReserveData.length >= 12) {
-    const [, , totalAToken, totalStableDebt, totalVariableDebt, liquidityRate, variableBorrowRate] = avaxReserveData;
-    
+    const [, , , , , liquidityRate, variableBorrowRate] = avaxReserveData;
     avaxSupplyApy = (Number(liquidityRate || 0n) / 1e27) * 100;
     avaxBorrowApy = (Number(variableBorrowRate || 0n) / 1e27) * 100;
+  }
+
+  // Personal available to borrow: use availableBorrowsBase from getUserAccountData
+  // This is your actual borrowing capacity, not total pool liquidity
+  if (availableBorrowsBase) {
+    // availableBorrowsBase is in base currency (USD) with 8 decimals
+    // To get AVAX amount, we need the current AVAX price.
+    // For now, approximate using $15/AVAX; in production you should fetch the price from an oracle.
+    const AVAX_PRICE_USD = 15; // Approximate; replace with oracle price in production
+    const availableBorrowsUSD = Number(availableBorrowsBase) / 1e8;
+    avaxAvailableToBorrow = availableBorrowsUSD / AVAX_PRICE_USD;
     
-    // Calculate available AVAX (total aToken supply - total debt)
-    const totalATokenAmount = Number(totalAToken || 0n) / 1e18;
-    const totalStableDebtAmount = Number(totalStableDebt || 0n) / 1e18;
-    const totalVariableDebtAmount = Number(totalVariableDebt || 0n) / 1e18;
-    avaxAvailableToBorrow = totalATokenAmount - (totalStableDebtAmount + totalVariableDebtAmount);
+    console.log('[useAavePositions] Available to borrow calculation:', {
+      availableBorrowsBase: availableBorrowsBase.toString(),
+      availableBorrowsUSD,
+      avaxPriceUSD: AVAX_PRICE_USD,
+      avaxAvailableToBorrow,
+    });
   }
 
   return {

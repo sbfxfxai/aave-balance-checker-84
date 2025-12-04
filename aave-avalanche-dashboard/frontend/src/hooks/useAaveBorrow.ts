@@ -1,10 +1,13 @@
+import { useEffect } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { parseUnits, formatUnits } from 'viem';
-import { CONTRACTS, AAVE_POOL_ABI } from '@/config/contracts';
+import { waitForTransactionReceipt } from '@wagmi/core';
+import { CONTRACTS, AAVE_POOL_ABI, ERC20_ABI } from '@/config/contracts';
+import { config } from '@/config/wagmi';
 
 export function useAaveBorrow() {
   const { address, isConnected } = useAccount();
-  const { writeContract, isPending, data: hash } = useWriteContract();
+  const { writeContractAsync, isPending, data: hash } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
   // Get current Pool address
@@ -19,7 +22,7 @@ export function useAaveBorrow() {
     address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
     abi: [{ name: 'getUserReserveData', type: 'function', stateMutability: 'view', inputs: [{ name: 'asset', type: 'address' }, { name: 'user', type: 'address' }], outputs: [{ name: 'currentATokenBalance', type: 'uint256' }, { name: 'currentStableDebt', type: 'uint256' }, { name: 'currentVariableDebt', type: 'uint256' }] }] as const,
     functionName: 'getUserReserveData',
-    args: address ? [CONTRACTS.USDC as `0x${string}`, address] : undefined, // Native USDC for Aave V3
+    args: address ? [CONTRACTS.USDC as `0x${string}`, address] : undefined,
   });
 
   // Get AVAX borrowed amount
@@ -30,26 +33,41 @@ export function useAaveBorrow() {
     args: address ? [CONTRACTS.WAVAX as `0x${string}`, address] : undefined,
   });
 
+  // Get USDC allowance for repay
+  const { data: usdcAllowance, refetch: refetchAllowance } = useReadContract({
+    address: CONTRACTS.USDC as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: 'allowance',
+    args: address && poolAddress ? [address, poolAddress] : undefined,
+  });
+
+  // Refetch borrowed amounts after transaction confirmation
+  useEffect(() => {
+    if (isConfirmed && hash) {
+      setTimeout(() => {
+        refetchBorrowed();
+        refetchAvaxBorrowed();
+        refetchAllowance();
+      }, 2000); // Wait 2 seconds for blockchain to index
+    }
+  }, [isConfirmed, hash, refetchBorrowed, refetchAvaxBorrowed, refetchAllowance]);
+
   // Borrow USDC from Aave
   const borrowUSDC = async (amount: string) => {
     if (!isConnected || !address || !poolAddress) {
       throw new Error('Wallet not connected');
     }
 
-    // Convert amount to wei (USDC has 6 decimals)
     const amountInWei = parseUnits(amount, 6);
 
-    await writeContract({
+    const txHash = await writeContractAsync({
       address: poolAddress as `0x${string}`,
       abi: AAVE_POOL_ABI,
       functionName: 'borrow',
-      args: [CONTRACTS.USDC as `0x${string}`, amountInWei, 2n, 0, address as `0x${string}`], // Native USDC for Aave V3, variable rate
+      args: [CONTRACTS.USDC as `0x${string}`, amountInWei, 2n, 0, address as `0x${string}`],
     });
 
-    // Refetch borrowed amounts after successful transaction
-    if (isConfirmed) {
-      refetchBorrowed();
-    }
+    await waitForTransactionReceipt(config, { hash: txHash });
   };
 
   // Borrow AVAX from Aave  
@@ -58,23 +76,19 @@ export function useAaveBorrow() {
       throw new Error('Wallet not connected');
     }
 
-    // Convert amount to wei (AVAX has 18 decimals)
     const amountInWei = parseUnits(amount, 18);
 
-    await writeContract({
+    const txHash = await writeContractAsync({
       address: poolAddress as `0x${string}`,
       abi: AAVE_POOL_ABI,
       functionName: 'borrow',
-      args: [CONTRACTS.WAVAX as `0x${string}`, amountInWei, 2n, 0, address as `0x${string}`], // 2 = variable rate, referralCode = 0
+      args: [CONTRACTS.WAVAX as `0x${string}`, amountInWei, 2n, 0, address as `0x${string}`],
     });
 
-    // Refetch borrowed amounts after successful transaction
-    if (isConfirmed) {
-      refetchAvaxBorrowed();
-    }
+    await waitForTransactionReceipt(config, { hash: txHash });
   };
 
-  // Repay USDC to Aave
+  // Repay USDC to Aave (requires approval first)
   const repayUSDC = async (amount: string) => {
     if (!isConnected || !address || !poolAddress) {
       throw new Error('Wallet not connected');
@@ -82,17 +96,40 @@ export function useAaveBorrow() {
 
     const amountInWei = parseUnits(amount, 6);
 
-    await writeContract({
+    // Refetch allowance to get latest value
+    const { data: latestAllowance } = await refetchAllowance();
+    const currentAllowance = latestAllowance || 0n;
+
+    // Check and handle approval for USDC
+    if (currentAllowance < amountInWei) {
+      // Approve USDC for repayment
+      const maxApproval = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
+      const approveHash = await writeContractAsync({
+        address: CONTRACTS.USDC as `0x${string}`,
+        abi: ERC20_ABI,
+        functionName: 'approve',
+        args: [poolAddress as `0x${string}`, maxApproval],
+      });
+
+      await waitForTransactionReceipt(config, { hash: approveHash });
+      
+      // Refetch and verify allowance after approval
+      const { data: newAllowance } = await refetchAllowance();
+      const verifiedAllowance = newAllowance || 0n;
+      if (verifiedAllowance < amountInWei) {
+        throw new Error('Approval succeeded but allowance is still insufficient');
+      }
+    }
+
+    // Execute repay
+    const repayHash = await writeContractAsync({
       address: poolAddress as `0x${string}`,
       abi: AAVE_POOL_ABI,
       functionName: 'repay',
-      args: [CONTRACTS.USDC as `0x${string}`, amountInWei, 2n, address as `0x${string}`], // Native USDC for Aave V3, variable rate
+      args: [CONTRACTS.USDC as `0x${string}`, amountInWei, 2n, address as `0x${string}`],
     });
 
-    // Refetch borrowed amounts after successful transaction
-    if (isConfirmed) {
-      refetchBorrowed();
-    }
+    await waitForTransactionReceipt(config, { hash: repayHash });
   };
 
   // Repay AVAX to Aave
@@ -103,18 +140,15 @@ export function useAaveBorrow() {
 
     const amountInWei = parseUnits(amount, 18);
 
-    await writeContract({
+    const txHash = await writeContractAsync({
       address: poolAddress as `0x${string}`,
       abi: AAVE_POOL_ABI,
       functionName: 'repay',
-      args: [CONTRACTS.WAVAX as `0x${string}`, amountInWei, 2n, address as `0x${string}`], // 2 = variable rate
-      value: amountInWei, // AVAX repayments require native value
+      args: [CONTRACTS.WAVAX as `0x${string}`, amountInWei, 2n, address as `0x${string}`],
+      value: amountInWei,
     });
 
-    // Refetch borrowed amounts after successful transaction
-    if (isConfirmed) {
-      refetchAvaxBorrowed();
-    }
+    await waitForTransactionReceipt(config, { hash: txHash });
   };
 
   // Calculate borrowed amounts
