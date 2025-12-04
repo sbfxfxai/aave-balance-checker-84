@@ -40,11 +40,6 @@ app.add_middleware(
 # Include router - it already has prefix="/api/square"
 app.include_router(router)
 
-# Add direct health endpoint for testing
-@app.get("/health")
-async def direct_health():
-    return {"status": "ok", "message": "Square API is running directly"}
-
 # Debug: Log registered routes
 print(f"[Square API] Registered routes: {[route.path for route in app.routes]}")
 
