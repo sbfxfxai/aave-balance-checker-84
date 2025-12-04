@@ -90,6 +90,18 @@ export function useAavePositions() {
     },
   });
 
+  // Step 7: Get WAVAX user reserve data for AVAX supply and borrows
+  const { data: wavaxReserveData, isLoading: wavaxReserveLoading } = useReadContract({
+    address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
+    abi: AAVE_DATA_PROVIDER_ABI,
+    functionName: 'getUserReserveData',
+    args: [CONTRACTS.WAVAX as `0x${string}`, address!],
+    query: {
+      enabled: isConnected && !!address,
+      refetchInterval: 30_000,
+    },
+  });
+
   if (!isConnected || !address) {
     return {
       healthFactor: null,
@@ -141,6 +153,16 @@ export function useAavePositions() {
     usdcBorrowed = formatUnits((currentStableDebtE + currentVariableDebtE) || 0n, 6);
   }
 
+  // Calculate AVAX/WAVAX supply and borrows
+  let avaxSupply = '0';
+  let avaxBorrowed = '0';
+  
+  if (wavaxReserveData) {
+    const [currentATokenBalance, currentStableDebt, currentVariableDebt] = wavaxReserveData;
+    avaxSupply = formatUnits(currentATokenBalance || 0n, 18); // WAVAX has 18 decimals
+    avaxBorrowed = formatUnits((currentStableDebt + currentVariableDebt) || 0n, 18);
+  }
+
   // Extract APYs from reserve data
   let usdcSupplyApy = 0;
   let avaxSupplyApy = 0;
@@ -176,8 +198,8 @@ export function useAavePositions() {
     availableBorrow: availableBorrowsBase ? `$${(Number(availableBorrowsBase) / 1e8).toFixed(2)}` : '$0.00',
     usdcSupply: usdcSupply || '0.00',
     usdcBorrowed: usdcBorrowed || '0.00',
-    avaxSupply: '0.00', // Would need getUserReserveData for WAVAX
-    avaxBorrowed: '0.00', // Would need getUserReserveData for WAVAX
+    avaxSupply: avaxSupply || '0.00',
+    avaxBorrowed: avaxBorrowed || '0.00',
     healthFactor: healthFactor && healthFactor > 0n ? Number(healthFactor) / 1e18 : null,
     netApy: 0, // Removed net APY as requested
     usdcSupplyApy: usdcSupplyApy,
@@ -186,6 +208,6 @@ export function useAavePositions() {
     avaxBorrowApy: avaxBorrowApy,
     avaxAvailableToBorrow: avaxAvailableToBorrow,
     usdcAvailableToBorrow: usdcAvailableToBorrow,
-    isLoading: poolAddressLoading || positionsLoading || reserveLoading || reserveLoadingE || usdcReserveLoading || avaxReserveLoading,
+    isLoading: poolAddressLoading || positionsLoading || reserveLoading || reserveLoadingE || usdcReserveLoading || avaxReserveLoading || wavaxReserveLoading,
   };
 }
