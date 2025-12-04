@@ -1014,9 +1014,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           let useMaxRepay = false;
           let finalRepayAmount = repayAmountWei;
           
-          // If repay amount is >= 99% of debt, use max for full repayment
-          const ninetyNinePercent = (currentAvaxDebt * 99n) / 100n;
-          if (repayAmountWei >= ninetyNinePercent) {
+          // If repay amount is >= 95% of debt, use max for full repayment
+          // This avoids issues with interest accrual making the exact amount fail
+          const ninetyFivePercent = (currentAvaxDebt * 95n) / 100n;
+          if (repayAmountWei >= ninetyFivePercent) {
             useMaxRepay = true;
             finalRepayAmount = MAX_UINT256;
             console.log('Using type(uint256).max for full repayment to avoid interest accrual issues');
@@ -1026,10 +1027,16 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
             console.log(`Repay amount ${repayAmountWei.toString()} exceeds debt ${currentAvaxDebt.toString()}, capping to debt amount`);
             finalRepayAmount = currentAvaxDebt;
             toast.info(`Repay amount capped to current debt: ${currentDebtFormatted} AVAX`);
+          } else {
+            // For partial repayments, add 0.5% buffer to account for interest accrual
+            // This prevents transaction reverts due to interest accumulating between check and execution
+            const buffer = (finalRepayAmount * 5n) / 1000n; // 0.5% buffer
+            finalRepayAmount = finalRepayAmount + buffer;
+            console.log(`Added 0.5% buffer to partial repayment to account for interest accrual`);
           }
           
           // For max repayment, value should be enough to cover debt + some buffer
-          // For specific amount, use the exact amount
+          // For partial repayment, we've already added buffer to finalRepayAmount
           const valueToSend = useMaxRepay && currentAvaxDebt > 0n 
             ? currentAvaxDebt + (currentAvaxDebt / 100n) // Add 1% buffer for interest
             : finalRepayAmount;
