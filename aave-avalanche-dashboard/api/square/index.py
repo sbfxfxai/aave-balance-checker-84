@@ -204,13 +204,22 @@ def handle_process_payment(request_data, cors_headers):
         if request_data.get("risk_profile"):
             square_payload["note"] = f"Aave deposit - {request_data['risk_profile']} strategy"
         
-        print(f"[Square] Calling Square API: {SQUARE_API_BASE_URL}/v2/payments")
+        # Verify production endpoint
+        api_url = f"{SQUARE_API_BASE_URL}/v2/payments"
+        is_production = "squareup.com" in SQUARE_API_BASE_URL and "sandbox" not in SQUARE_API_BASE_URL
+        
+        print(f"[Square] Environment: {SQUARE_ENVIRONMENT}")
+        print(f"[Square] API Base URL: {SQUARE_API_BASE_URL}")
+        print(f"[Square] Production Mode: {is_production}")
+        print(f"[Square] Calling Square API: {api_url}")
         print(f"[Square] Amount: ${amount} ({amount_cents} cents)")
         print(f"[Square] Location ID: {SQUARE_LOCATION_ID}")
+        print(f"[Square] Access Token (first 10 chars): {SQUARE_ACCESS_TOKEN[:10] if SQUARE_ACCESS_TOKEN else 'NOT SET'}...")
         
-        # Call Square API
+        # Call Square API (production endpoint)
+        api_url = f"{SQUARE_API_BASE_URL}/v2/payments"
         response = requests.post(
-            f"{SQUARE_API_BASE_URL}/v2/payments",
+            api_url,
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {SQUARE_ACCESS_TOKEN}",
