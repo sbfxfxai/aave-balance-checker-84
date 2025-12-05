@@ -62,6 +62,10 @@
   ],
   "routes": [
     {
+      "src": "/api/square/(.*)",
+      "dest": "/api/square/index"
+    },
+    {
       "src": "/(.*)",
       "dest": "frontend/dist/$1"
     }
