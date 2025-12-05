@@ -28,14 +28,14 @@
       ]
     }
   ],
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/square/(.*)",
-      "dest": "/api/square/index"
+      "source": "/api/square/(.*)",
+      "destination": "/api/square/index"
     },
     {
-      "src": "/(.*)",
-      "dest": "/frontend/dist/$1"
+      "source": "/(.*)",
+      "destination": "/frontend/dist/$1"
     }
   ]
 }
