@@ -68,10 +68,22 @@
       ]
     }
   ],
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/square/(.*)",
-      "destination": "/api/square/index"
+      "src": "/api/square/process-payment",
+      "dest": "/api/square/process-payment.py"
+    },
+    {
+      "src": "/api/square/health",
+      "dest": "/api/square/index.py"
+    },
+    {
+      "src": "/api/square/test",
+      "dest": "/api/square/test-minimal.py"
+    },
+    {
+      "src": "/api/square/(.*)",
+      "dest": "/api/square/index.py"
     }
   ]
 }
