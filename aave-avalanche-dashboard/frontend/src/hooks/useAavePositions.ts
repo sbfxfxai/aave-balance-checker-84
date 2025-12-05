@@ -40,15 +40,17 @@ export function useAavePositions() {
     },
   });
 
-  // Debug: Log pool address resolution
-  console.log('[useAavePositions] Pool address resolution:', {
-    providerAddress: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER,
-    resolvedPoolAddress: poolAddress,
-    fallbackPoolAddress: CONTRACTS.AAVE_POOL,
-    isLoading: poolAddressLoading,
-    address,
-    isConnected
-  });
+  // Debug: Log pool address resolution (only on changes or errors)
+  if (poolAddressError || poolAddressLoading) {
+    console.log('[useAavePositions] Pool address resolution:', {
+      providerAddress: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER,
+      resolvedPoolAddress: poolAddress,
+      fallbackPoolAddress: CONTRACTS.AAVE_POOL,
+      isLoading: poolAddressLoading,
+      address,
+      isConnected
+    });
+  }
 
   if (poolAddressError) {
     console.error('[useAavePositions] Pool address resolution error:', {
@@ -67,7 +69,7 @@ export function useAavePositions() {
     args: address ? [address] : undefined,
     query: {
       enabled: isConnected && !!address && (!!poolAddress || !!CONTRACTS.AAVE_POOL), // Use fallback if poolAddress not yet resolved
-      refetchInterval: 30_000,
+      refetchInterval: 60_000, // Reduced from 30s to 60s to decrease spam
     },
   });
 
@@ -117,7 +119,7 @@ export function useAavePositions() {
     args: [CONTRACTS.USDC as `0x${string}`, address!],
     query: {
       enabled: isConnected && !!address,
-      refetchInterval: 30_000,
+      refetchInterval: 60_000, // Reduced from 30s to 60s
     },
   });
   
@@ -131,31 +133,9 @@ export function useAavePositions() {
     });
   }
 
-  // Step 6: Also check USDC.e in case user has that supplied
-  const { 
-    data: reserveDataE, 
-    isLoading: reserveLoadingE,
-    error: reserveDataEError 
-  } = useReadContract({
-    address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
-    abi: AAVE_DATA_PROVIDER_ABI,
-    functionName: 'getUserReserveData',
-    args: [CONTRACTS.USDC_E as `0x${string}`, address!],
-    query: {
-      enabled: isConnected && !!address,
-      refetchInterval: 30_000,
-    },
-  });
-  
-  // Log USDC.e reserve data errors
-  if (reserveDataEError) {
-    console.error('[useAavePositions] USDC.e getUserReserveData error:', {
-      error: reserveDataEError,
-      dataProvider: CONTRACTS.AAVE_POOL_DATA_PROVIDER,
-      usdcEAddress: CONTRACTS.USDC_E,
-      address,
-    });
-  }
+  // Note: Aave V3 on Avalanche uses native USDC (0xB97E...), NOT USDC.e
+  // USDC.e (bridged USDC) is not supported on Aave V3 Avalanche
+  // Removed USDC.e query to avoid errors
 
   // Step 7: Get WAVAX user reserve data for AVAX supply and borrows
   const { 
@@ -170,22 +150,24 @@ export function useAavePositions() {
     args: [CONTRACTS.WAVAX as `0x${string}`, address!],
     query: {
       enabled: isConnected && !!address,
-      refetchInterval: 30_000,
+      refetchInterval: 60_000, // Reduced from 30s to 60s
     },
   });
   
-  // Debug: Log query state
-  console.log('[useAavePositions] WAVAX query state:', {
-    isConnected,
-    address,
-    enabled: isConnected && !!address,
-    isLoading: wavaxReserveLoading,
-    hasData: wavaxReserveData !== undefined,
-    hasError: !!wavaxReserveError,
-    error: wavaxReserveError,
-    dataProviderAddress: CONTRACTS.AAVE_POOL_DATA_PROVIDER,
-    wavaxAddress: CONTRACTS.WAVAX,
-  });
+  // Debug: Log WAVAX query state (only on errors or loading changes)
+  if (wavaxReserveError || wavaxReserveLoading) {
+    console.log('[useAavePositions] WAVAX query state:', {
+      isConnected,
+      address,
+      enabled: isConnected && !!address,
+      isLoading: wavaxReserveLoading,
+      hasData: wavaxReserveData !== undefined,
+      hasError: !!wavaxReserveError,
+      error: wavaxReserveError,
+      dataProviderAddress: CONTRACTS.AAVE_POOL_DATA_PROVIDER,
+      wavaxAddress: CONTRACTS.WAVAX,
+    });
+  }
 
   if (!isConnected || !address) {
     return {
@@ -261,30 +243,16 @@ export function useAavePositions() {
   }
 
   const [totalCollateralBase, totalDebtBase, availableBorrowsBase, , , healthFactor] = rawData;
-  
-  // Debug: Log totalDebtBase to see if we can get debt from getUserAccountData
-  console.log('[useAavePositions] getUserAccountData totalDebtBase:', {
-    raw: totalDebtBase,
-    type: typeof totalDebtBase,
-    formattedUSD: totalDebtBase ? `$${(Number(totalDebtBase) / 1e8).toFixed(2)}` : '$0.00',
-  });
 
-  // Calculate USDC supply from both native USDC and USDC.e
+  // Calculate USDC supply from native USDC (Aave V3 uses native USDC only)
   let usdcSupply = '0';
   let usdcBorrowed = '0';
   
-  // Check native USDC first
+  // Aave V3 Avalanche uses native USDC (0xB97E...), not USDC.e
   if (reserveData) {
     const [currentATokenBalance, currentStableDebt, currentVariableDebt] = reserveData;
     usdcSupply = formatUnits(currentATokenBalance || 0n, 6);
     usdcBorrowed = formatUnits((currentStableDebt + currentVariableDebt) || 0n, 6);
-  }
-  
-  // If no native USDC, check USDC.e
-  if ((!usdcSupply || usdcSupply === '0') && reserveDataE) {
-    const [currentATokenBalanceE, currentStableDebtE, currentVariableDebtE] = reserveDataE;
-    usdcSupply = formatUnits(currentATokenBalanceE || 0n, 6);
-    usdcBorrowed = formatUnits((currentStableDebtE + currentVariableDebtE) || 0n, 6);
   }
 
   // Calculate AVAX/WAVAX supply and borrows
@@ -297,60 +265,13 @@ export function useAavePositions() {
   }
   
   if (wavaxReserveData !== undefined) {
-    // Log each element of the array with its index and value
+    // Extract WAVAX data without excessive logging
     const arrayData = Array.isArray(wavaxReserveData) ? wavaxReserveData : [];
     
-    // Log each element individually so they're not collapsed
-    console.log('[useAavePositions] WAVAX reserve data - Full array breakdown:');
-    arrayData.forEach((item, index) => {
-      const fieldNames = [
-        'currentATokenBalance',
-        'currentStableDebt',
-        'currentVariableDebt',
-        'principalStableDebt',
-        'scaledVariableDebt',
-        'stableBorrowRate',
-        'liquidityRate',
-        'stableRateLastUpdated',
-        'usageAsCollateralEnabled'
-      ];
-      const fieldName = fieldNames[index] || `unknown[${index}]`;
-      const isBigInt = typeof item === 'bigint';
-      const stringValue = isBigInt ? item.toString() : String(item);
-      const formatted = isBigInt ? formatUnits(item, 18) : String(item);
-      
-      console.log(`  [${index}] ${fieldName}:`, {
-        raw: item,
-        type: typeof item,
-        isBigInt,
-        stringValue,
-        formatted: isBigInt ? formatted : 'N/A (not bigint)',
-      });
-    });
-    
-    // Also log the specific values we care about
     if (arrayData.length >= 3) {
       const aTokenBalance = arrayData[0];
       const stableDebt = arrayData[1];
       const variableDebt = arrayData[2];
-      
-      console.log('[useAavePositions] Key values extracted:', {
-        'aTokenBalance[0]': {
-          raw: aTokenBalance,
-          type: typeof aTokenBalance,
-          formatted: typeof aTokenBalance === 'bigint' ? formatUnits(aTokenBalance, 18) : 'N/A',
-        },
-        'stableDebt[1]': {
-          raw: stableDebt,
-          type: typeof stableDebt,
-          formatted: typeof stableDebt === 'bigint' ? formatUnits(stableDebt, 18) : 'N/A',
-        },
-        'variableDebt[2]': {
-          raw: variableDebt,
-          type: typeof variableDebt,
-          formatted: typeof variableDebt === 'bigint' ? formatUnits(variableDebt, 18) : 'N/A',
-        },
-      });
     }
   } else if (!wavaxReserveLoading) {
     console.warn('[useAavePositions] WAVAX reserve data is undefined and not loading!');
@@ -367,7 +288,6 @@ export function useAavePositions() {
       if (Array.isArray(wavaxReserveData)) {
         // Standard array format
         if (wavaxReserveData.length >= 3) {
-          // Try multiple ways to extract the values
           const val0 = wavaxReserveData[0];
           const val1 = wavaxReserveData[1];
           const val2 = wavaxReserveData[2];
@@ -376,12 +296,6 @@ export function useAavePositions() {
           currentATokenBalance = typeof val0 === 'bigint' ? val0 : BigInt(val0 || 0);
           currentStableDebt = typeof val1 === 'bigint' ? val1 : BigInt(val1 || 0);
           currentVariableDebt = typeof val2 === 'bigint' ? val2 : BigInt(val2 || 0);
-          
-          console.log('[useAavePositions] Extracted values:', {
-            'val0 (aToken)': { raw: val0, type: typeof val0, bigint: currentATokenBalance.toString() },
-            'val1 (stableDebt)': { raw: val1, type: typeof val1, bigint: currentStableDebt.toString() },
-            'val2 (variableDebt)': { raw: val2, type: typeof val2, bigint: currentVariableDebt.toString() },
-          });
         } else {
           console.warn('[useAavePositions] WAVAX reserve data array too short:', wavaxReserveData.length);
         }
@@ -400,15 +314,6 @@ export function useAavePositions() {
       avaxSupply = formatUnits(currentATokenBalance, 18); // WAVAX has 18 decimals
       const totalDebt = currentStableDebt + currentVariableDebt;
       avaxBorrowed = formatUnits(totalDebt, 18);
-      
-      // Debug logging - always log to help debug
-      console.log('[useAavePositions] AVAX position calculated:', {
-        aTokenBalance: formatUnits(currentATokenBalance, 18),
-        stableDebt: formatUnits(currentStableDebt, 18),
-        variableDebt: formatUnits(currentVariableDebt, 18),
-        totalDebt: avaxBorrowed,
-        totalDebtWei: totalDebt.toString(),
-      });
       
     } catch (error) {
       console.error('[useAavePositions] Error parsing WAVAX reserve data:', error, wavaxReserveData);
@@ -449,13 +354,6 @@ export function useAavePositions() {
     const AVAX_PRICE_USD = 15; // Approximate; replace with oracle price in production
     const availableBorrowsUSD = Number(availableBorrowsBase) / 1e8;
     avaxAvailableToBorrow = availableBorrowsUSD / AVAX_PRICE_USD;
-    
-    console.log('[useAavePositions] Available to borrow calculation:', {
-      availableBorrowsBase: availableBorrowsBase.toString(),
-      availableBorrowsUSD,
-      avaxPriceUSD: AVAX_PRICE_USD,
-      avaxAvailableToBorrow,
-    });
   }
 
   const result = {
@@ -474,25 +372,9 @@ export function useAavePositions() {
     avaxBorrowApy: avaxBorrowApy,
     avaxAvailableToBorrow: avaxAvailableToBorrow,
     usdcAvailableToBorrow: usdcAvailableToBorrow,
-    isLoading: poolAddressLoading || positionsLoading || reserveLoading || reserveLoadingE || usdcReserveLoading || avaxReserveLoading || wavaxReserveLoading,
+    isLoading: poolAddressLoading || positionsLoading || reserveLoading || usdcReserveLoading || avaxReserveLoading || wavaxReserveLoading,
     refetch: refetchWavaxReserveData, // Expose refetch function for manual refresh
   };
-  
-  // Summary log to help debug zero values
-  console.log('[useAavePositions] Final position summary:', {
-    totalCollateral: result.totalCollateral,
-    totalDebt: result.totalDebt,
-    usdcSupply: result.usdcSupply,
-    usdcBorrowed: result.usdcBorrowed,
-    avaxSupply: result.avaxSupply,
-    avaxBorrowed: result.avaxBorrowed,
-    healthFactor: result.healthFactor,
-    rawDataExists: !!rawData,
-    reserveDataExists: !!reserveData,
-    reserveDataEExists: !!reserveDataE,
-    wavaxReserveDataExists: !!wavaxReserveData,
-    isLoading: result.isLoading,
-  });
   
   return result;
 }

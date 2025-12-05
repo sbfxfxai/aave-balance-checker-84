@@ -37,16 +37,38 @@ export class SquarePaymentService {
   private card: SquareCard | null = null;
 
   private async loadSquareSdk(): Promise<void> {
+    // Check if SDK is already loaded
     if (window.Square) {
       return;
     }
 
+    // Load Square Web Payments SDK following official Quickstart pattern
+    // Official SDK URL: https://web.squarecdn.com/v1/square.js
+    const environment = (
+      import.meta.env.VITE_SQUARE_ENVIRONMENT as string | undefined
+    )?.trim() ?? 'production';
+    
+    // Use production SDK URL (sandbox uses same URL but different credentials)
+    const sdkUrl = 'https://web.squarecdn.com/v1/square.js';
+    
     await new Promise<void>((resolve, reject) => {
       const script = document.createElement('script');
-      script.src = 'https://web.squarecdn.com/v1/square.js';
+      script.src = sdkUrl;
       script.async = true;
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error('Failed to load Square Web SDK'));
+      script.crossOrigin = 'anonymous';
+      
+      script.onload = () => {
+        if (!window.Square) {
+          reject(new Error('Square SDK loaded but window.Square is not available'));
+          return;
+        }
+        resolve();
+      };
+      
+      script.onerror = () => {
+        reject(new Error(`Failed to load Square Web SDK from ${sdkUrl}`));
+      };
+      
       document.head.appendChild(script);
     });
   }
@@ -86,7 +108,19 @@ export class SquarePaymentService {
     try {
       console.log('Initializing Square payments...');
       console.log('Square SDK version info:', window.Square);
+      
+      // Initialize Square Payments following official Quickstart pattern
+      // payments(applicationId, locationId) returns a Payments object
+      if (!window.Square || !window.Square.payments) {
+        throw new Error('Square SDK not loaded correctly. window.Square.payments is not available.');
+      }
+      
       this.payments = window.Square.payments(applicationId, locationId);
+      
+      if (!this.payments) {
+        throw new Error('Failed to create Square Payments instance');
+      }
+      
       console.log('Square Web Payments SDK initialized successfully');
       console.log('Available payment methods:', Object.keys(this.payments));
     } catch (error) {
@@ -102,9 +136,22 @@ export class SquarePaymentService {
 
     try {
       console.log('Creating Square card form...');
+      
+      // Create card payment method following official Quickstart pattern
+      // card() returns a Promise<Card> object
       this.card = await this.payments.card();
+      
+      if (!this.card) {
+        throw new Error('Failed to create Square Card instance');
+      }
+      
       console.log('Card form created, attaching to:', containerId);
-      await this.card.attach(`#${containerId}`);
+      
+      // Attach card form to DOM element
+      // Official pattern: card.attach('#card-container')
+      const containerSelector = `#${containerId}`;
+      await this.card.attach(containerSelector);
+      
       console.log('Square card form attached successfully');
     } catch (error) {
       console.error('Failed to initialize card form:', error);
@@ -118,16 +165,26 @@ export class SquarePaymentService {
     }
 
     try {
+      // Tokenize card following official Quickstart pattern
+      // tokenize() returns Promise<TokenizeResult>
+      // Result format: { status: 'OK' | 'FAILURE', token?: string, errors?: Array }
       const result = await this.card.tokenize();
 
       if (result.status === 'OK' && result.token) {
         console.log('Card tokenized successfully');
+        console.log('Token preview:', result.token.substring(0, 20) + '...');
         return result.token;
       } else {
-        console.error('Card tokenization failed:', result.errors);
-        throw new Error(
-          result.errors?.[0]?.detail ?? 'Card tokenization failed'
-        );
+        // Handle tokenization errors
+        const errorMessage = result.errors?.[0]?.detail ?? 'Card tokenization failed';
+        const errorCode = result.errors?.[0]?.code ?? 'UNKNOWN';
+        console.error('Card tokenization failed:', {
+          status: result.status,
+          errors: result.errors,
+          code: errorCode,
+          message: errorMessage,
+        });
+        throw new Error(errorMessage);
       }
     } catch (error) {
       console.error('Error tokenizing card:', error);
@@ -168,12 +225,44 @@ export class SquarePaymentService {
 
       // Get response text first to check if it's JSON
       const responseText = await response.text();
+      const contentType = response.headers.get('content-type') || '';
+      const isJson = contentType.includes('application/json');
+      
       console.log('Payment API response:', {
         status: response.status,
         statusText: response.statusText,
-        contentType: response.headers.get('content-type'),
+        contentType,
+        isJson,
         responseText: responseText.substring(0, 200),
       });
+
+      // If not JSON, handle as error immediately
+      if (!isJson) {
+        console.error('Payment API returned non-JSON response:', {
+          status: response.status,
+          contentType,
+          responseText: responseText.substring(0, 500),
+        });
+        
+        if (response.status === 404) {
+          throw new Error(
+            'Payment endpoint not found (404). Please verify the backend is deployed and the route /api/square/process-payment exists.'
+          );
+        }
+        
+        if (response.status === 500) {
+          // Try to extract error message from HTML or plain text
+          const errorMatch = responseText.match(/FUNCTION_INVOCATION_FAILED|Internal server error|error/i);
+          const errorMsg = errorMatch 
+            ? `Server error: ${errorMatch[0]}`
+            : `Server error (${response.status}). Please check the backend logs.`;
+          throw new Error(errorMsg);
+        }
+        
+        throw new Error(
+          `Payment API returned invalid response (${response.status}): ${responseText.substring(0, 100)}`
+        );
+      }
 
       let result: PaymentResponse & { error?: string };
       
@@ -182,18 +271,12 @@ export class SquarePaymentService {
           error?: string;
         };
       } catch (parseError) {
-        // Response is not JSON - likely HTML error page
+        // Response claims to be JSON but isn't valid JSON
         console.error('Failed to parse JSON response:', parseError);
         console.error('Response text:', responseText);
         
-        if (response.status === 404) {
-          throw new Error(
-            'Payment endpoint not found (404). Please verify the backend is deployed and the route /api/square/process-payment exists.'
-          );
-        }
-        
         throw new Error(
-          `Payment API returned invalid response (${response.status}): ${responseText.substring(0, 100)}`
+          `Payment API returned invalid JSON (${response.status}): ${responseText.substring(0, 100)}`
         );
       }
 

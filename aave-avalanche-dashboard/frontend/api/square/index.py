@@ -19,7 +19,7 @@ def get_square_config():
     return {
         "access_token": os.getenv("SQUARE_ACCESS_TOKEN", ""),
         "location_id": os.getenv("SQUARE_LOCATION_ID", ""),
-        "api_base_url": os.getenv("SQUARE_API_BASE_URL", "https://connect.squareup.com"),
+        "api_base_url": os.getenv("SQUARE_API_BASE_URL", "https://api.squareup.com"),
         "environment": os.getenv("SQUARE_ENVIRONMENT", "production"),
     }
 
@@ -29,6 +29,14 @@ def handler(event, context):
     Vercel Python serverless function handler
     Handles Square API endpoints: /health and /process-payment
     """
+    # CORS headers - define early so they're always available
+    cors_headers = {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    }
+    
     try:
         # Log full event for debugging
         print(f"[Square API] Handler called")
@@ -79,14 +87,6 @@ def handler(event, context):
             except json.JSONDecodeError:
                 pass
         
-        # CORS headers
-        cors_headers = {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        }
-        
         # Handle OPTIONS (CORS preflight)
         if method == "OPTIONS":
             return {
@@ -123,14 +123,6 @@ def handler(event, context):
         print(f"[Square API] Handler error: {e}")
         print(f"[Square API] Error type: {type(e).__name__}")
         traceback.print_exc()
-        
-        # Ensure cors_headers is defined even on error
-        cors_headers = {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        }
         
         return {
             "statusCode": 500,
@@ -394,14 +386,3 @@ def handle_process_payment(request_data, cors_headers):
                     "error": f"Internal server error: {str(e)}"
                 })
             }
-    except Exception as e:
-        print(f"[Square] Unexpected error: {e}")
-        traceback.print_exc()
-        return {
-            "statusCode": 500,
-            "headers": cors_headers,
-            "body": json.dumps({
-                "success": False,
-                "error": f"Internal server error: {str(e)}"
-            })
-        }
