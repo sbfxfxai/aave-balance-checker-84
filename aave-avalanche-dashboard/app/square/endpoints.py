@@ -201,12 +201,14 @@ async def process_payment(request: Request, payment: PaymentRequest):
         # Re-raise HTTP exceptions as-is
         raise
     except Exception as e:
-        error_msg = str(e)
-        error_type = type(e).__name__
-        print(f"[Square] Unexpected error: {error_type}: {error_msg}")
+        print(f"[Square] Unexpected error: {e}")
         traceback.print_exc()
-        # Return a simple error message string (not dict) for better compatibility
         raise HTTPException(
             status_code=500,
-            detail=f"A server error has occurred: {error_msg}"
+            detail={
+                "message": "Internal server error",
+                "error": str(e),
+                "type": type(e).__name__,
+                "traceback": traceback.format_exc()
+            }
         )

@@ -1,0 +1,2 @@
+# Minimal requirements for testing
+# Will add back fastapi/mangum once basic handler works
