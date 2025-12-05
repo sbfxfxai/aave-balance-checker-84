@@ -98,6 +98,8 @@ def handler(event, context):
 
 def handle_health(cors_headers):
     """Health check endpoint"""
+    is_production = "squareup.com" in SQUARE_API_BASE_URL and "sandbox" not in SQUARE_API_BASE_URL
+    
     return {
         "statusCode": 200,
         "headers": cors_headers,
@@ -111,6 +113,9 @@ def handle_health(cors_headers):
             "has_location_id": bool(SQUARE_LOCATION_ID),
             "square_api_base_url": SQUARE_API_BASE_URL,
             "square_environment": SQUARE_ENVIRONMENT,
+            "is_production": is_production,
+            "production_endpoint": f"{SQUARE_API_BASE_URL}/v2/payments",
+            "access_token_preview": SQUARE_ACCESS_TOKEN[:10] + "..." if SQUARE_ACCESS_TOKEN else "NOT SET",
         })
     }
 
