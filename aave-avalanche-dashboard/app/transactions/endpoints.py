@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter  # type: ignore
 from . import deposit_flow, withdraw_flow, broadcaster
 
 router = APIRouter()

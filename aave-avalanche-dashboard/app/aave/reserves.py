@@ -1,4 +1,4 @@
-from eth_defi.aave_v3 import fetch_all_reserves
+from eth_defi.aave_v3 import fetch_all_reserves  # type: ignore
 from app.wallet.provider import get_web3_provider
 
 # Get all reserves with additional metadata

@@ -1,39 +1,32 @@
 """
-Square Payment Processing Endpoints
-
-Handles Square payment processing server-side to avoid CORS issues.
-The frontend tokenizes the card and sends the token here.
+Square API endpoints with enhanced error handling and debugging
 """
 import os
-import requests  # pyright: ignore[reportMissingModuleSource]
-from fastapi import APIRouter, HTTPException  # pyright: ignore[reportMissingImports]
-from pydantic import BaseModel  # pyright: ignore[reportMissingImports]
+import traceback
+import sys
+import json
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from typing import Optional
+import requests  # pyright: ignore[reportMissingModuleSource]
 
-router = APIRouter(tags=["square"])
+router = APIRouter(prefix="/api/square", tags=["square"])
 
-# Square API Configuration - Must be defined before endpoints
+# Square API Configuration
 SQUARE_ACCESS_TOKEN = os.getenv("SQUARE_ACCESS_TOKEN", "")
 SQUARE_LOCATION_ID = os.getenv("SQUARE_LOCATION_ID", "")
 SQUARE_API_BASE_URL = os.getenv("SQUARE_API_BASE_URL", "https://connect.squareup.com")
+SQUARE_ENVIRONMENT = os.getenv("SQUARE_ENVIRONMENT", "production")
 
 
-@router.get("/health")
-async def health_check():
-    """Health check endpoint to verify backend is accessible"""
-    return {
-        "status": "ok",
-        "service": "Square Payment Processing",
-        "credentials_configured": bool(SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID),
-    }
-
-
+# Pydantic models for request validation
 class PaymentRequest(BaseModel):
-    source_id: str  # Token from Square card.tokenize()
-    amount: float
-    currency: str = "USD"
-    risk_profile: Optional[str] = None
-    idempotency_key: str
+    source_id: str = Field(..., description="Square payment token from card.tokenize()")
+    amount: float = Field(..., description="Amount in dollars (will be converted to cents)")
+    currency: str = Field(default="USD", description="Currency code")
+    risk_profile: Optional[str] = Field(None, description="Risk profile for the payment")
+    idempotency_key: str = Field(..., description="Unique request identifier")
 
 
 class PaymentResponse(BaseModel):
@@ -45,35 +38,54 @@ class PaymentResponse(BaseModel):
     error: Optional[str] = None
 
 
-@router.post("/process-payment", response_model=PaymentResponse)
-async def process_payment(request: PaymentRequest):
-    """
-    Process a Square payment using a tokenized card.
-    
-    The frontend sends a token from Square's card.tokenize() method.
-    This endpoint calls Square's API server-side to avoid CORS issues.
-    """
-    if not SQUARE_ACCESS_TOKEN or not SQUARE_LOCATION_ID:
-        raise HTTPException(
-            status_code=500,
-            detail="Square API credentials not configured on server"
-        )
+@router.get("/health")
+async def health_check():
+    """Basic health check endpoint"""
+    return {
+        "status": "healthy",
+        "service": "square-api",
+        "python_version": sys.version.split()[0],  # Just version number
+        "environment": os.getenv("VERCEL_ENV", "unknown"),
+        "credentials_configured": bool(SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID),
+    }
 
+
+@router.post("/process-payment", response_model=PaymentResponse)
+async def process_payment(request: Request, payment: PaymentRequest):
+    """Process a Square payment"""
     try:
+        print(f"[Square] Processing payment request: amount=${payment.amount}, currency={payment.currency}")
+        print(f"[Square] Environment: {SQUARE_ENVIRONMENT}")
+        print(f"[Square] Access token present: {bool(SQUARE_ACCESS_TOKEN)}")
+        print(f"[Square] Location ID present: {bool(SQUARE_LOCATION_ID)}")
+        
+        # Check for Square credentials
+        if not SQUARE_ACCESS_TOKEN:
+            raise HTTPException(
+                status_code=500,
+                detail="SQUARE_ACCESS_TOKEN environment variable not set"
+            )
+        
+        if not SQUARE_LOCATION_ID:
+            raise HTTPException(
+                status_code=500,
+                detail="SQUARE_LOCATION_ID environment variable not set"
+            )
+        
         # Validate amount
-        if request.amount <= 0:
+        if payment.amount <= 0:
             raise HTTPException(
                 status_code=400,
                 detail="Payment amount must be greater than zero"
             )
-        if request.amount > 100000:  # $100,000 limit
+        if payment.amount > 100000:  # $100,000 limit
             raise HTTPException(
                 status_code=400,
                 detail="Payment amount exceeds maximum limit"
             )
         
         # Convert amount to cents (Square API requires integer cents)
-        amount_cents = int(request.amount * 100)
+        amount_cents = int(payment.amount * 100)
         
         if amount_cents <= 0:
             raise HTTPException(
@@ -81,85 +93,120 @@ async def process_payment(request: PaymentRequest):
                 detail="Invalid payment amount"
             )
         
-        # Prepare Square API request
+        # Prepare Square API request (matching Square API v2 format)
         square_payload = {
-            "source_id": request.source_id,
-            "idempotency_key": request.idempotency_key,
+            "source_id": payment.source_id,  # Token from card.tokenize()
+            "idempotency_key": payment.idempotency_key,
             "amount_money": {
-                "amount": amount_cents,
-                "currency": request.currency,
+                "amount": amount_cents,  # Amount in cents (integer)
+                "currency": payment.currency,
             },
-            "location_id": SQUARE_LOCATION_ID,
-            "note": f"Stack App deposit - {request.risk_profile or 'default'} strategy",
+            "location_id": SQUARE_LOCATION_ID,  # Required for direct API calls
+            "autocomplete": True,  # Complete payment immediately
         }
-
-        # Call Square Payments API
-        response = requests.post(
-            f"{SQUARE_API_BASE_URL}/v2/payments",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {SQUARE_ACCESS_TOKEN}",
-                "Square-Version": "2024-01-18",
-            },
-            json=square_payload,
-            timeout=30,
-        )
-
+        
+        # Add note only if provided (optional field)
+        if payment.risk_profile:
+            square_payload["note"] = f"Aave deposit - {payment.risk_profile} strategy"
+        
+        print(f"[Square] Calling Square API: {SQUARE_API_BASE_URL}/v2/payments")
+        print(f"[Square] Request payload: {json.dumps(square_payload, indent=2)}")
+        
+        # Call Square Payments API using requests
+        try:
+            response = requests.post(
+                f"{SQUARE_API_BASE_URL}/v2/payments",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {SQUARE_ACCESS_TOKEN}",
+                    "Square-Version": "2024-01-18",
+                },
+                json=square_payload,
+                timeout=30,
+            )
+            
+            print(f"[Square] Square API response status: {response.status_code}")
+            
+        except requests.exceptions.Timeout as e:
+            print(f"[Square] Square API request timed out: {e}")
+            raise HTTPException(
+                status_code=504,
+                detail=f"Square API request timed out: {str(e)}"
+            )
+        except requests.exceptions.ConnectionError as e:
+            print(f"[Square] Cannot connect to Square API: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"Cannot connect to Square API: {str(e)}"
+            )
+        except requests.exceptions.RequestException as e:
+            print(f"[Square] Square API request failed: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to communicate with Square API: {str(e)}"
+            )
+        
+        # Handle response
         if not response.ok:
             error_data = {}
             try:
                 if response.text:
                     error_data = response.json()
             except (ValueError, requests.exceptions.JSONDecodeError):
-                # Response is not valid JSON, use status text
                 error_data = {"detail": response.text or f"HTTP {response.status_code}"}
             
-            error_detail = (
-                error_data.get("errors", [{}])[0].get("detail", "Payment failed")
-                if error_data.get("errors")
-                else error_data.get("detail", f"Square API error: {response.status_code}")
-            )
-            raise HTTPException(status_code=response.status_code, detail=error_detail)
-
+            # Square API returns errors in a specific format
+            errors = error_data.get("errors", [])
+            if errors:
+                # Get the first error detail (matching working example pattern)
+                error_detail = errors[0].get("detail", "Payment Failed.")
+                error_code = errors[0].get("code", "UNKNOWN")
+                print(f"[Square] Payment failed: {error_code} - {error_detail}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=error_detail  # Return simple error message like working example
+                )
+            else:
+                error_detail = error_data.get("detail", f"Square API error: {response.status_code}")
+                print(f"[Square] Payment failed: {error_detail}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=error_detail
+                )
+        
+        # Parse successful response
         try:
             data = response.json()
         except (ValueError, requests.exceptions.JSONDecodeError) as e:
+            print(f"[Square] Invalid JSON response from Square API: {e}")
             raise HTTPException(
                 status_code=500,
                 detail=f"Invalid JSON response from Square API: {str(e)}"
             )
         
-        payment = data.get("payment", {})
-
+        payment_data = data.get("payment", {})
+        payment_id = payment_data.get("id")
+        
+        print(f"[Square] Payment successful: {payment_id}")
+        
         return PaymentResponse(
             success=True,
-            payment_id=payment.get("id"),
-            order_id=payment.get("order_id"),
-            transaction_id=payment.get("id"),
+            payment_id=payment_id,
+            order_id=payment_data.get("order_id"),
+            transaction_id=payment_id,
             message="Payment processed successfully",
         )
-
-    except requests.exceptions.Timeout as e:
-        raise HTTPException(
-            status_code=504,
-            detail=f"Square API request timed out: {str(e)}"
-        )
-    except requests.exceptions.ConnectionError as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Cannot connect to Square API: {str(e)}"
-        )
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to communicate with Square API: {str(e)}"
-        )
+            
     except HTTPException:
         # Re-raise HTTP exceptions as-is
         raise
     except Exception as e:
+        error_msg = str(e)
+        error_type = type(e).__name__
+        print(f"[Square] Unexpected error: {error_type}: {error_msg}")
+        traceback.print_exc()
+        # Return a simple error message string (not dict) for better compatibility
         raise HTTPException(
             status_code=500,
-            detail=f"Payment processing error: {str(e)}"
+            detail=f"A server error has occurred: {error_msg}"
         )
-

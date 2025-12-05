@@ -191,7 +191,7 @@ export function SwapSupplyModal({ isOpen, onClose }: SwapSupplyModalProps) {
         supplyUSDC();
       }, 3000);
     }
-  }, [isConfirmed, hash]);
+  }, [isConfirmed, hash, address, avaxAmount, usdcAmount, writeContract, onClose]);
 
   if (!isOpen) return null;
 

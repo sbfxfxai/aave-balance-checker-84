@@ -8,7 +8,7 @@ import "./index.css";
 // Suppress harmless WalletConnect warnings about session_request events
 if (typeof window !== 'undefined') {
   const originalError = console.error;
-  console.error = (...args: any[]) => {
+  console.error = (...args: unknown[]) => {
     const message = args[0]?.toString() || '';
     // Filter out WalletConnect session_request warnings
     if (message.includes('emitting session_request') && message.includes('without any listeners')) {

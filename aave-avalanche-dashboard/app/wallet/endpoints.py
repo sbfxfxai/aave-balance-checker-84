@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException  # type: ignore
 from app.wallet import connect, auth
 
 router = APIRouter()

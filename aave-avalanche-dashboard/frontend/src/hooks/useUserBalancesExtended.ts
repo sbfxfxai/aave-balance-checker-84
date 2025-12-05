@@ -48,22 +48,22 @@ export const useUserBalancesExtended = (): ExtendedUserBalance => {
     // Aave positions with fallbacks
     totalCollateral: aavePositions.totalCollateral || '$0.00',
     totalDebt: aavePositions.totalDebt || '$0.00',
-    availableBorrow: aavePositions.availableBorrow || '$0.00',
+    availableBorrow: ('availableBorrow' in aavePositions ? aavePositions.availableBorrow : null) || '$0.00',
     usdcSupply: aavePositions.usdcSupply || '0',
-    usdcBorrowed: aavePositions.usdcBorrowed || '0',
-    avaxSupply: aavePositions.avaxSupply || '0',
-    avaxBorrowed: aavePositions.avaxBorrowed || '0',
+    usdcBorrowed: ('usdcBorrowed' in aavePositions ? aavePositions.usdcBorrowed : null) || '0',
+    avaxSupply: ('avaxSupply' in aavePositions ? aavePositions.avaxSupply : null) || '0',
+    avaxBorrowed: ('avaxBorrowed' in aavePositions ? aavePositions.avaxBorrowed : null) || '0',
     healthFactor: aavePositions.healthFactor,
     
     // APYs with fallbacks
-    usdcSupplyApy: aavePositions.usdcSupplyApy || 0,
-    avaxSupplyApy: aavePositions.avaxSupplyApy || 0,
-    usdcBorrowApy: aavePositions.usdcBorrowApy || 0,
-    avaxBorrowApy: aavePositions.avaxBorrowApy || 0,
+    usdcSupplyApy: ('usdcSupplyApy' in aavePositions ? aavePositions.usdcSupplyApy : null) || 0,
+    avaxSupplyApy: ('avaxSupplyApy' in aavePositions ? aavePositions.avaxSupplyApy : null) || 0,
+    usdcBorrowApy: ('usdcBorrowApy' in aavePositions ? aavePositions.usdcBorrowApy : null) || 0,
+    avaxBorrowApy: ('avaxBorrowApy' in aavePositions ? aavePositions.avaxBorrowApy : null) || 0,
     
     // Available amounts with fallbacks
-    avaxAvailableToBorrow: aavePositions.avaxAvailableToBorrow || 0,
-    usdcAvailableToBorrow: aavePositions.usdcAvailableToBorrow || 0,
+    avaxAvailableToBorrow: ('avaxAvailableToBorrow' in aavePositions ? aavePositions.avaxAvailableToBorrow : null) || 0,
+    usdcAvailableToBorrow: ('usdcAvailableToBorrow' in aavePositions ? aavePositions.usdcAvailableToBorrow : null) || 0,
     
     // Combined loading state
     isLoading: walletBalances.isLoading || aavePositions.isLoading,

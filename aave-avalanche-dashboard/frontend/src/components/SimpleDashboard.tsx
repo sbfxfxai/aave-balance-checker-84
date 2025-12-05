@@ -67,7 +67,7 @@ export function SimpleDashboard() {
       queryClient.invalidateQueries({ queryKey: ['readContract'], exact: false });
       
       // Explicitly refetch positions if refetch function is available
-      if (positions.refetch) {
+      if ('refetch' in positions && positions.refetch) {
         await positions.refetch();
       }
       

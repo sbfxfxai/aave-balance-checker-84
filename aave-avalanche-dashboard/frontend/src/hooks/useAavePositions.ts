@@ -27,7 +27,11 @@ export function useAavePositions() {
   const { address, isConnected } = useAccount();
 
   // Step 1: Dynamically resolve Pool address via Addresses Provider (matches DepositModal pattern)
-  const { data: poolAddress, isLoading: poolAddressLoading } = useReadContract({
+  const { 
+    data: poolAddress, 
+    isLoading: poolAddressLoading,
+    error: poolAddressError 
+  } = useReadContract({
     address: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER as `0x${string}`,
     abi: AAVE_POOL_ADDRESSES_PROVIDER_ABI,
     functionName: 'getPool',
@@ -35,6 +39,25 @@ export function useAavePositions() {
       enabled: isConnected && !!address,
     },
   });
+
+  // Debug: Log pool address resolution
+  console.log('[useAavePositions] Pool address resolution:', {
+    providerAddress: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER,
+    resolvedPoolAddress: poolAddress,
+    fallbackPoolAddress: CONTRACTS.AAVE_POOL,
+    isLoading: poolAddressLoading,
+    address,
+    isConnected
+  });
+
+  if (poolAddressError) {
+    console.error('[useAavePositions] Pool address resolution error:', {
+      error: poolAddressError,
+      addressesProvider: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER,
+      address,
+      isConnected,
+    });
+  }
 
   // Step 2: Get user positions from dynamically resolved Pool address
   const { data: rawData, isLoading: positionsLoading, error } = useReadContract({
@@ -49,25 +72,45 @@ export function useAavePositions() {
   });
 
   // Step 3: Get USDC reserve data for APYs using Data Provider
-  const { data: usdcReserveData, isLoading: usdcReserveLoading } = useReadContract({
+  const { 
+    data: usdcReserveData, 
+    isLoading: usdcReserveLoading,
+    error: usdcReserveDataError 
+  } = useReadContract({
     address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
     abi: AAVE_DATA_PROVIDER_ABI,
     functionName: 'getReserveData',
     args: [CONTRACTS.USDC as `0x${string}`],
     query: { enabled: !!CONTRACTS.AAVE_POOL_DATA_PROVIDER },
   });
+  
+  if (usdcReserveDataError) {
+    console.error('[useAavePositions] USDC getReserveData error:', usdcReserveDataError);
+  }
 
   // Step 4: Get WAVAX reserve data for APYs using Data Provider
-  const { data: avaxReserveData, isLoading: avaxReserveLoading } = useReadContract({
+  const { 
+    data: avaxReserveData, 
+    isLoading: avaxReserveLoading,
+    error: avaxReserveDataError 
+  } = useReadContract({
     address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
     abi: AAVE_DATA_PROVIDER_ABI,
     functionName: 'getReserveData',
     args: [CONTRACTS.WAVAX as `0x${string}`],
     query: { enabled: !!CONTRACTS.AAVE_POOL_DATA_PROVIDER },
   });
+  
+  if (avaxReserveDataError) {
+    console.error('[useAavePositions] WAVAX getReserveData error:', avaxReserveDataError);
+  }
 
   // Step 5: Get native USDC reserve data using Data Provider
-  const { data: reserveData, isLoading: reserveLoading } = useReadContract({
+  const { 
+    data: reserveData, 
+    isLoading: reserveLoading,
+    error: reserveDataError 
+  } = useReadContract({
     address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
     abi: AAVE_DATA_PROVIDER_ABI,
     functionName: 'getUserReserveData',
@@ -77,9 +120,23 @@ export function useAavePositions() {
       refetchInterval: 30_000,
     },
   });
+  
+  // Log USDC reserve data errors
+  if (reserveDataError) {
+    console.error('[useAavePositions] USDC getUserReserveData error:', {
+      error: reserveDataError,
+      dataProvider: CONTRACTS.AAVE_POOL_DATA_PROVIDER,
+      usdcAddress: CONTRACTS.USDC,
+      address,
+    });
+  }
 
   // Step 6: Also check USDC.e in case user has that supplied
-  const { data: reserveDataE, isLoading: reserveLoadingE } = useReadContract({
+  const { 
+    data: reserveDataE, 
+    isLoading: reserveLoadingE,
+    error: reserveDataEError 
+  } = useReadContract({
     address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
     abi: AAVE_DATA_PROVIDER_ABI,
     functionName: 'getUserReserveData',
@@ -89,6 +146,16 @@ export function useAavePositions() {
       refetchInterval: 30_000,
     },
   });
+  
+  // Log USDC.e reserve data errors
+  if (reserveDataEError) {
+    console.error('[useAavePositions] USDC.e getUserReserveData error:', {
+      error: reserveDataEError,
+      dataProvider: CONTRACTS.AAVE_POOL_DATA_PROVIDER,
+      usdcEAddress: CONTRACTS.USDC_E,
+      address,
+    });
+  }
 
   // Step 7: Get WAVAX user reserve data for AVAX supply and borrows
   const { 
@@ -126,6 +193,16 @@ export function useAavePositions() {
       totalDebt: '0',
       totalCollateral: '0',
       usdcSupply: '0',
+      usdcBorrowed: '0',
+      avaxSupply: '0',
+      avaxBorrowed: '0',
+      availableBorrow: '$0.00',
+      usdcSupplyApy: 0,
+      avaxSupplyApy: 0,
+      usdcBorrowApy: 0,
+      avaxBorrowApy: 0,
+      avaxAvailableToBorrow: 0,
+      usdcAvailableToBorrow: 0,
       isLoading: false,
     };
   }
@@ -137,16 +214,48 @@ export function useAavePositions() {
       totalCollateral: '0', 
       usdcSupply: '0', 
       usdcBorrowed: '0',
+      avaxSupply: '0',
+      avaxBorrowed: '0',
+      availableBorrow: '$0.00',
+      usdcSupplyApy: 0,
+      avaxSupplyApy: 0,
+      usdcBorrowApy: 0,
+      avaxBorrowApy: 0,
+      avaxAvailableToBorrow: 0,
+      usdcAvailableToBorrow: 0,
       isLoading: true 
     };
   }
 
   if (error || !rawData) {
+    // Log detailed error information for debugging
+    console.error('[useAavePositions] getUserAccountData failed:', {
+      error,
+      rawData,
+      poolAddress,
+      fallbackPool: CONTRACTS.AAVE_POOL,
+      address,
+      isConnected,
+      enabled: isConnected && !!address && (!!poolAddress || !!CONTRACTS.AAVE_POOL),
+      poolAddressLoading,
+      positionsLoading,
+    });
+    
     return {
       healthFactor: null,
       totalDebt: '0',
       totalCollateral: '0',
       usdcSupply: '0',
+      usdcBorrowed: '0',
+      avaxSupply: '0',
+      avaxBorrowed: '0',
+      availableBorrow: '$0.00',
+      usdcSupplyApy: 0,
+      avaxSupplyApy: 0,
+      usdcBorrowApy: 0,
+      avaxBorrowApy: 0,
+      avaxAvailableToBorrow: 0,
+      usdcAvailableToBorrow: 0,
       isLoading: false,
     };
   }
@@ -349,7 +458,7 @@ export function useAavePositions() {
     });
   }
 
-  return {
+  const result = {
     totalCollateral: totalCollateralBase ? `$${(Number(totalCollateralBase) / 1e8).toFixed(2)}` : '$0.00',
     totalDebt: totalDebtBase ? `$${(Number(totalDebtBase) / 1e8).toFixed(2)}` : '$0.00',
     availableBorrow: availableBorrowsBase ? `$${(Number(availableBorrowsBase) / 1e8).toFixed(2)}` : '$0.00',
@@ -368,4 +477,22 @@ export function useAavePositions() {
     isLoading: poolAddressLoading || positionsLoading || reserveLoading || reserveLoadingE || usdcReserveLoading || avaxReserveLoading || wavaxReserveLoading,
     refetch: refetchWavaxReserveData, // Expose refetch function for manual refresh
   };
+  
+  // Summary log to help debug zero values
+  console.log('[useAavePositions] Final position summary:', {
+    totalCollateral: result.totalCollateral,
+    totalDebt: result.totalDebt,
+    usdcSupply: result.usdcSupply,
+    usdcBorrowed: result.usdcBorrowed,
+    avaxSupply: result.avaxSupply,
+    avaxBorrowed: result.avaxBorrowed,
+    healthFactor: result.healthFactor,
+    rawDataExists: !!rawData,
+    reserveDataExists: !!reserveData,
+    reserveDataEExists: !!reserveDataE,
+    wavaxReserveDataExists: !!wavaxReserveData,
+    isLoading: result.isLoading,
+  });
+  
+  return result;
 }

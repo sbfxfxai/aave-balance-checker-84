@@ -4,7 +4,7 @@ import { CONTRACTS, AAVE_POOL_ABI } from '@/config/contracts';
 
 export function useAaveSupply() {
   const { address, isConnected } = useAccount();
-  const { writeContract, isPending, data: hash } = useWriteContract();
+  const { writeContract, writeContractAsync, isPending, data: hash } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
   // Get current Pool address
@@ -60,7 +60,7 @@ export function useAaveSupply() {
       console.log('Approving USDC for Aave Pool...');
       
       try {
-        const approveHash = await writeContract({
+        const approveHash = await writeContractAsync({
           address: CONTRACTS.USDC as `0x${string}`, // Native USDC for Aave V3
           abi: [{ name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ name: '', type: 'bool' }] }] as const,
           functionName: 'approve',
@@ -112,7 +112,7 @@ export function useAaveSupply() {
     });
     
     try {
-      const supplyHash = await writeContract({
+      const supplyHash = await writeContractAsync({
         address: poolAddress as `0x${string}`,
         abi: AAVE_POOL_ABI,
         functionName: 'supply',
@@ -163,7 +163,7 @@ export function useAaveSupply() {
 
     console.log('Withdrawing USDC from Aave Pool:', { amount, amountInWei });
 
-    const withdrawHash = await writeContract({
+    const withdrawHash = await writeContractAsync({
       address: poolAddress as `0x${string}`,
       abi: AAVE_POOL_ABI,
       functionName: 'withdraw',

@@ -1,4 +1,5 @@
 import { Chain } from 'viem';
+import type { Config } from 'wagmi';
 
 // Get explorer URL for a transaction
 // TODO: Add support for more chains as needed
@@ -19,7 +20,7 @@ export function getExplorerTxLink(chainId: number, txHash: string): string {
 
 // Helper to wait for transaction receipt
 export async function waitForTransactionReceipt(
-  config: any,
+  config: Config,
   hash: `0x${string}`
 ) {
   const { waitForTransactionReceipt } = await import('@wagmi/core');

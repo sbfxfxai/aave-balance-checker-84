@@ -1,7 +1,9 @@
 import { SimpleDashboard } from '@/components/SimpleDashboard';
 import { NetworkGuard } from '@/components/NetworkGuard';
 import { useAccount } from 'wagmi';
-import { TrendingUp } from 'lucide-react';
+import { TrendingUp, Zap } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
 
 function DashboardContent() {
   const { isConnected } = useAccount();
@@ -23,6 +25,12 @@ function DashboardContent() {
                 <p className="text-sm text-muted-foreground">Avalanche C-Chain</p>
               </div>
             </div>
+            <Link to="/stack">
+              <Button variant="outline" className="flex items-center gap-2">
+                <Zap className="h-4 w-4" />
+                Stack App
+              </Button>
+            </Link>
           </div>
         </div>
       </header>

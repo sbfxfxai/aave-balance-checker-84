@@ -1,6 +1,6 @@
-from web3 import Web3
+from web3 import Web3  # type: ignore
 from app.config import RPC_URL, USDC_E
-from eth_defi.token import fetch_erc20_details
+from eth_defi.token import fetch_erc20_details  # type: ignore
 
 # Connect to Avalanche
 w3 = Web3(Web3.HTTPProvider(RPC_URL))

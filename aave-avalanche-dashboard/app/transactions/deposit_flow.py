@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException  # type: ignore
 from app.wallet.auth import validate_session
 from app.aave.deposit import supply_to_aave
 from app.swap.traderjoe import execute_swap

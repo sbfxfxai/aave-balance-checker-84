@@ -1,5 +1,5 @@
-from web3 import Web3
-from eth_defi.chain import install_chain_middleware
+from web3 import Web3  # type: ignore
+from eth_defi.chain import install_chain_middleware  # type: ignore
 from app.config import RPC_URL
 
 # Initialize Web3 with Avalanche RPC

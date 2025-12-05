@@ -1,4 +1,4 @@
-from eth_defi.aave_v3 import fetch_all_reserves
+from eth_defi.aave_v3 import fetch_all_reserves  # type: ignore
 from decimal import Decimal
 from app.config import USDC_E
 

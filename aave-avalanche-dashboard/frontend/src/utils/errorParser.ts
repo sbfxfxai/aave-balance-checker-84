@@ -80,12 +80,14 @@ export function parseError(error: unknown): ParsedError {
     }
 
     // Try to extract revert reason from error data if available
-    if ((error as any)?.data || (error as any)?.reason) {
-      const data = (error as any).data || (error as any).reason;
+    // Type guard for error objects with data/reason properties
+    const errorWithData = error as { data?: unknown; reason?: unknown };
+    if (errorWithData?.data || errorWithData?.reason) {
+      const data = errorWithData.data || errorWithData.reason;
       if (typeof data === 'string') {
         revertReason = data;
-      } else if (data?.message) {
-        revertReason = data.message;
+      } else if (data && typeof data === 'object' && 'message' in data) {
+        revertReason = String((data as { message: unknown }).message);
       }
     }
 

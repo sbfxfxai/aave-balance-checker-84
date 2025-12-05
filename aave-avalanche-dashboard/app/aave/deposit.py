@@ -1,4 +1,4 @@
-from eth_defi.aave_v3.deposit import supply_erc20
+from eth_defi.aave_v3.deposit import supply_erc20  # type: ignore
 from app.config import AAVE_REFERRAL_CODE, AAVE_V3_POOL
 from app.wallet.provider import get_web3_provider
 

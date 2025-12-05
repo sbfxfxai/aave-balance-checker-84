@@ -1,4 +1,4 @@
-from eth_defi.aave_v3 import AaveV3Pool, fetch_all_reserves
+from eth_defi.aave_v3 import AaveV3Pool, fetch_all_reserves  # type: ignore
 from app.config import AAVE_V3_POOL
 from app.wallet.provider import get_web3_provider
 

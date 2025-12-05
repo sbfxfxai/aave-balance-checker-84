@@ -944,7 +944,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
               await new Promise(resolve => setTimeout(resolve, 2000));
               
               // Explicitly refetch WAVAX reserve data to get updated debt
-              if (positions.refetch) {
+              if ('refetch' in positions && positions.refetch) {
                 await positions.refetch();
               }
               
@@ -1024,7 +1024,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
               }
               
               // Explicitly refetch positions
-              if (positions.refetch) {
+              if ('refetch' in positions && positions.refetch) {
                 await positions.refetch();
               }
               
@@ -1266,7 +1266,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           console.log('Repay parameters:', {
             debt: currentDebtFormatted,
             repayAmount: 'type(uint256).max (full repayment)',
-            wavaxBalance: wavaxBalance.formatted,
+            wavaxBalance: wavaxBalance?.formatted || '0',
             requestedAmount: amount,
           });
           
@@ -1343,7 +1343,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
               await refetchWavaxBalance();
               
               // Explicitly refetch WAVAX reserve data to get updated debt
-              if (positions.refetch) {
+              if ('refetch' in positions && positions.refetch) {
                 await positions.refetch();
               }
               
@@ -1605,7 +1605,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
               min="0"
               max={action === 'supply' && usdcBalance ? usdcBalance.formatted : undefined}
             />
-            {action === 'supply' && amount && usdcBalance && usdcBalance.value && (() => {
+            {action === 'supply' && amount && usdcBalance && usdcBalance.value > 0n && (() => {
               try {
                 const amountWei = parseUnits(amount, 6);
                 const balanceWei = BigInt(usdcBalance.value);

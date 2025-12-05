@@ -1,7 +1,7 @@
-import pytest
+import pytest  # type: ignore
 from app.aave.positions import get_user_summary
 from app.config import USDC_E
-from web3 import Web3
+from web3 import Web3  # type: ignore
 
 # Mock Web3 provider
 @pytest.fixture
@@ -10,7 +10,7 @@ def mock_web3(mocker):
     return web3
 
 # Test get_user_summary
-def test_get_user_summary(mock_web3):
+def test_get_user_summary(mock_web3, mocker):
     # Mock reserves data
     mock_reserve = mocker.MagicMock()
     mock_reserve.get_deposit_balance.return_value = 1000000  # 1 USDC

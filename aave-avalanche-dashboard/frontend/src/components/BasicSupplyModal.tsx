@@ -142,7 +142,7 @@ export function BasicSupplyModal({ isOpen, onClose }: BasicSupplyModalProps) {
       setIsProcessing(false);
       onClose();
     }
-  }, [isConfirmed, hash]);
+  }, [isConfirmed, hash, amount, onClose]);
 
   if (!isOpen) return null;
 

@@ -1,5 +1,5 @@
 from app.wallet.connect import init_web3
-from eth_defi.gas import apply_gas_estimation_override
+from eth_defi.gas import apply_gas_estimation_override  # type: ignore
 
 # Get Web3 provider with middleware
 def get_web3_provider():

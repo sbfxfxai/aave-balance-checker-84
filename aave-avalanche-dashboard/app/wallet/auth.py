@@ -1,5 +1,5 @@
 import time
-from web3 import Web3
+from web3 import Web3  # type: ignore
 
 # Session management for authenticated users
 sessions = {}

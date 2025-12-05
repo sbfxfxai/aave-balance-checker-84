@@ -85,7 +85,7 @@ export class BigDecimal {
     const otherCoeff = other.alignCoefficient(maxExp);
     
     let resultCoeff = (BigInt(thisCoeff) + BigInt(otherCoeff)).toString();
-    let resultExp = maxExp;
+    const resultExp = maxExp;
     
     // Normalize result
     while (resultCoeff.length > 1 && resultCoeff[0] === '0') {
@@ -265,7 +265,7 @@ export class BigDecimal {
   toDisplayString(precision: number, options: DisplayOptions = {}): string {
     const { rounding = RoundingMode.HalfUp, minFractionDigits = 0, trimTrailingZeros = false } = options;
     
-    let rounded = this.round(precision, rounding);
+    const rounded = this.round(precision, rounding);
     let str = rounded.toString();
     
     // Handle minimum fraction digits

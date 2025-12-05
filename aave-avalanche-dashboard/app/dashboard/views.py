@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException  # type: ignore
 from app.wallet.auth import validate_session
 from app.aave.positions import get_user_summary
 from app.wallet.provider import get_web3_provider

@@ -106,19 +106,35 @@ const SidebarProvider = React.forwardRef<
     [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
   );
 
+  const divRef = React.useRef<HTMLDivElement>(null);
+  const mergedRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      (divRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+      if (typeof ref === "function") {
+        ref(node);
+      } else if (ref && typeof ref === "object" && "current" in ref) {
+        (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
+      }
+    },
+    [ref],
+  );
+
+  React.useEffect(() => {
+    if (divRef.current) {
+      divRef.current.style.setProperty("--sidebar-width", SIDEBAR_WIDTH);
+      divRef.current.style.setProperty("--sidebar-width-icon", SIDEBAR_WIDTH_ICON);
+      if (style) {
+        Object.assign(divRef.current.style, style);
+      }
+    }
+  }, [style]);
+
   return (
     <SidebarContext.Provider value={contextValue}>
       <TooltipProvider delayDuration={0}>
         <div
-          style={
-            {
-              "--sidebar-width": SIDEBAR_WIDTH,
-              "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
-              ...style,
-            } as React.CSSProperties
-          }
           className={cn("group/sidebar-wrapper flex min-h-svh w-full has-[[data-variant=inset]]:bg-sidebar", className)}
-          ref={ref}
+          ref={mergedRef}
           {...props}
         >
           {children}
@@ -138,6 +154,13 @@ const Sidebar = React.forwardRef<
   }
 >(({ side = "left", variant = "sidebar", collapsible = "offcanvas", className, children, ...props }, ref) => {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
+  const sheetContentRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (sheetContentRef.current) {
+      sheetContentRef.current.style.setProperty("--sidebar-width", SIDEBAR_WIDTH_MOBILE);
+    }
+  }, []);
 
   if (collapsible === "none") {
     return (
@@ -155,14 +178,10 @@ const Sidebar = React.forwardRef<
     return (
       <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
         <SheetContent
+          ref={sheetContentRef}
           data-sidebar="sidebar"
           data-mobile="true"
           className="w-[--sidebar-width] bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
-          style={
-            {
-              "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
-            } as React.CSSProperties
-          }
           side={side}
         >
           <div className="flex h-full w-full flex-col">{children}</div>
@@ -537,6 +556,14 @@ const SidebarMenuSkeleton = React.forwardRef<
     return `${Math.floor(Math.random() * 40) + 50}%`;
   }, []);
 
+  const skeletonRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (skeletonRef.current) {
+      skeletonRef.current.style.setProperty("--skeleton-width", width);
+    }
+  }, [width]);
+
   return (
     <div
       ref={ref}
@@ -545,15 +572,12 @@ const SidebarMenuSkeleton = React.forwardRef<
       {...props}
     >
       {showIcon && <Skeleton className="size-4 rounded-md" data-sidebar="menu-skeleton-icon" />}
-      <Skeleton
-        className="h-4 max-w-[--skeleton-width] flex-1"
-        data-sidebar="menu-skeleton-text"
-        style={
-          {
-            "--skeleton-width": width,
-          } as React.CSSProperties
-        }
-      />
+      <div ref={skeletonRef} className="h-4 max-w-[--skeleton-width] flex-1">
+        <Skeleton
+          className="h-full w-full"
+          data-sidebar="menu-skeleton-text"
+        />
+      </div>
     </div>
   );
 });

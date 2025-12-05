@@ -1,4 +1,4 @@
-from eth_defi.uniswap_v2 import swap_with_uniswap_v2
+from eth_defi.uniswap_v2 import swap_with_uniswap_v2  # type: ignore
 from app.config import TRADERJOE_ROUTER
 from app.wallet.provider import get_web3_provider
 
