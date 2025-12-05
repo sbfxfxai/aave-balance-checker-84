@@ -45,7 +45,14 @@
       ]
     },
     {
-      "source": "/(.*\\.(js|css|woff2?|png|jpg|jpeg|svg|ico))",
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "header",
+          "key": "content-type",
+          "value": "(application/javascript|text/css|image/.*|font/.*)"
+        }
+      ],
       "headers": [
         {
           "key": "Cache-Control",
