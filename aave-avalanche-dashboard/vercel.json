@@ -53,5 +53,26 @@
         }
       ]
     }
-  ]
+  ],
+  "rewrites": [
+    {
+      "source": "/api/square/:path*",
+      "destination": "/api/square/index"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/square/(.*)",
+      "dest": "/api/square/index"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "frontend/dist/$1"
+    }
+  ],
+  "functions": {
+    "api/square/index.py": {
+      "runtime": "python3.12"
+    }
+  }
 }
