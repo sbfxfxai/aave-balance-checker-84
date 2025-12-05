@@ -533,3 +533,39 @@ def handle_test(cors_headers):
 
 # Handler is exported directly - Vercel will call handler(event, context)
 # The handler function already has comprehensive error handling built-in
+
+# Ensure handler is always callable - wrap in safety check
+_original_handler = handler
+
+def handler(event, context):
+    """
+    Wrapper handler with top-level error catching
+    This ensures we always return a valid response even if something fails at module level
+    """
+    try:
+        return _original_handler(event, context)
+    except Exception as e:
+        # Last resort error handler - catches any error we missed
+        print(f"[Square API] CRITICAL: Top-level handler error: {e}")
+        traceback.print_exc()
+        try:
+            return {
+                "statusCode": 500,
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+                "body": json.dumps({
+                    "success": False,
+                    "error": "Internal server error",
+                    "message": str(e),
+                    "type": type(e).__name__
+                })
+            }
+        except:
+            # If even JSON encoding fails, return minimal response
+            return {
+                "statusCode": 500,
+                "headers": {"Content-Type": "application/json"},
+                "body": '{"success":false,"error":"Internal server error"}'
+            }
