@@ -6,7 +6,7 @@
       "use": "@vercel/python",
       "config": {
         "maxLambdaSize": "15mb",
-        "runtime": "python3.10"
+        "runtime": "python3.12"
       }
     },
     {
@@ -63,6 +63,10 @@
     }
   ],
   "rewrites": [
+    {
+      "source": "/api/square/test",
+      "destination": "/api/square/test-minimal"
+    },
     {
       "source": "/api/square/(.*)",
       "destination": "/api/square/index"
