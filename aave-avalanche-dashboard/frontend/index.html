@@ -7,6 +7,12 @@
     <meta name="description" content="Lovable Generated Project" />
     <meta name="author" content="Lovable" />
 
+    <!-- Preconnect to critical origins for faster API requests -->
+    <link rel="preconnect" href="https://api.avax.network" crossorigin />
+    <link rel="preconnect" href="https://pulse.walletconnect.org" crossorigin />
+    <link rel="preconnect" href="https://api.web3modal.org" crossorigin />
+    <link rel="dns-prefetch" href="https://web.squarecdn.com" />
+
     <!-- Content Security Policy is set in vercel.json headers -->
 
     <meta property="og:title" content="5984adeb-813b-4511-b385-6cbb43806d8f" />
@@ -21,14 +27,7 @@
 
   <body>
     <div id="root"></div>
-    <!-- Square Web Payments SDK - Production -->
-    <script 
-      type="text/javascript" 
-      src="https://web.squarecdn.com/v1/square.js"
-      crossorigin="anonymous"
-      onload="console.log('Square SDK loaded successfully')"
-      onerror="console.error('Failed to load Square SDK')"
-    ></script>
+    <!-- Square Web Payments SDK loaded dynamically when needed (not render-blocking) -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

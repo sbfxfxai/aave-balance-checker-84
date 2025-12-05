@@ -48,12 +48,50 @@ export const SquarePaymentForm: React.FC<SquarePaymentFormProps> = ({
     let retryCount = 0;
     const maxRetries = 5;
 
+    // Dynamically load Square.js script (non-blocking)
+    const loadSquareSDK = (): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        // Check if already loaded
+        if (window.Square && typeof window.Square.payments === 'function') {
+          resolve();
+          return;
+        }
+
+        // Check if script is already being loaded
+        const existingScript = document.querySelector('script[src*="square.js"]');
+        if (existingScript) {
+          existingScript.addEventListener('load', () => resolve());
+          existingScript.addEventListener('error', () => reject(new Error('Failed to load Square SDK')));
+          return;
+        }
+
+        // Load script dynamically
+        const script = document.createElement('script');
+        script.src = 'https://web.squarecdn.com/v1/square.js';
+        script.crossOrigin = 'anonymous';
+        script.async = true;
+        script.defer = true;
+        script.onload = () => {
+          if (window.Square && typeof window.Square.payments === 'function') {
+            resolve();
+          } else {
+            reject(new Error('Square SDK loaded but not available'));
+          }
+        };
+        script.onerror = () => reject(new Error('Failed to load Square SDK'));
+        document.head.appendChild(script);
+      });
+    };
 
     const initializeSquare = async () => {
       try {
         console.log('[SquarePaymentForm] Starting initialization...');
 
         if (!isMounted) return;
+
+        // Load Square SDK dynamically (non-blocking)
+        await loadSquareSDK();
+        console.log('[SquarePaymentForm] Square SDK loaded');
 
         const config = getSquareConfig();
         console.log('[SquarePaymentForm] Config:', {
@@ -73,9 +111,9 @@ export const SquarePaymentForm: React.FC<SquarePaymentFormProps> = ({
 
         console.log('[SquarePaymentForm] Initializing Square Payments Web SDK...');
         
-        // Check if Square SDK is loaded (from script tag)
-        if (!window.Square || !window.Square.payments) {
-          throw new Error('Square SDK not loaded. Please ensure the Square script tag is present in index.html');
+        // Check if Square SDK is loaded
+        if (!window.Square || typeof window.Square.payments !== 'function') {
+          throw new Error('Square SDK not available after loading');
         }
         
         // Initialize Square Payments SDK using script tag version
