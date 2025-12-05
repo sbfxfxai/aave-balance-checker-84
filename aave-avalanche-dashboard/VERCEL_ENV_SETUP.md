@@ -7,10 +7,14 @@ Set these in Vercel Dashboard → Settings → Environment Variables:
 
 ```
 VITE_SQUARE_APPLICATION_ID=sq0idp-r5ABvzQQx9LYRH-JHO_xCw
-VITE_SQUARE_LOCATION_ID=6PA5SZ9GE68E0
+VITE_SQUARE_LOCATION_ID=LA09STPQW6HC0
 VITE_SQUARE_ENVIRONMENT=production
 VITE_SQUARE_API_URL=https://connect.squareup.com
 ```
+
+**Available Locations:**
+- `LA09STPQW6HC0` - Sakage Express (currently in use)
+- `6PA5SZ9GE68E0` - Sakage Columbia (Main)
 
 **Note:** `VITE_SQUARE_ACCESS_TOKEN` should NOT be set in frontend (security risk - tokens should only be in backend)
 
@@ -19,10 +23,12 @@ Set these in Vercel Dashboard → Settings → Environment Variables:
 
 ```
 SQUARE_ACCESS_TOKEN=EAAAlygTphTRCrNzZ8GoYXNPWp1ipsp9kp3qArPdqAb9tReNEgCw8TNDr1rvAC-M
-SQUARE_LOCATION_ID=6PA5SZ9GE68E0
+SQUARE_LOCATION_ID=LA09STPQW6HC0
 SQUARE_API_BASE_URL=https://connect.squareup.com
 SQUARE_ENVIRONMENT=production
 ```
+
+**Important:** Backend `SQUARE_LOCATION_ID` must match frontend `VITE_SQUARE_LOCATION_ID`
 
 ## How to Set in Vercel
 
