@@ -15,6 +15,7 @@ try:
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse
     from pydantic import BaseModel, Field
+    from typing import Optional
 
     print("[Square API] Dependencies imported successfully")
 
@@ -33,9 +34,10 @@ try:
     # Request model
     class PaymentRequest(BaseModel):
         source_id: str = Field(..., description="Square payment token")
-        amount: int = Field(..., description="Amount in cents")
+        amount: float = Field(..., description="Amount in dollars (will be converted to cents)")
         currency: str = Field(default="USD")
         idempotency_key: str = Field(..., description="Unique request ID")
+        risk_profile: Optional[str] = Field(None, description="Risk profile for the payment")
 
     # Logging middleware
     @app.middleware("http")
@@ -73,7 +75,29 @@ try:
     async def process_payment(payment: PaymentRequest):
         """Process Square payment"""
         try:
-            print(f"[Square API] Processing payment: {payment.amount} cents")
+            # Convert dollars to cents (Square API requires integer cents)
+            amount_cents = int(payment.amount * 100)
+            
+            # Validate amount
+            if amount_cents <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "INVALID_AMOUNT",
+                        "message": "Payment amount must be greater than zero"
+                    }
+                )
+            
+            if amount_cents > 10000000:  # $100,000 limit
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "AMOUNT_TOO_LARGE",
+                        "message": "Payment amount exceeds maximum limit of $100,000"
+                    }
+                )
+            
+            print(f"[Square API] Processing payment: ${payment.amount} ({amount_cents} cents)")
 
             # Get environment variables
             access_token = os.getenv("SQUARE_ACCESS_TOKEN")
@@ -142,18 +166,23 @@ try:
             # Create payment
             try:
                 print(f"[Square API] Calling Square Payments API...")
-                result = client.payments.create_payment(
-                    body={
-                        "source_id": payment.source_id,
-                        "idempotency_key": payment.idempotency_key,
-                        "amount_money": {
-                            "amount": payment.amount,
-                            "currency": payment.currency
-                        },
-                        "location_id": location_id,
-                        "autocomplete": True
-                    }
-                )
+                # Build payment body
+                payment_body = {
+                    "source_id": payment.source_id,
+                    "idempotency_key": payment.idempotency_key,
+                    "amount_money": {
+                        "amount": amount_cents,  # Use cents, not dollars
+                        "currency": payment.currency
+                    },
+                    "location_id": location_id,
+                    "autocomplete": True
+                }
+                
+                # Add note if risk profile provided
+                if payment.risk_profile:
+                    payment_body["note"] = f"Aave deposit - {payment.risk_profile} strategy"
+                
+                result = client.payments.create_payment(body=payment_body)
 
                 print(f"[Square API] Square API responded")
 

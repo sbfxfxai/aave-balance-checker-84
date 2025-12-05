@@ -1,0 +1,6 @@
+# Minimal requirements for Square API serverless function
+fastapi>=0.104.0
+mangum>=0.17.0
+pydantic>=2.0.0
+squareup>=32.0.0.20240102
+
