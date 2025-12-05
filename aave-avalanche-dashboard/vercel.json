@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/square/index.py",
+      "src": "api/**/*.py",
       "use": "@vercel/python",
       "config": {
         "maxLambdaSize": "15mb",
@@ -18,6 +18,12 @@
       }
     }
   ],
+  "functions": {
+    "api/square/*.py": {
+      "memory": 1024,
+      "maxDuration": 30
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",
@@ -63,10 +69,6 @@
     }
   ],
   "rewrites": [
-    {
-      "source": "/api/square/test",
-      "destination": "/api/square/test-minimal"
-    },
     {
       "source": "/api/square/(.*)",
       "destination": "/api/square/index"

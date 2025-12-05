@@ -1,6 +1,6 @@
 """
-Standalone Square API handler for Vercel serverless functions
-No dependencies on app module - all code embedded here
+Square payment processing endpoint for Vercel serverless functions
+Handles POST /api/square/process-payment requests
 """
 import os
 import json
@@ -9,7 +9,6 @@ import traceback
 import time
 import random
 from decimal import Decimal, InvalidOperation
-import re
 
 # Initialize error tracking
 _INIT_ERROR = None
@@ -30,19 +29,15 @@ try:
 except ImportError as e:
     _INIT_ERROR = f"requests library not available: {e}"
     print(f"[Square API] WARNING: {_INIT_ERROR}")
-    print("[Square API] Make sure requirements.txt includes 'requests>=2.31.0'")
 except Exception as e:
     _INIT_ERROR = f"Unexpected error importing requests: {e}"
     print(f"[Square API] ERROR: {_INIT_ERROR}")
 
-# Square API Configuration - read at runtime for testability
+# Square API Configuration
 def get_square_config():
     """Get Square configuration from environment variables"""
     environment = os.getenv("SQUARE_ENVIRONMENT", "production")
     
-    # Use official Square API endpoints per documentation
-    # Production: https://connect.squareup.com for payments
-    # Sandbox: https://connect.squareupsandbox.com
     if environment == "sandbox":
         default_api_base_url = "https://connect.squareupsandbox.com"
     else:
@@ -53,207 +48,6 @@ def get_square_config():
         "location_id": os.getenv("SQUARE_LOCATION_ID", ""),
         "api_base_url": os.getenv("SQUARE_API_BASE_URL", default_api_base_url),
         "environment": environment,
-    }
-
-
-def _handler_impl(event, context):
-    """
-    Internal handler implementation
-    Vercel Python serverless function handler
-    Handles Square API endpoints: /health and /process-payment
-    
-    Args:
-        event: Request event dictionary from Vercel
-        context: Lambda context (not used by Vercel but required for signature)
-    """
-    # CORS headers - define early so they're always available
-    cors_headers = {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    }
-    
-    # Handle None or invalid event
-    if event is None:
-        event = {}
-    if not isinstance(event, dict):
-        try:
-            # Try to convert to dict if possible
-            event = dict(event) if hasattr(event, '__dict__') else {}
-        except:
-            event = {}
-    
-    # Check for initialization errors
-    if _INIT_ERROR:
-        print(f"[Square API] Initialization error detected: {_INIT_ERROR}")
-        return {
-            "statusCode": 500,
-            "headers": cors_headers,
-            "body": json.dumps({
-                "success": False,
-                "error": "Server configuration error",
-                "message": _INIT_ERROR
-            })
-        }
-    
-    try:
-        
-        # Parse request
-        method = event.get("httpMethod") or event.get("method") or event.get("requestMethod") or "GET"
-        path = event.get("path") or event.get("url") or event.get("rawPath") or event.get("pathname") or ""
-        
-        # Vercel may pass the path in different formats
-        if not path:
-            # Try to get from request URL or query
-            request_context = event.get("requestContext", {})
-            if isinstance(request_context, dict):
-                http_info = request_context.get("http", {})
-                if isinstance(http_info, dict):
-                    path = http_info.get("path", "")
-        
-        # Also check query string parameters for path
-        if not path:
-            query_params = event.get("queryStringParameters") or {}
-            if isinstance(query_params, dict):
-                path = query_params.get("path", "")
-        
-        # Check headers for path info
-        if not path and isinstance(headers, dict):
-            # Vercel might pass path in headers
-            path = headers.get("x-path") or headers.get("x-vercel-path") or headers.get("x-invoke-path") or ""
-        
-        # Log for debugging (limit output to avoid log size issues)
-        print(f"[Square API] Request received - method: {method}, path: {path}")
-        print(f"[Square API] Event keys: {list(event.keys())[:10]}")  # Limit to first 10 keys
-        print(f"[Square API] Full event structure: {json.dumps({k: str(type(v).__name__) for k, v in list(event.items())[:20]})}")
-        
-        headers = event.get("headers", {})
-        if not isinstance(headers, dict):
-            headers = {}
-        
-        body = event.get("body", "") or ""
-        
-        # Parse body if present
-        request_data = {}
-        if body:
-            try:
-                if isinstance(body, str):
-                    request_data = json.loads(body)
-                else:
-                    request_data = body
-            except (json.JSONDecodeError, ValueError) as e:
-                print(f"[Square API] Body parse error: {e}")
-                request_data = {}
-        
-        # Handle OPTIONS (CORS preflight)
-        if method == "OPTIONS":
-            return {
-                "statusCode": 200,
-                "headers": cors_headers,
-                "body": ""
-            }
-        
-        # Route handling - normalize path first and check multiple formats
-        normalized_path = path.rstrip("/") if path else ""
-        
-        # Extract endpoint from path (handle both /api/square/process-payment and /process-payment)
-        endpoint = None
-        if normalized_path:
-            # Remove /api/square prefix if present
-            if normalized_path.startswith("/api/square/"):
-                endpoint = normalized_path[len("/api/square/"):]
-            elif normalized_path.startswith("/api/square"):
-                endpoint = normalized_path[len("/api/square"):].lstrip("/")
-            else:
-                endpoint = normalized_path.lstrip("/")
-        
-        print(f"[Square API] Extracted endpoint: {endpoint}, normalized_path: {normalized_path}")
-        
-        # Route based on endpoint
-        if endpoint == "health" or endpoint == "" or normalized_path.endswith("/health") or normalized_path == "/api/square/health" or normalized_path == "/health":
-            return handle_health(cors_headers)
-        
-        elif endpoint == "debug" or normalized_path.endswith("/debug") or normalized_path == "/api/square/debug" or normalized_path == "/debug":
-            return handle_debug(request_data, cors_headers, method)
-        
-        elif endpoint == "test" or normalized_path.endswith("/test") or normalized_path == "/api/square/test" or normalized_path == "/test":
-            return handle_test(cors_headers)
-        
-        elif endpoint == "process-payment" or normalized_path.endswith("/process-payment") or normalized_path == "/api/square/process-payment" or normalized_path == "/process-payment":
-            if method != "POST":
-                return create_error_response(
-                    405,
-                    "Method not allowed. Use POST for payment processing.",
-                    "METHOD_NOT_ALLOWED",
-                    cors_headers
-                )
-            return handle_process_payment(request_data, cors_headers)
-        
-        else:
-            # Return detailed 404 with available endpoints
-            return create_error_response(
-                404,
-                f"Endpoint not found: {path} (endpoint: {endpoint})",
-                "NOT_FOUND",
-                cors_headers
-            )
-    
-    except Exception as e:
-        error_type = type(e).__name__
-        error_msg = str(e)
-        
-        print(f"[Square API] Handler error: {error_type}: {error_msg}")
-        try:
-            traceback.print_exc()
-        except Exception:
-            print("[Square API] Could not print traceback")
-        
-        # Ensure we always return valid JSON
-        try:
-            error_response = {
-                "success": False,
-                "error": "Internal server error",
-                "message": error_msg,
-                "type": error_type
-            }
-            return {
-                "statusCode": 500,
-                "headers": cors_headers,
-                "body": json.dumps(error_response)
-            }
-        except Exception as json_error:
-            # Last resort - return minimal JSON
-            print(f"[Square API] Failed to create error response: {json_error}")
-            return {
-                "statusCode": 500,
-                "headers": {"Content-Type": "application/json"},
-                "body": '{"success":false,"error":"Internal server error"}'
-            }
-
-
-def handle_health(cors_headers):
-    """Health check endpoint"""
-    config = get_square_config()
-    is_production = "squareup.com" in config["api_base_url"] and "sandbox" not in config["api_base_url"]
-    
-    return {
-        "statusCode": 200,
-        "headers": cors_headers,
-        "body": json.dumps({
-            "status": "healthy",
-            "service": "square-api",
-            "python_version": sys.version.split()[0],
-            "environment": os.getenv("VERCEL_ENV", "unknown"),
-            "credentials_configured": bool(config["access_token"] and config["location_id"]),
-            "has_access_token": bool(config["access_token"]),
-            "has_location_id": bool(config["location_id"]),
-            "square_api_base_url": config["api_base_url"],
-            "square_environment": config["environment"],
-            "is_production": is_production,
-            "production_endpoint": f"{config['api_base_url']}/v2/payments",
-            "access_token_preview": config["access_token"][:10] + "..." if config["access_token"] else "NOT SET",
-        })
     }
 
 
@@ -445,18 +239,16 @@ def handle_process_payment(request_data, cors_headers):
         print(f"[Square] Location ID: {square_location_id}")
         print(f"[Square] Access Token (first 10 chars): {square_access_token[:10] if square_access_token else 'NOT SET'}...")
         
-        # Call Square Payments API following official documentation pattern
-        # Endpoint: https://connect.squareup.com/v2/payments (production)
-        #          https://connect.squareupsandbox.com/v2/payments (sandbox)
+        # Call Square Payments API
         response = requests.post(
             api_url,
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {square_access_token}",
-                "Square-Version": os.getenv("SQUARE_API_VERSION", "2024-10-16"),  # Configurable API version
+                "Square-Version": os.getenv("SQUARE_API_VERSION", "2024-10-16"),
             },
             json=square_payload,
-            timeout=30,
+            timeout=REQUEST_TIMEOUT,
         )
         
         print(f"[Square] Square API response status: {response.status_code}")
@@ -490,8 +282,7 @@ def handle_process_payment(request_data, cors_headers):
                     cors_headers
                 )
         
-        # Parse successful response following Square API documentation
-        # Response format: { "payment": { "id": "...", "status": "COMPLETED", ... } }
+        # Parse successful response
         try:
             data = response.json()
         except Exception as e:
@@ -510,7 +301,7 @@ def handle_process_payment(request_data, cors_headers):
         
         print(f"[Square] Payment processed - ID: {payment_id}, Status: {payment_status}")
         
-        # Return success response matching Square API documentation
+        # Return success response
         return {
             "statusCode": 200,
             "headers": cors_headers,
@@ -560,112 +351,90 @@ def handle_process_payment(request_data, cors_headers):
             )
 
 
-def handle_debug(request_data, cors_headers, method):
-    """Debug endpoint to check environment variables and function execution"""
-    try:
-        config = get_square_config()
-        
-        debug_info = {
-            "status": "ok",
-            "message": "Debug endpoint working",
-            "timestamp": time.time(),
-            "method": method,
-            "body_received": request_data,
-            "environment": {
-                "python_version": sys.version.split()[0],
-                "vercel_env": os.getenv("VERCEL_ENV", "unknown"),
-                "has_access_token": bool(config["access_token"]),
-                "has_location_id": bool(config["location_id"]),
-                "access_token_length": len(config["access_token"]) if config["access_token"] else 0,
-                "location_id": config["location_id"],
-                "square_environment": config["environment"],
-                "api_base_url": config["api_base_url"],
-                "requests_available": REQUESTS_AVAILABLE,
-                "init_error": _INIT_ERROR,
-            },
-            "access_token_preview": config["access_token"][:10] + "..." if config["access_token"] else "NOT SET",
-        }
-        
-        return {
-            "statusCode": 200,
-            "headers": cors_headers,
-            "body": json.dumps(debug_info, indent=2)
-        }
-    except Exception as e:
-        print(f"[Debug] Error: {e}")
-        traceback.print_exc()
-        return {
-            "statusCode": 500,
-            "headers": cors_headers,
-            "body": json.dumps({
-                "error": "Debug endpoint error",
-                "message": str(e),
-                "type": type(e).__name__
-            })
-        }
-
-
-def handle_test(cors_headers):
-    """Simple test endpoint"""
-    try:
-        return {
-            "statusCode": 200,
-            "headers": cors_headers,
-            "body": json.dumps({
-                "status": "ok",
-                "message": "Test endpoint working",
-                "timestamp": time.time(),
-                "python_version": sys.version.split()[0],
-                "has_square_token": bool(os.getenv("SQUARE_ACCESS_TOKEN")),
-                "has_square_location": bool(os.getenv("SQUARE_LOCATION_ID")),
-            })
-        }
-    except Exception as e:
-        return {
-            "statusCode": 500,
-            "headers": cors_headers,
-            "body": json.dumps({
-                "error": "Test endpoint error",
-                "message": str(e)
-            })
-        }
-
-
-# Handler is exported directly - Vercel will call handler(event, context)
-# The handler function already has comprehensive error handling built-in
-
 def handler(event, context):
     """
-    Top-level handler wrapper with error catching
-    This ensures we always return a valid response even if something fails at module level
-    
-    Args:
-        event: Request event dictionary from Vercel
-        context: Lambda context (not used by Vercel but required for signature)
-    
-    Returns:
-        dict: Vercel response object with statusCode, headers, and body
+    Vercel Python serverless function handler for /api/square/process-payment
     """
-    try:
-        return _handler_impl(event, context)
-    except Exception as e:
-        # Last resort error handler - catches any error we missed
-        print(f"[Square API] CRITICAL: Top-level handler error: {e}")
-        traceback.print_exc()
+    # CORS headers
+    cors_headers = {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    }
+    
+    # Handle None or invalid event
+    if event is None:
+        event = {}
+    if not isinstance(event, dict):
         try:
-            return create_error_response(
-                500,
-                f"Internal server error: {str(e)}",
-                "CRITICAL_ERROR",
-                {
-                    "Content-Type": "application/json",
-                    "Access-Control-Allow-Origin": "*",
-                }
-            )
+            event = dict(event) if hasattr(event, '__dict__') else {}
         except:
-            # If even JSON encoding fails, return minimal response
+            event = {}
+    
+    # Check for initialization errors
+    if _INIT_ERROR:
+        print(f"[Square API] Initialization error detected: {_INIT_ERROR}")
+        return create_error_response(
+            500,
+            "Server configuration error",
+            "INIT_ERROR",
+            cors_headers
+        )
+    
+    try:
+        # Parse request method
+        method = event.get("httpMethod") or event.get("method") or event.get("requestMethod") or "GET"
+        
+        # Handle OPTIONS (CORS preflight)
+        if method == "OPTIONS":
             return {
-                "statusCode": 500,
-                "headers": {"Content-Type": "application/json"},
-                "body": '{"success":false,"error":{"message":"Internal server error","code":"CRITICAL_ERROR"}}'
+                "statusCode": 200,
+                "headers": cors_headers,
+                "body": ""
             }
+        
+        # Only allow POST
+        if method != "POST":
+            return create_error_response(
+                405,
+                "Method not allowed. Use POST for payment processing.",
+                "METHOD_NOT_ALLOWED",
+                cors_headers
+            )
+        
+        # Parse body
+        body = event.get("body", "") or ""
+        request_data = {}
+        if body:
+            try:
+                if isinstance(body, str):
+                    request_data = json.loads(body)
+                else:
+                    request_data = body
+            except (json.JSONDecodeError, ValueError) as e:
+                print(f"[Square API] Body parse error: {e}")
+                return create_error_response(
+                    400,
+                    f"Invalid JSON in request body: {str(e)}",
+                    "INVALID_JSON",
+                    cors_headers
+                )
+        
+        # Process payment
+        return handle_process_payment(request_data, cors_headers)
+    
+    except Exception as e:
+        error_type = type(e).__name__
+        error_msg = str(e)
+        
+        print(f"[Square API] Handler error: {error_type}: {error_msg}")
+        traceback.print_exc()
+        
+        return create_error_response(
+            500,
+            f"Internal server error: {error_msg}",
+            "HANDLER_ERROR",
+            cors_headers
+        )
+
