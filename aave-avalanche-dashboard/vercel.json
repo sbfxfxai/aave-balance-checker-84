@@ -62,14 +62,10 @@
       ]
     }
   ],
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/square/(.*)",
-      "dest": "/api/square/index.py"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/frontend/dist/$1"
+      "source": "/api/square/(.*)",
+      "destination": "/api/square/index"
     }
   ]
 }
