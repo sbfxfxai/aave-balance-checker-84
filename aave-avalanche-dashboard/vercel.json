@@ -54,16 +54,10 @@
       ]
     }
   ],
-  "rewrites": [
-    {
-      "source": "/api/square/:path*",
-      "destination": "/api/square/index"
-    }
-  ],
   "routes": [
     {
       "src": "/api/square/(.*)",
-      "dest": "/api/square/index"
+      "dest": "/api/square/index.py"
     },
     {
       "src": "/(.*)",
