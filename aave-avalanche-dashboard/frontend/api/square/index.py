@@ -30,21 +30,43 @@ def handler(event, context):
     Handles Square API endpoints: /health and /process-payment
     """
     try:
-        # Parse request
-        method = event.get("httpMethod", event.get("method", "GET"))
-        path = event.get("path", event.get("url", ""))
-        # Vercel may pass the path in different formats
+        # Log full event for debugging
+        print(f"[Square API] Handler called")
+        print(f"[Square API] Event type: {type(event)}")
+        print(f"[Square API] Event keys: {list(event.keys()) if isinstance(event, dict) else 'Not a dict'}")
+        
+        # Vercel Python functions receive event as dict with specific structure
+        # Parse request method
+        method = event.get("httpMethod") or event.get("method") or event.get("requestMethod") or "GET"
+        
+        # Parse path - Vercel passes path in different ways
+        path = event.get("path") or event.get("url") or event.get("rawPath") or ""
+        
+        # If path is empty, try to get from requestContext
         if not path:
-            # Try to get from request URL or query
-            path = event.get("rawPath", event.get("requestContext", {}).get("http", {}).get("path", ""))
+            request_context = event.get("requestContext", {})
+            if isinstance(request_context, dict):
+                http_info = request_context.get("http", {})
+                path = http_info.get("path", "")
+        
+        # If still empty, try to get from query string
+        if not path:
+            query_string = event.get("queryStringParameters") or {}
+            if isinstance(query_string, dict):
+                path = query_string.get("path", "")
         
         # Log for debugging
-        print(f"[Square API] Request received - method: {method}, path: {path}")
-        print(f"[Square API] Event keys: {list(event.keys())}")
-        print(f"[Square API] Full event: {json.dumps(event, default=str)[:500]}")
+        print(f"[Square API] Parsed - method: {method}, path: {path}")
         
-        headers = event.get("headers", {})
-        body = event.get("body", "")
+        headers = event.get("headers", {}) or {}
+        if isinstance(headers, str):
+            # Headers might be a JSON string
+            try:
+                headers = json.loads(headers)
+            except:
+                headers = {}
+        
+        body = event.get("body", "") or ""
         
         # Parse body if present
         request_data = {}
@@ -99,13 +121,25 @@ def handler(event, context):
     
     except Exception as e:
         print(f"[Square API] Handler error: {e}")
+        print(f"[Square API] Error type: {type(e).__name__}")
         traceback.print_exc()
+        
+        # Ensure cors_headers is defined even on error
+        cors_headers = {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        }
+        
         return {
             "statusCode": 500,
             "headers": cors_headers,
             "body": json.dumps({
+                "success": False,
                 "error": "Internal server error",
-                "message": str(e)
+                "message": str(e),
+                "type": type(e).__name__
             })
         }
 
