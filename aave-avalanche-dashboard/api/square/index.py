@@ -33,6 +33,15 @@ def handler(event, context):
         # Parse request
         method = event.get("httpMethod", event.get("method", "GET"))
         path = event.get("path", event.get("url", ""))
+        # Vercel may pass the path in different formats
+        if not path:
+            # Try to get from request URL or query
+            path = event.get("rawPath", event.get("requestContext", {}).get("http", {}).get("path", ""))
+        
+        # Log for debugging
+        print(f"[Square API] Request received - method: {method}, path: {path}")
+        print(f"[Square API] Event keys: {list(event.keys())}")
+        
         headers = event.get("headers", {})
         body = event.get("body", "")
         
