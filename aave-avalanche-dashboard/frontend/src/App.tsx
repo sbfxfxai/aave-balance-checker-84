@@ -5,7 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 // Lazy load routes for code splitting
-const Index = lazy(() => import("./pages/Index"));
+const Index = lazy(() => import("./pages/IndexStatic"));
 const StackApp = lazy(() => import("./pages/StackApp"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
