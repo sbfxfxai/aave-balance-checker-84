@@ -63,11 +63,7 @@
   "routes": [
     {
       "src": "/api/square/(.*)",
-      "dest": "/api/square/index.py"
-    },
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
+      "dest": "/api/square/index"
     },
     {
       "src": "/(.*)",
