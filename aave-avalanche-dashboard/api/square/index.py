@@ -58,6 +58,7 @@ try:
             )
 
     # Health check endpoint
+    @app.get("/health")
     @app.get("/api/square/health")
     async def health_check():
         """Health check endpoint"""
@@ -73,6 +74,7 @@ try:
         }
 
     # Payment processing endpoint
+    @app.post("/process-payment")
     @app.post("/api/square/process-payment")
     async def process_payment(payment: PaymentRequest):
         """Process Square payment"""
