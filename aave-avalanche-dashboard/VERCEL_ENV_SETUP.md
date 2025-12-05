@@ -1,57 +1,78 @@
-# Vercel Environment Variables Setup
+# Vercel Environment Variables Setup for Square Payments
 
-## Backend Environment Variables (Required)
+## Required Environment Variables
 
-In Vercel Dashboard → Your Project → Settings → Environment Variables:
+### Frontend (Vite Environment Variables)
+Set these in Vercel Dashboard → Settings → Environment Variables:
 
-### Production Environment:
 ```
-SQUARE_ACCESS_TOKEN = EAAAlygTphTRCrNzZ8GoYXNPWp1ipsp9kp3qArPdqAb9tReNEgCw8TNDr1rvAC-M
-SQUARE_LOCATION_ID = LA09STPQW6HC0
-SQUARE_API_BASE_URL = https://connect.squareup.com
-```
-
-## Frontend Environment Variables (Required)
-
-### Production Environment:
-```
-VITE_SQUARE_APPLICATION_ID = sq0idp-r5ABvzQQx9LYRH-JHO_xCw
-VITE_SQUARE_LOCATION_ID = LA09STPQW6HC0
-VITE_SQUARE_ENVIRONMENT = production
+VITE_SQUARE_APPLICATION_ID=sq0idp-r5ABvzQQx9LYRH-JHO_xCw
+VITE_SQUARE_LOCATION_ID=6PA5SZ9GE68E0
+VITE_SQUARE_ENVIRONMENT=production
+VITE_SQUARE_API_URL=https://connect.squareup.com
 ```
 
-**Note:** `VITE_API_BASE_URL` is NOT needed - the code automatically uses the same origin in production.
+**Note:** `VITE_SQUARE_ACCESS_TOKEN` should NOT be set in frontend (security risk - tokens should only be in backend)
 
-## How It Works
+### Backend (Serverless Function Environment Variables)
+Set these in Vercel Dashboard → Settings → Environment Variables:
 
-1. **Frontend** calls: `https://your-app.vercel.app/api/square/process-payment`
-2. **Vercel routing** (via `vercel.json`) sends `/api/*` requests to `app/main.py`
-3. **Backend** processes payment using Square API
-4. **Response** sent back to frontend
+```
+SQUARE_ACCESS_TOKEN=EAAAlygTphTRCrNzZ8GoYXNPWp1ipsp9kp3qArPdqAb9tReNEgCw8TNDr1rvAC-M
+SQUARE_LOCATION_ID=6PA5SZ9GE68E0
+SQUARE_API_BASE_URL=https://connect.squareup.com
+SQUARE_ENVIRONMENT=production
+```
 
-## Testing
+## How to Set in Vercel
 
-After setting environment variables and redeploying:
+1. Go to your Vercel project dashboard
+2. Click **Settings** → **Environment Variables**
+3. Add each variable above
+4. Make sure to select **Production**, **Preview**, and **Development** environments as needed
+5. **Redeploy** your application for changes to take effect
 
-1. Open your deployed site
-2. Go to Stack App
-3. Try a $1 deposit
-4. Check browser console for:
-   - `[Square] Calling backend payment endpoint:` - should show your Vercel URL
-   - Any error messages
+## Testing $1.00 Payment Flow
+
+1. **Open your live app** (e.g., `https://your-app.vercel.app`)
+2. **Navigate to Stack App** → Deposit
+3. **Select USD deposit** → Enter `1.00`
+4. **Click "Continue to Payment"**
+5. **Enter card details** in Square payment form:
+   - Card: `4111 1111 1111 1111` (test card)
+   - CVV: Any 3 digits
+   - Expiry: Any future date
+6. **Click "Pay $1.00"**
+7. **Check browser console** for payment token generation
+8. **Check Vercel function logs** for payment processing
 
 ## Troubleshooting
 
-### "Cannot reach backend" error:
-- Check Vercel deployment logs
-- Verify backend is deployed (check `/api/square/process-payment` endpoint)
-- Ensure `vercel.json` routing is correct
+### Payment Form Not Showing
+- Check browser console for Square SDK loading errors
+- Verify `VITE_SQUARE_APPLICATION_ID` is set correctly
+- Check CSP headers allow Square CDN
 
-### "Square API credentials not configured" error:
-- Verify `SQUARE_ACCESS_TOKEN` and `SQUARE_LOCATION_ID` are set in Vercel
+### Payment Token Generated But Payment Fails
+- Check Vercel function logs: **Functions** → `api/square/index` → **Logs**
+- Verify backend environment variables are set
+- Check for CORS errors in browser console
+
+### 404 Error on Payment Endpoint
+- Verify `vercel.json` routing is correct
+- Check that `api/square/index.py` exists
 - Redeploy after setting environment variables
 
-### CORS errors:
-- Shouldn't happen if backend is on same domain
-- If using different domain, set `VITE_API_BASE_URL` to backend URL
+## Verification
 
+After setting environment variables, verify:
+
+1. **Frontend Health Check:**
+   - Open browser console
+   - Look for: `[Square] Configuration loaded - Environment: production`
+
+2. **Backend Health Check:**
+   ```bash
+   curl https://your-app.vercel.app/api/square/health
+   ```
+   Should return: `"credentials_configured": true`
