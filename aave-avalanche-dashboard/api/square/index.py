@@ -10,11 +10,13 @@ import traceback
 print("[Square API] Initializing...")
 
 try:
-    from mangum import Mangum
-    from fastapi import FastAPI, HTTPException
-    from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import JSONResponse
-    from pydantic import BaseModel, Field
+    # These imports are resolved at runtime by Vercel from requirements.txt
+    # Linter warnings here are expected - packages installed during deployment
+    from mangum import Mangum  # type: ignore
+    from fastapi import FastAPI, HTTPException  # type: ignore
+    from fastapi.middleware.cors import CORSMiddleware  # type: ignore
+    from fastapi.responses import JSONResponse  # type: ignore
+    from pydantic import BaseModel, Field  # type: ignore
     from typing import Optional
 
     print("[Square API] Dependencies imported successfully")
@@ -132,7 +134,7 @@ try:
 
             # Import Square SDK
             try:
-                from square.client import Client
+                from square.client import Client  # type: ignore
                 print("[Square API] Square SDK imported")
             except ImportError as e:
                 print(f"[Square API] ERROR: Square SDK import failed: {e}")

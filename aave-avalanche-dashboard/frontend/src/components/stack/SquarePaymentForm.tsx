@@ -203,9 +203,7 @@ export const SquarePaymentForm: React.FC<SquarePaymentFormProps> = ({
 
   }, [amount, onPaymentSuccess, onPaymentError]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const processTokenization = async () => {
     if (!card || isSubmitting) {
       return;
     }
@@ -246,7 +244,7 @@ export const SquarePaymentForm: React.FC<SquarePaymentFormProps> = ({
           setRetryCount(prev => prev + 1);
           setTimeout(() => {
             setIsSubmitting(false);
-            handleSubmit(e as any); // Retry the submission
+            processTokenization(); // Retry the tokenization
           }, 1000 * (retryCount + 1)); // Exponential backoff
           return;
         } else {
@@ -260,6 +258,11 @@ export const SquarePaymentForm: React.FC<SquarePaymentFormProps> = ({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await processTokenization();
   };
 
   return (

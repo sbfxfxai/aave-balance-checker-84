@@ -1,0 +1,13 @@
+{
+  "name": "aave-avalanche-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Aave Avalanche Dashboard with Square payment integration",
+  "engines": {
+    "node": ">=18.x"
+  },
+  "dependencies": {
+    "@vercel/node": "^3.0.0"
+  }
+}
+
