@@ -30,7 +30,7 @@
   ],
   "rewrites": [
     {
-      "source": "/api/square/(.*)",
+      "source": "/api/square/:path*",
       "destination": "/api/square/index"
     },
     {
