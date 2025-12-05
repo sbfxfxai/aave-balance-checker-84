@@ -41,6 +41,7 @@ def handler(event, context):
         # Log for debugging
         print(f"[Square API] Request received - method: {method}, path: {path}")
         print(f"[Square API] Event keys: {list(event.keys())}")
+        print(f"[Square API] Full event: {json.dumps(event, default=str)[:500]}")
         
         headers = event.get("headers", {})
         body = event.get("body", "")
