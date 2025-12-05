@@ -61,11 +61,5 @@
         }
       ]
     }
-  ],
-  "rewrites": [
-    {
-      "source": "/api/square/(.*)",
-      "destination": "/api/square/index"
-    }
   ]
 }
