@@ -13,11 +13,15 @@ try:
 except ImportError:
     requests = None
 
-# Square API Configuration from environment variables
-SQUARE_ACCESS_TOKEN = os.getenv("SQUARE_ACCESS_TOKEN", "")
-SQUARE_LOCATION_ID = os.getenv("SQUARE_LOCATION_ID", "")
-SQUARE_API_BASE_URL = os.getenv("SQUARE_API_BASE_URL", "https://connect.squareup.com")
-SQUARE_ENVIRONMENT = os.getenv("SQUARE_ENVIRONMENT", "production")
+# Square API Configuration - read at runtime for testability
+def get_square_config():
+    """Get Square configuration from environment variables"""
+    return {
+        "access_token": os.getenv("SQUARE_ACCESS_TOKEN", ""),
+        "location_id": os.getenv("SQUARE_LOCATION_ID", ""),
+        "api_base_url": os.getenv("SQUARE_API_BASE_URL", "https://connect.squareup.com"),
+        "environment": os.getenv("SQUARE_ENVIRONMENT", "production"),
+    }
 
 
 def handler(event, context):
@@ -98,7 +102,8 @@ def handler(event, context):
 
 def handle_health(cors_headers):
     """Health check endpoint"""
-    is_production = "squareup.com" in SQUARE_API_BASE_URL and "sandbox" not in SQUARE_API_BASE_URL
+    config = get_square_config()
+    is_production = "squareup.com" in config["api_base_url"] and "sandbox" not in config["api_base_url"]
     
     return {
         "statusCode": 200,
@@ -108,14 +113,14 @@ def handle_health(cors_headers):
             "service": "square-api",
             "python_version": sys.version.split()[0],
             "environment": os.getenv("VERCEL_ENV", "unknown"),
-            "credentials_configured": bool(SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID),
-            "has_access_token": bool(SQUARE_ACCESS_TOKEN),
-            "has_location_id": bool(SQUARE_LOCATION_ID),
-            "square_api_base_url": SQUARE_API_BASE_URL,
-            "square_environment": SQUARE_ENVIRONMENT,
+            "credentials_configured": bool(config["access_token"] and config["location_id"]),
+            "has_access_token": bool(config["access_token"]),
+            "has_location_id": bool(config["location_id"]),
+            "square_api_base_url": config["api_base_url"],
+            "square_environment": config["environment"],
             "is_production": is_production,
-            "production_endpoint": f"{SQUARE_API_BASE_URL}/v2/payments",
-            "access_token_preview": SQUARE_ACCESS_TOKEN[:10] + "..." if SQUARE_ACCESS_TOKEN else "NOT SET",
+            "production_endpoint": f"{config['api_base_url']}/v2/payments",
+            "access_token_preview": config["access_token"][:10] + "..." if config["access_token"] else "NOT SET",
         })
     }
 
@@ -123,8 +128,15 @@ def handle_health(cors_headers):
 def handle_process_payment(request_data, cors_headers):
     """Process Square payment"""
     try:
+        # Get configuration at runtime
+        config = get_square_config()
+        square_access_token = config["access_token"]
+        square_location_id = config["location_id"]
+        square_api_base_url = config["api_base_url"]
+        square_environment = config["environment"]
+        
         # Validate credentials
-        if not SQUARE_ACCESS_TOKEN:
+        if not square_access_token:
             return {
                 "statusCode": 500,
                 "headers": cors_headers,
@@ -134,7 +146,7 @@ def handle_process_payment(request_data, cors_headers):
                 })
             }
         
-        if not SQUARE_LOCATION_ID:
+        if not square_location_id:
             return {
                 "statusCode": 500,
                 "headers": cors_headers,
@@ -201,7 +213,7 @@ def handle_process_payment(request_data, cors_headers):
                 "amount": amount_cents,
                 "currency": currency,
             },
-            "location_id": SQUARE_LOCATION_ID,
+            "location_id": square_location_id,
             "autocomplete": True,
         }
         
@@ -210,24 +222,23 @@ def handle_process_payment(request_data, cors_headers):
             square_payload["note"] = f"Aave deposit - {request_data['risk_profile']} strategy"
         
         # Verify production endpoint
-        api_url = f"{SQUARE_API_BASE_URL}/v2/payments"
-        is_production = "squareup.com" in SQUARE_API_BASE_URL and "sandbox" not in SQUARE_API_BASE_URL
+        api_url = f"{square_api_base_url}/v2/payments"
+        is_production = "squareup.com" in square_api_base_url and "sandbox" not in square_api_base_url
         
-        print(f"[Square] Environment: {SQUARE_ENVIRONMENT}")
-        print(f"[Square] API Base URL: {SQUARE_API_BASE_URL}")
+        print(f"[Square] Environment: {square_environment}")
+        print(f"[Square] API Base URL: {square_api_base_url}")
         print(f"[Square] Production Mode: {is_production}")
         print(f"[Square] Calling Square API: {api_url}")
         print(f"[Square] Amount: ${amount} ({amount_cents} cents)")
-        print(f"[Square] Location ID: {SQUARE_LOCATION_ID}")
-        print(f"[Square] Access Token (first 10 chars): {SQUARE_ACCESS_TOKEN[:10] if SQUARE_ACCESS_TOKEN else 'NOT SET'}...")
+        print(f"[Square] Location ID: {square_location_id}")
+        print(f"[Square] Access Token (first 10 chars): {square_access_token[:10] if square_access_token else 'NOT SET'}...")
         
         # Call Square API (production endpoint)
-        api_url = f"{SQUARE_API_BASE_URL}/v2/payments"
         response = requests.post(
             api_url,
             headers={
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {SQUARE_ACCESS_TOKEN}",
+                "Authorization": f"Bearer {square_access_token}",
                 "Square-Version": "2024-01-18",
             },
             json=square_payload,
@@ -300,26 +311,45 @@ def handle_process_payment(request_data, cors_headers):
             })
         }
     
-    except requests.exceptions.Timeout as e:
-        print(f"[Square] Square API request timed out: {e}")
-        return {
-            "statusCode": 504,
-            "headers": cors_headers,
-            "body": json.dumps({
-                "success": False,
-                "error": f"Square API request timed out: {str(e)}"
-            })
-        }
-    except requests.exceptions.ConnectionError as e:
-        print(f"[Square] Cannot connect to Square API: {e}")
-        return {
-            "statusCode": 503,
-            "headers": cors_headers,
-            "body": json.dumps({
-                "success": False,
-                "error": f"Cannot connect to Square API: {str(e)}"
-            })
-        }
+    except Exception as e:
+        # Check if it's a timeout or connection error
+        error_type = type(e).__name__
+        error_module = type(e).__module__
+        
+        # Handle timeout errors
+        if error_type == "Timeout" or (error_module == "requests.exceptions" and error_type == "Timeout"):
+            print(f"[Square] Square API request timed out: {e}")
+            return {
+                "statusCode": 504,
+                "headers": cors_headers,
+                "body": json.dumps({
+                    "success": False,
+                    "error": f"Square API request timed out: {str(e)}"
+                })
+            }
+        # Handle connection errors
+        elif error_type == "ConnectionError" or (error_module == "requests.exceptions" and error_type == "ConnectionError"):
+            print(f"[Square] Cannot connect to Square API: {e}")
+            return {
+                "statusCode": 503,
+                "headers": cors_headers,
+                "body": json.dumps({
+                    "success": False,
+                    "error": f"Cannot connect to Square API: {str(e)}"
+                })
+            }
+        else:
+            # Generic exception handler
+            print(f"[Square] Unexpected error: {e}")
+            traceback.print_exc()
+            return {
+                "statusCode": 500,
+                "headers": cors_headers,
+                "body": json.dumps({
+                    "success": False,
+                    "error": f"Internal server error: {str(e)}"
+                })
+            }
     except Exception as e:
         print(f"[Square] Unexpected error: {e}")
         traceback.print_exc()
