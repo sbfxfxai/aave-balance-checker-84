@@ -97,9 +97,10 @@ export function validateSquareConfig(): { valid: boolean; errors: string[] } {
     errors.push('Square Application ID is missing');
   }
   
-  if (!SQUARE_ACCESS_TOKEN) {
-    errors.push('Square Access Token is missing');
-  }
+  // Note: SQUARE_ACCESS_TOKEN is backend-only, not needed in frontend validation
+  // if (!SQUARE_ACCESS_TOKEN) {
+  //   errors.push('Square Access Token is missing');
+  // }
   
   if (!SQUARE_LOCATION_ID) {
     errors.push('Square Location ID is missing');

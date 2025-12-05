@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { processSquarePayment, isSquareConfigured, getSquareConfig } from '@/lib/square';
+import { isSquareConfigured, getSquareConfig } from '@/lib/square';
 import { SquarePaymentForm } from './SquarePaymentForm';
 
 interface DepositModalProps {
@@ -98,33 +98,23 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   const handlePaymentNonce = async (nonce: string) => {
     setPaymentNonce(nonce);
     setIsProcessing(true);
-    await processDeposit(nonce);
-  };
-
-  const handlePaymentError = (error: Error) => {
-    console.error('Payment form error:', error);
-    toast({
-      title: 'Payment failed',
-      description: error.message || 'Failed to process payment. Please try again.',
-      variant: 'destructive',
-    });
-    setIsProcessing(false);
-    setShowPaymentForm(false);
-  };
-
-  const processDeposit = async (nonce: string | null) => {
+    
     try {
-      const result = await processSquarePayment({
-        type: depositType,
-        amount: parseFloat(amount),
-        riskProfile: riskProfile.id,
-        sourceId: nonce || undefined, // Use nonce for card payments
-      });
+      // Process payment directly using SquarePaymentService
+      const { squarePaymentService } = await import('@/lib/squarePaymentService');
+      const orderId = `order-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+      
+      const result = await squarePaymentService.processPayment(
+        nonce,
+        parseFloat(amount),
+        orderId,
+        riskProfile.id
+      );
 
       if (result.success) {
         toast({
-          title: 'Deposit initiated',
-          description: `Processing ${amount} ${depositType === 'usd' ? 'USD' : 'BTC'} deposit...`,
+          title: 'Deposit successful',
+          description: `Payment of $${amount} processed successfully!`,
         });
         
         // Close modal and reset
@@ -139,10 +129,10 @@ export const DepositModal: React.FC<DepositModalProps> = ({
         throw new Error(result.error || 'Payment processing failed');
       }
     } catch (error: unknown) {
-      console.error('Deposit error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to process deposit. Please try again.';
+      console.error('Payment processing error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to process payment. Please try again.';
       toast({
-        title: 'Deposit failed',
+        title: 'Payment failed',
         description: errorMessage,
         variant: 'destructive',
       });
@@ -150,6 +140,18 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       setShowPaymentForm(false);
     }
   };
+
+  const handlePaymentError = (error: Error) => {
+    console.error('Payment form error:', error);
+    toast({
+      title: 'Payment failed',
+      description: error.message || 'Failed to process payment. Please try again.',
+      variant: 'destructive',
+    });
+    setIsProcessing(false);
+    setShowPaymentForm(false);
+  };
+
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
