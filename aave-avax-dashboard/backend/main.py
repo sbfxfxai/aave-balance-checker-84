@@ -1,20 +1,20 @@
 import os
 from decimal import Decimal
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # type: ignore
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from web3 import Web3
+from fastapi import FastAPI, HTTPException  # type: ignore
+from fastapi.middleware.cors import CORSMiddleware  # type: ignore
+from pydantic import BaseModel  # type: ignore
+from web3 import Web3  # type: ignore
 
 # eth-defi imports
-from eth_defi.aave_v3 import AaveV3Reserve, get_aave_v3_reserves
-from eth_defi.aave_v3.deposit import supply_erc20
-from eth_defi.aave_v3.withdraw import withdraw_erc20
-from eth_defi.uniswap_v2 import swap_with_uniswap_v2
-from eth_defi.token import fetch_erc20_details
-from eth_defi.chain import install_chain_middleware
+from eth_defi.aave_v3 import AaveV3Reserve, get_aave_v3_reserves  # type: ignore
+from eth_defi.aave_v3.deposit import supply_erc20  # type: ignore
+from eth_defi.aave_v3.withdraw import withdraw_erc20  # type: ignore
+from eth_defi.uniswap_v2 import swap_with_uniswap_v2  # type: ignore
+from eth_defi.token import fetch_erc20_details  # type: ignore
+from eth_defi.chain import install_chain_middleware  # type: ignore
 
 app = FastAPI(title="Avalanche Aave Dashboard")
 
