@@ -17,6 +17,27 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     target: "es2020",
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "react-vendor": ["react", "react-dom", "react-router-dom"],
+          "web3-vendor": ["wagmi", "@wagmi/core", "viem", "ethers"],
+          "ui-vendor": [
+            "@radix-ui/react-accordion",
+            "@radix-ui/react-alert-dialog",
+            "@radix-ui/react-dialog",
+            "@radix-ui/react-dropdown-menu",
+            "@radix-ui/react-select",
+            "@radix-ui/react-tabs",
+            "@radix-ui/react-toast",
+            "@radix-ui/react-tooltip",
+          ],
+          "chart-vendor": ["recharts"],
+          "query-vendor": ["@tanstack/react-query"],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 600,
   },
   optimizeDeps: {
     exclude: ["@noble/curves"]
