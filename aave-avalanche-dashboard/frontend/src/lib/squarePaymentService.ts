@@ -166,13 +166,40 @@ export class SquarePaymentService {
         }),
       });
 
-      const result = (await response.json()) as PaymentResponse & {
-        error?: string;
-      };
+      // Get response text first to check if it's JSON
+      const responseText = await response.text();
+      console.log('Payment API response:', {
+        status: response.status,
+        statusText: response.statusText,
+        contentType: response.headers.get('content-type'),
+        responseText: responseText.substring(0, 200),
+      });
+
+      let result: PaymentResponse & { error?: string };
+      
+      try {
+        result = JSON.parse(responseText) as PaymentResponse & {
+          error?: string;
+        };
+      } catch (parseError) {
+        // Response is not JSON - likely HTML error page
+        console.error('Failed to parse JSON response:', parseError);
+        console.error('Response text:', responseText);
+        
+        if (response.status === 404) {
+          throw new Error(
+            'Payment endpoint not found (404). Please verify the backend is deployed and the route /api/square/process-payment exists.'
+          );
+        }
+        
+        throw new Error(
+          `Payment API returned invalid response (${response.status}): ${responseText.substring(0, 100)}`
+        );
+      }
 
       if (!response.ok) {
         console.error('Payment API error:', result);
-        throw new Error(result.error ?? 'Payment processing failed');
+        throw new Error(result.error ?? `Payment processing failed (${response.status})`);
       }
 
       if (result.success) {
