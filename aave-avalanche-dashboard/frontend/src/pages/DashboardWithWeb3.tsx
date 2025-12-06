@@ -5,6 +5,7 @@ import { TrendingUp, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Web3Providers } from '@/components/Web3Providers';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function DashboardContent() {
   const { isConnected } = useAccount();
@@ -42,8 +43,10 @@ function DashboardContent() {
           {/* Network Guard - Shows warning if on wrong chain */}
           <NetworkGuard />
           
-          {/* Simple Dashboard */}
-          <SimpleDashboard />
+          {/* Simple Dashboard with Error Boundary */}
+          <ErrorBoundary>
+            <SimpleDashboard />
+          </ErrorBoundary>
         </div>
       </main>
 

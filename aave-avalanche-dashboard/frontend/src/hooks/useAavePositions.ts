@@ -242,7 +242,55 @@ export function useAavePositions() {
     };
   }
 
-  const [totalCollateralBase, totalDebtBase, availableBorrowsBase, , , healthFactor] = rawData;
+  // Safely destructure rawData - handle cases where it might not be an array
+  let totalCollateralBase: bigint = 0n;
+  let totalDebtBase: bigint = 0n;
+  let availableBorrowsBase: bigint = 0n;
+  let healthFactor: bigint = 0n;
+
+  try {
+    if (Array.isArray(rawData) && rawData.length >= 6) {
+      [totalCollateralBase, totalDebtBase, availableBorrowsBase, , , healthFactor] = rawData;
+    } else {
+      console.warn('[useAavePositions] rawData is not in expected format:', rawData);
+      return {
+        healthFactor: null,
+        totalDebt: '0',
+        totalCollateral: '0',
+        usdcSupply: '0',
+        usdcBorrowed: '0',
+        avaxSupply: '0',
+        avaxBorrowed: '0',
+        availableBorrow: '$0.00',
+        usdcSupplyApy: 0,
+        avaxSupplyApy: 0,
+        usdcBorrowApy: 0,
+        avaxBorrowApy: 0,
+        avaxAvailableToBorrow: 0,
+        usdcAvailableToBorrow: 0,
+        isLoading: false,
+      };
+    }
+  } catch (err) {
+    console.error('[useAavePositions] Error destructuring rawData:', err, rawData);
+    return {
+      healthFactor: null,
+      totalDebt: '0',
+      totalCollateral: '0',
+      usdcSupply: '0',
+      usdcBorrowed: '0',
+      avaxSupply: '0',
+      avaxBorrowed: '0',
+      availableBorrow: '$0.00',
+      usdcSupplyApy: 0,
+      avaxSupplyApy: 0,
+      usdcBorrowApy: 0,
+      avaxBorrowApy: 0,
+      avaxAvailableToBorrow: 0,
+      usdcAvailableToBorrow: 0,
+      isLoading: false,
+    };
+  }
 
   // Calculate USDC supply from native USDC (Aave V3 uses native USDC only)
   let usdcSupply = '0';

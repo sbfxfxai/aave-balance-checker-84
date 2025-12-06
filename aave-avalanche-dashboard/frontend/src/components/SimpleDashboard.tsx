@@ -93,6 +93,19 @@ export function SimpleDashboard() {
     );
   }
 
+  // Safety check - ensure address exists before rendering
+  if (!address) {
+    return (
+      <div className="max-w-md mx-auto">
+        <Card className="p-6">
+          <div className="text-center">
+            <p className="text-muted-foreground">Connecting wallet...</p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Wallet Info */}
