@@ -40,10 +40,10 @@ export const config = createConfig({
       projectId: projectId || 'c0daaf12b05ec82413fc8c92c1635a76', // Fallback only for development
       showQrModal: true,
       metadata: {
-        name: 'Aave Avalanche Dashboard',
-        description: 'Aave V3 DeFi dashboard for Avalanche C-Chain',
-        url: typeof window !== 'undefined' ? window.location.origin : 'https://aave-balance-checker-84.vercel.app',
-        icons: ['https://aave-balance-checker-84.vercel.app/favicon.ico'],
+        name: 'TiltVault',
+        description: 'DeFi dashboard for Avalanche C-Chain with GMX integration',
+        url: typeof window !== 'undefined' ? window.location.origin : 'https://www.tiltvault.com',
+        icons: ['https://www.tiltvault.com/favicon.ico'],
       },
     }),
   ],

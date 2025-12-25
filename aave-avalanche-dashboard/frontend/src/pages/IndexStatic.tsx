@@ -44,12 +44,20 @@ export default function IndexStatic() {
                 <p className="text-sm text-muted-foreground">Avalanche C-Chain</p>
               </div>
             </div>
-            <Link to="/stack">
-              <Button variant="outline" className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4" />
-                Stack App
-              </Button>
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link to="/gmx">
+                <Button variant="outline" className="flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4" />
+                  GMX
+                </Button>
+              </Link>
+              <Link to="/stack">
+                <Button variant="outline" className="flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4" />
+                  Stack App
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
       </header>

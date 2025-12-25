@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { squarePaymentService } from '@/lib/squarePaymentService';
+import type { SquarePaymentService } from '@/lib/squarePaymentService';
+import { ensureSquareConfigAvailable, getSquareConfig } from '@/lib/square';
 
 interface SquarePaymentFormProps {
   amount: number; // Amount in dollars
@@ -15,6 +16,7 @@ export const SquarePaymentForm: React.FC<SquarePaymentFormProps> = ({
   onPaymentError,
 }) => {
   const cardContainerRef = useRef<HTMLDivElement>(null);
+  const squareServiceRef = useRef<SquarePaymentService | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,8 +30,19 @@ export const SquarePaymentForm: React.FC<SquarePaymentFormProps> = ({
 
         if (!isMounted) return;
 
+        const { squarePaymentService } = await import('@/lib/squarePaymentService');
+        const config =
+          (await ensureSquareConfigAvailable()) ??
+          getSquareConfig();
+
+        squareServiceRef.current = squarePaymentService;
+
         // Initialize Square service
-        await squarePaymentService.initialize();
+        await squarePaymentService.initialize({
+          applicationId: config.applicationId,
+          locationId: config.locationId,
+          environment: config.environment,
+        });
         console.log('[SquarePaymentForm] Square service initialized');
 
         if (!isMounted) return;
@@ -66,7 +79,8 @@ export const SquarePaymentForm: React.FC<SquarePaymentFormProps> = ({
     return () => {
       clearTimeout(timer);
       isMounted = false;
-      squarePaymentService.destroy();
+      squareServiceRef.current?.destroy();
+      squareServiceRef.current = null;
     };
   }, [onPaymentError]);
 
@@ -82,7 +96,10 @@ export const SquarePaymentForm: React.FC<SquarePaymentFormProps> = ({
 
     try {
       console.log('[SquarePaymentForm] Starting tokenization...');
-      const token = await squarePaymentService.tokenizeCard();
+      const service = squareServiceRef.current ?? (await import('@/lib/squarePaymentService')).squarePaymentService;
+      squareServiceRef.current = service;
+
+      const token = await service.tokenizeCard();
       console.log('[SquarePaymentForm] Token received:', token.substring(0, 20) + '...');
       
       onPaymentSuccess(token);

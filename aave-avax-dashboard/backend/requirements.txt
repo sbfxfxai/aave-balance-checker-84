@@ -1,5 +1,0 @@
-fastapi
-uvicorn
-python-dotenv
-web3
-eth-defi[aave,uniswap]

@@ -8,7 +8,12 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 // Lazy load routes for code splitting
 const Index = lazy(() => import("./pages/IndexStatic"));
 const StackApp = lazy(() => import("./pages/StackApp"));
+const GmxIntegration = lazy(() => import("./pages/GmxIntegration"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+
+const Web3Providers = lazy(() =>
+  import("./components/Web3Providers").then((m) => ({ default: m.Web3Providers }))
+);
 
 // Optimized loading fallback - renders immediately to improve LCP
 const PageLoader = () => (
@@ -58,6 +63,14 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/stack" element={<StackApp />} />
+            <Route
+              path="/gmx"
+              element={
+                <Web3Providers>
+                  <GmxIntegration />
+                </Web3Providers>
+              }
+            />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -73,21 +73,24 @@ export class SquarePaymentService {
     });
   }
 
-  async initialize(): Promise<void> {
+  async initialize(config?: {
+    applicationId?: string;
+    locationId?: string;
+    environment?: string;
+  }): Promise<void> {
     if (!window.Square) {
       await this.loadSquareSdk();
     }
 
-    const applicationId = (
-      import.meta.env.VITE_SQUARE_APPLICATION_ID as string | undefined
-    )?.trim();
-    const locationId = (
-      import.meta.env.VITE_SQUARE_LOCATION_ID as string | undefined
-    )?.trim();
+    const applicationId =
+      (config?.applicationId ?? (import.meta.env.VITE_SQUARE_APPLICATION_ID as string | undefined))
+        ?.trim();
+    const locationId =
+      (config?.locationId ?? (import.meta.env.VITE_SQUARE_LOCATION_ID as string | undefined))
+        ?.trim();
     const environment =
-      (
-        import.meta.env.VITE_SQUARE_ENVIRONMENT as string | undefined
-      )?.trim() ?? 'production';
+      config?.environment ??
+      ((import.meta.env.VITE_SQUARE_ENVIRONMENT as string | undefined)?.trim() ?? 'production');
 
     console.log('Square initialization:', {
       applicationId: applicationId
