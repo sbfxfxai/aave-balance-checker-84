@@ -12,6 +12,27 @@ const SQUARE_ACCESS_TOKEN = import.meta.env.VITE_SQUARE_ACCESS_TOKEN || '';
 const SQUARE_LOCATION_ID = import.meta.env.VITE_SQUARE_LOCATION_ID || '';
 const SQUARE_ENVIRONMENT = import.meta.env.VITE_SQUARE_ENVIRONMENT || 'sandbox';
 
+export interface SquarePublicConfig {
+  applicationId: string;
+  locationId: string;
+  environment: string;
+  apiUrl: string;
+  hasAccessToken?: boolean;
+  source: 'env' | 'api';
+}
+
+const envSquareConfig: SquarePublicConfig = {
+  applicationId: SQUARE_APPLICATION_ID,
+  locationId: SQUARE_LOCATION_ID,
+  environment: SQUARE_ENVIRONMENT,
+  apiUrl: SQUARE_API_BASE_URL,
+  hasAccessToken: !!SQUARE_ACCESS_TOKEN,
+  source: 'env',
+};
+
+let runtimeSquareConfig: SquarePublicConfig | null = null;
+let runtimeConfigPromise: Promise<SquarePublicConfig | null> | null = null;
+
 // Backend API URL - defaults to same origin if not specified (for production)
 // For local dev, set VITE_API_BASE_URL=http://localhost:8000
 // For production, set VITE_API_BASE_URL=https://your-backend.vercel.app
@@ -89,20 +110,89 @@ const getApiBaseUrlRuntime = () => {
 // Keep for backward compatibility, but use runtime function in payment calls
 const API_BASE_URL = getApiBaseUrl();
 
-// Validate Square configuration
+async function loadRuntimeSquareConfig(): Promise<SquarePublicConfig | null> {
+  if (runtimeSquareConfig) {
+    return runtimeSquareConfig;
+  }
+
+  if (runtimeConfigPromise) {
+    return runtimeConfigPromise;
+  }
+
+  runtimeConfigPromise = (async () => {
+    try {
+      const response = await fetch('/api/square/config', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = (await response.json()) as {
+        application_id?: string;
+        location_id?: string;
+        environment?: string;
+        api_base_url?: string;
+        has_access_token?: boolean;
+      };
+
+      if (!data?.application_id || !data?.location_id) {
+        return null;
+      }
+
+      runtimeSquareConfig = {
+        applicationId: data.application_id,
+        locationId: data.location_id,
+        environment: data.environment || 'production',
+        apiUrl: data.api_base_url || SQUARE_API_BASE_URL,
+        hasAccessToken: data.has_access_token,
+        source: 'api',
+      };
+
+      return runtimeSquareConfig;
+    } catch (error) {
+      console.warn('[Square] Failed to load runtime config from /api/square/config', error);
+      return null;
+    } finally {
+      runtimeConfigPromise = null;
+    }
+  })();
+
+  return runtimeConfigPromise;
+}
+
+async function ensureSquareConfig(): Promise<SquarePublicConfig | null> {
+  // If env config is present, prefer it
+  if (envSquareConfig.applicationId && envSquareConfig.locationId) {
+    return envSquareConfig;
+  }
+
+  // Otherwise try runtime discovery
+  if (runtimeSquareConfig) {
+    return runtimeSquareConfig;
+  }
+
+  return loadRuntimeSquareConfig();
+}
+
+function currentSquareConfig(): SquarePublicConfig {
+  return runtimeSquareConfig ?? envSquareConfig;
+}
+
+// Validate Square configuration (prefers runtime config when available)
 export function validateSquareConfig(): { valid: boolean; errors: string[] } {
+  const config = currentSquareConfig();
   const errors: string[] = [];
   
-  if (!SQUARE_APPLICATION_ID) {
+  if (!config.applicationId) {
     errors.push('Square Application ID is missing');
   }
   
-  // Note: SQUARE_ACCESS_TOKEN is backend-only, not needed in frontend validation
-  // if (!SQUARE_ACCESS_TOKEN) {
-  //   errors.push('Square Access Token is missing');
-  // }
+  // Note: access token is backend-only, not validated here
   
-  if (!SQUARE_LOCATION_ID) {
+  if (!config.locationId) {
     errors.push('Square Location ID is missing');
   }
   
@@ -113,12 +203,12 @@ export function validateSquareConfig(): { valid: boolean; errors: string[] } {
 }
 
 // Log configuration status (without exposing sensitive data)
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
   const config = validateSquareConfig();
   if (config.valid) {
     console.log(`[Square] Configuration loaded - Environment: ${SQUARE_ENVIRONMENT}`);
-    console.log(`[Square] Application ID: ${SQUARE_APPLICATION_ID.substring(0, 10)}...`);
-    console.log(`[Square] Location ID: ${SQUARE_LOCATION_ID}`);
+    console.log(`[Square] Application ID: ${currentSquareConfig().applicationId.substring(0, 10)}...`);
+    console.log(`[Square] Location ID: ${currentSquareConfig().locationId}`);
   } else {
     console.warn('[Square] Configuration incomplete:', config.errors);
   }
@@ -149,6 +239,9 @@ export async function processSquarePayment(
   request: SquarePaymentRequest
 ): Promise<SquarePaymentResponse> {
   try {
+    await ensureSquareConfig();
+    const config = currentSquareConfig();
+
     // Validate configuration
     const configCheck = validateSquareConfig();
     if (!configCheck.valid) {
@@ -158,7 +251,7 @@ export async function processSquarePayment(
     console.log(`[Square] Processing ${request.type.toUpperCase()} payment:`, {
       amount: request.amount,
       riskProfile: request.riskProfile,
-      environment: SQUARE_ENVIRONMENT,
+      environment: config.environment,
     });
 
     if (request.type === 'usd') {
@@ -413,14 +506,17 @@ export async function verifyPaymentStatus(
 /**
  * Get Square API configuration for frontend
  */
-export function getSquareConfig() {
+export function getSquareConfig(): SquarePublicConfig & { sdkUrl: string } {
+  const config = currentSquareConfig();
   return {
-    applicationId: SQUARE_APPLICATION_ID,
-    locationId: SQUARE_LOCATION_ID,
-    environment: SQUARE_ENVIRONMENT, // 'sandbox' or 'production'
-    apiUrl: SQUARE_API_BASE_URL,
+    applicationId: config.applicationId,
+    locationId: config.locationId,
+    environment: config.environment, // 'sandbox' or 'production'
+    apiUrl: config.apiUrl,
+    hasAccessToken: config.hasAccessToken,
+    source: config.source,
     // Square Web Payments SDK URL based on environment
-    sdkUrl: SQUARE_ENVIRONMENT === 'production' 
+    sdkUrl: config.environment === 'production' 
       ? 'https://web.squarecdn.com/v1/square.js'
       : 'https://sandbox.web.squarecdn.com/v1/square.js',
   };
@@ -431,5 +527,12 @@ export function getSquareConfig() {
  */
 export function isSquareConfigured(): boolean {
   return validateSquareConfig().valid;
+}
+
+/**
+ * Attempt to resolve Square config at runtime (env first, then /api/square/config)
+ */
+export async function ensureSquareConfigAvailable(): Promise<SquarePublicConfig | null> {
+  return ensureSquareConfig();
 }
 

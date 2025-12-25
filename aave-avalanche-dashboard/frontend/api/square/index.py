@@ -39,6 +39,12 @@ except Exception as e:
 def get_square_config():
     """Get Square configuration from environment variables"""
     environment = os.getenv("SQUARE_ENVIRONMENT", "production")
+    application_id = (
+        os.getenv("SQUARE_APPLICATION_ID")
+        or os.getenv("VITE_SQUARE_APPLICATION_ID")
+        or os.getenv("NEXT_PUBLIC_SQUARE_APPLICATION_ID")
+        or ""
+    )
     
     # Use official Square API endpoints per documentation
     # Production: https://connect.squareup.com for payments
@@ -53,6 +59,7 @@ def get_square_config():
         "location_id": os.getenv("SQUARE_LOCATION_ID", ""),
         "api_base_url": os.getenv("SQUARE_API_BASE_URL", default_api_base_url),
         "environment": environment,
+        "application_id": application_id,
     }
 
 
@@ -177,6 +184,9 @@ def _handler_impl(event, context):
         elif endpoint == "debug" or normalized_path.endswith("/debug") or normalized_path == "/api/square/debug" or normalized_path == "/debug":
             return handle_debug(request_data, cors_headers, method)
         
+        elif endpoint == "config" or normalized_path.endswith("/config") or normalized_path == "/api/square/config" or normalized_path == "/config":
+            return handle_config(cors_headers)
+        
         elif endpoint == "test" or normalized_path.endswith("/test") or normalized_path == "/api/square/test" or normalized_path == "/test":
             return handle_test(cors_headers)
         
@@ -246,6 +256,7 @@ def handle_health(cors_headers):
             "python_version": sys.version.split()[0],
             "environment": os.getenv("VERCEL_ENV", "unknown"),
             "credentials_configured": bool(config["access_token"] and config["location_id"]),
+            "has_application_id": bool(config["application_id"]),
             "has_access_token": bool(config["access_token"]),
             "has_location_id": bool(config["location_id"]),
             "square_api_base_url": config["api_base_url"],
@@ -253,9 +264,28 @@ def handle_health(cors_headers):
             "is_production": is_production,
             "production_endpoint": f"{config['api_base_url']}/v2/payments",
             "access_token_preview": config["access_token"][:10] + "..." if config["access_token"] else "NOT SET",
+            "application_id_preview": config["application_id"][:10] + "..." if config["application_id"] else "NOT SET",
+            "location_id_preview": config["location_id"][:8] + "..." if config["location_id"] else "NOT SET",
         })
     }
 
+
+def handle_config(cors_headers):
+    """Public (non-secret) Square config for frontend runtime discovery"""
+    config = get_square_config()
+    return {
+        "statusCode": 200,
+        "headers": cors_headers,
+        "body": json.dumps({
+            "environment": config["environment"],
+            "api_base_url": config["api_base_url"],
+            "application_id": config["application_id"],
+            "location_id": config["location_id"],
+            # Do not expose access token
+            "has_access_token": bool(config["access_token"]),
+            "credentials_configured": bool(config["access_token"] and config["location_id"]),
+        })
+    }
 
 def sanitize_for_logging(data):
     """Remove sensitive data before logging"""

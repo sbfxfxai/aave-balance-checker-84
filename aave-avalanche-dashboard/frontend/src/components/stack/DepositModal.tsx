@@ -11,13 +11,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { isSquareConfigured, getSquareConfig } from '@/lib/square';
+import {
+  ensureSquareConfigAvailable,
+  getSquareConfig,
+} from '@/lib/square';
 import { SquarePaymentForm } from './SquarePaymentForm';
 
 interface DepositModalProps {
   isOpen: boolean;
   onClose: () => void;
-  depositType: 'usd' | 'bitcoin';
   riskProfile: {
     id: string;
     name: string;
@@ -31,7 +33,6 @@ interface DepositModalProps {
 export const DepositModal: React.FC<DepositModalProps> = ({
   isOpen,
   onClose,
-  depositType,
   riskProfile,
 }) => {
   const [amount, setAmount] = useState('');
@@ -39,28 +40,45 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   const [isConfigured, setIsConfigured] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentNonce, setPaymentNonce] = useState<string | null>(null);
+  const [squareConfig, setSquareConfig] = useState(getSquareConfig());
   const { toast } = useToast();
 
   useEffect(() => {
     // Check Square configuration when modal opens
     if (isOpen) {
-      const configured = isSquareConfigured();
-      setIsConfigured(configured);
-      
-      if (configured) {
-        const config = getSquareConfig();
-        console.log('[DepositModal] Square configured:', {
-          environment: config.environment,
-          locationId: config.locationId,
-        });
-      } else {
-        console.warn('[DepositModal] Square not configured');
-        toast({
-          title: 'Square API not configured',
-          description: 'Please configure Square API credentials in .env file',
-          variant: 'destructive',
-        });
-      }
+      let cancelled = false;
+      const checkConfig = async () => {
+        await ensureSquareConfigAvailable();
+        const resolvedConfig = getSquareConfig();
+
+        if (cancelled) return;
+
+        setSquareConfig(resolvedConfig);
+
+        const configured = !!resolvedConfig.applicationId && !!resolvedConfig.locationId;
+        setIsConfigured(configured);
+        
+        if (configured) {
+          console.log('[DepositModal] Square configured:', {
+            environment: resolvedConfig.environment,
+            locationId: resolvedConfig.locationId,
+            source: resolvedConfig.source,
+          });
+        } else if (import.meta.env.DEV) {
+          console.warn('[DepositModal] Square not configured');
+          toast({
+            title: 'Square API not configured',
+            description: 'Please configure Square API credentials in .env file',
+            variant: 'destructive',
+          });
+        }
+      };
+
+      checkConfig();
+
+      return () => {
+        cancelled = true;
+      };
     }
   }, [isOpen, toast]);
 
@@ -74,25 +92,17 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       return;
     }
 
-    const minAmount = depositType === 'usd' ? 1 : 0.001; // $1 USD min for testing, 0.001 BTC min
+    const minAmount = 10;
     if (parseFloat(amount) < minAmount) {
       toast({
         title: 'Amount too low',
-        description: `Minimum deposit: ${minAmount} ${depositType === 'usd' ? 'USD' : 'BTC'}`,
+        description: `Minimum deposit: $${minAmount.toFixed(2)}`,
         variant: 'destructive',
       });
       return;
     }
 
-    // For USD deposits, show payment form
-    if (depositType === 'usd') {
-      setShowPaymentForm(true);
-      return;
-    }
-
-    // For Bitcoin deposits, process directly
-    setIsProcessing(true);
-    await processDeposit(null);
+    setShowPaymentForm(true);
   };
 
   const handlePaymentNonce = async (nonce: string) => {
@@ -159,7 +169,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
         <DialogHeader>
           <DialogTitle>Complete Your Deposit</DialogTitle>
           <DialogDescription>
-            Deposit {depositType === 'usd' ? 'USD' : 'Bitcoin'} for {riskProfile.name} strategy
+            Deposit USD for {riskProfile.name} strategy
           </DialogDescription>
         </DialogHeader>
 
@@ -169,7 +179,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
             <div className="flex items-center gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
               <CheckCircle2 className="h-4 w-4 text-green-600" />
               <span className="text-xs text-green-600 font-medium">
-                Square API configured ({getSquareConfig().environment})
+                Square API configured ({squareConfig.environment})
               </span>
             </div>
           ) : (
@@ -195,26 +205,26 @@ export const DepositModal: React.FC<DepositModalProps> = ({
           {!showPaymentForm && (
             <div className="space-y-2">
               <Label htmlFor="amount">
-                Deposit Amount ({depositType === 'usd' ? 'USD' : 'BTC'})
+                Deposit Amount (USD)
               </Label>
               <Input
                 id="amount"
                 type="number"
-                placeholder={depositType === 'usd' ? '1.00' : '0.001'}
+                placeholder="10.00"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 disabled={isProcessing}
-                min={depositType === 'usd' ? 1 : 0.001}
-                step={depositType === 'usd' ? 0.01 : 0.0001}
+                min={10}
+                step={0.01}
               />
               <p className="text-xs text-muted-foreground">
-                Minimum: {depositType === 'usd' ? '$1.00' : '0.001 BTC'}
+                Minimum: $10.00
               </p>
             </div>
           )}
 
           {/* Square Payment Form (for USD deposits) */}
-          {showPaymentForm && depositType === 'usd' && amount && (
+          {showPaymentForm && amount && (
             <div className="space-y-4">
               <div className="p-3 rounded-lg bg-muted">
                 <div className="text-sm font-medium">Amount: ${parseFloat(amount).toFixed(2)}</div>
@@ -251,7 +261,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
                 disabled={isProcessing || !amount || !isConfigured}
                 className="flex-1"
               >
-                {depositType === 'usd' ? 'Continue to Payment' : 'Deposit'}
+                Continue to Payment
               </Button>
             </div>
           )}

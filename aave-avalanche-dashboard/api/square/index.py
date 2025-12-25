@@ -38,10 +38,26 @@ def get_square_config():
         default_api_base_url = "https://connect.squareup.com"
     
     return {
+        "application_id": os.getenv("SQUARE_APPLICATION_ID", ""),
         "access_token": os.getenv("SQUARE_ACCESS_TOKEN", ""),
         "location_id": os.getenv("SQUARE_LOCATION_ID", ""),
         "api_base_url": os.getenv("SQUARE_API_BASE_URL", default_api_base_url),
         "environment": environment,
+    }
+
+
+def public_square_config_response():
+    """Public Square configuration safe to return to the browser."""
+    config = get_square_config()
+    return {
+        "application_id": config.get("application_id", ""),
+        "location_id": config.get("location_id", ""),
+        "environment": config.get("environment", "production"),
+        "api_base_url": config.get("api_base_url", "https://connect.squareup.com"),
+        "has_access_token": bool(config.get("access_token")),
+        "credentials_configured": bool(
+            config.get("application_id") and config.get("location_id") and config.get("access_token")
+        ),
     }
 
 
@@ -113,8 +129,12 @@ def handle_health():
         "status": "healthy",
         "service": "square-api",
         "timestamp": int(time.time()),
-        "credentials_configured": bool(config["access_token"] and config["location_id"]),
-        "environment": config["environment"],
+        "credentials_configured": bool(
+            config.get("application_id") and config.get("access_token") and config.get("location_id")
+        ),
+        "environment": config.get("environment"),
+        "application_id": config.get("application_id", ""),
+        "location_id": config.get("location_id", ""),
         "requests_available": REQUESTS_AVAILABLE,
     }
 
@@ -224,6 +244,11 @@ class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         """Handle GET requests"""
         path = urlparse(self.path).path
+
+        # Public config endpoint for frontend runtime configuration
+        if path.endswith('/config'):
+            create_json_response(self, 200, public_square_config_response())
+            return
         
         # Health check
         if path.endswith('/health') or path == '/api/square' or path == '/api/square/':

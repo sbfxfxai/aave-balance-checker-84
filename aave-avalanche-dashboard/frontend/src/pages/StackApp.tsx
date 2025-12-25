@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DollarSign, Bitcoin, ArrowRight, Shield, TrendingUp, Zap, Home } from 'lucide-react';
+import { DollarSign, ArrowRight, Shield, TrendingUp, Zap, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -56,7 +56,7 @@ const RISK_PROFILES = [
   },
 ] as const;
 
-type DepositType = 'usd' | 'bitcoin' | null;
+type DepositType = 'usd' | null;
 type RiskProfileId = typeof RISK_PROFILES[number]['id'] | null;
 
 const StackApp = () => {
@@ -68,7 +68,7 @@ const StackApp = () => {
   const handleDepositTypeSelect = (type: DepositType) => {
     setSelectedDepositType(type);
     toast({
-      title: `${type === 'usd' ? 'USD' : 'Bitcoin'} deposit selected`,
+      title: 'USD deposit selected',
       description: 'Now select your risk profile below',
     });
   };
@@ -81,7 +81,7 @@ const StackApp = () => {
     if (!selectedDepositType) {
       toast({
         title: 'Please select deposit type',
-        description: 'Choose USD or Bitcoin deposit method',
+        description: 'Choose USD deposit method',
         variant: 'destructive',
       });
       return;
@@ -118,12 +118,20 @@ const StackApp = () => {
                 <p className="text-sm text-muted-foreground">Automated DeFi Leverage</p>
               </div>
             </div>
-            <Link to="/">
-              <Button variant="outline" className="flex items-center gap-2">
-                <Home className="h-4 w-4" />
-                Dashboard
-              </Button>
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link to="/gmx">
+                <Button variant="outline" className="flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4" />
+                  GMX
+                </Button>
+              </Link>
+              <Link to="/">
+                <Button variant="outline" className="flex items-center gap-2">
+                  <Home className="h-4 w-4" />
+                  Dashboard
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
       </header>
@@ -156,7 +164,7 @@ const StackApp = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <Button
                   variant={selectedDepositType === 'usd' ? 'default' : 'outline'}
                   size="lg"
@@ -166,17 +174,6 @@ const StackApp = () => {
                   <DollarSign className="h-8 w-8" />
                   <span className="text-lg font-semibold">Deposit USD</span>
                   <span className="text-xs text-muted-foreground">Credit/Debit Card</span>
-                </Button>
-
-                <Button
-                  variant={selectedDepositType === 'bitcoin' ? 'default' : 'outline'}
-                  size="lg"
-                  className="h-24 flex-col gap-2"
-                  onClick={() => handleDepositTypeSelect('bitcoin')}
-                >
-                  <Bitcoin className="h-8 w-8" />
-                  <span className="text-lg font-semibold">Deposit Bitcoin</span>
-                  <span className="text-xs text-muted-foreground">Lightning Network</span>
                 </Button>
               </div>
             </CardContent>
@@ -293,7 +290,6 @@ const StackApp = () => {
         <DepositModal
           isOpen={isDepositModalOpen}
           onClose={() => setIsDepositModalOpen(false)}
-          depositType={selectedDepositType}
           riskProfile={selectedProfile!}
         />
       )}
