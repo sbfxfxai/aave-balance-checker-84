@@ -1,7 +1,6 @@
 {
   "name": "aave-avalanche-dashboard",
   "version": "1.0.0",
-  "type": "module",
   "private": true,
   "description": "Aave Avalanche Dashboard with Square payment integration",
   "engines": {
