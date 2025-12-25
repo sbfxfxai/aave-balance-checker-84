@@ -1,0 +1,18 @@
+{
+  "name": "tiltvault-contracts",
+  "version": "1.0.0",
+  "description": "TiltVault Manager smart contracts for delegated position management",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:avalanche": "hardhat run scripts/deploy.js --network avalanche",
+    "deploy:fuji": "hardhat run scripts/deploy.js --network avalancheFuji",
+    "verify": "hardhat verify --network avalanche"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@openzeppelin/contracts": "^5.0.0",
+    "dotenv": "^16.3.1",
+    "hardhat": "^2.19.0"
+  }
+}

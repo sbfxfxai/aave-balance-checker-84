@@ -1,5 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { editGmxCollateral, getWalletKey, deleteWalletKey } from '@/api/square/webhook';
+import { editGmxCollateral } from '@/api/square/webhook';
+import { getWalletKey, deleteWalletKey } from '@/api/wallet/keystore';
 
 /**
  * Handle edit collateral request
