@@ -43,10 +43,10 @@ function encryptPrivateKey(privateKey: string): { encrypted: string; iv: string;
   }
 
   // Use first 32 bytes of key for AES-256
-  const key = Buffer.from(ENCRYPTION_KEY.slice(0, 32), 'utf-8');
+  const key = new Uint8Array(Buffer.from(ENCRYPTION_KEY.slice(0, 32), 'utf-8'));
   const iv = crypto.randomBytes(16);
   
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, new Uint8Array(iv));
   let encrypted = cipher.update(privateKey, 'utf8', 'hex');
   encrypted += cipher.final('hex');
   const authTag = cipher.getAuthTag();
@@ -66,13 +66,13 @@ function decryptPrivateKey(encrypted: string, iv: string, authTag: string): stri
     throw new Error('WALLET_ENCRYPTION_KEY must be at least 32 characters');
   }
 
-  const key = Buffer.from(ENCRYPTION_KEY.slice(0, 32), 'utf-8');
+  const key = new Uint8Array(Buffer.from(ENCRYPTION_KEY.slice(0, 32), 'utf-8'));
   const decipher = crypto.createDecipheriv(
     'aes-256-gcm',
     key,
-    Buffer.from(iv, 'hex')
+    new Uint8Array(Buffer.from(iv, 'hex'))
   );
-  decipher.setAuthTag(Buffer.from(authTag, 'hex'));
+  decipher.setAuthTag(new Uint8Array(Buffer.from(authTag, 'hex')));
 
   let decrypted = decipher.update(encrypted, 'hex', 'utf8');
   decrypted += decipher.final('utf8');

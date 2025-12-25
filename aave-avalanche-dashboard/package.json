@@ -1,11 +1,10 @@
 {
   "name": "aave-avalanche-dashboard",
   "version": "1.0.0",
-  "type": "module",
   "private": true,
   "description": "Aave Avalanche Dashboard with Square payment integration",
   "engines": {
-    "node": "24.x"
+    "node": ">=18.x"
   },
   "dependencies": {
     "@gmx-io/sdk": "^1.4.0",

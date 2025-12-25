@@ -1,5 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { closeGmxPosition, getWalletKey, deleteWalletKey } from './webhook';
+import { closeGmxPosition } from './webhook';
+import { getWalletKey, deleteWalletKey } from '../wallet/keystore';
 
 /**
  * Handle close position request
