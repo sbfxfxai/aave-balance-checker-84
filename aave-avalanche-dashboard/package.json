@@ -4,6 +4,9 @@
   "type": "module",
   "private": true,
   "description": "Aave Avalanche Dashboard with Square payment integration",
+  "engines": {
+    "node": "20.x"
+  },
   "dependencies": {
     "@gmx-io/sdk": "^1.4.0",
     "@upstash/redis": "^1.35.8",
