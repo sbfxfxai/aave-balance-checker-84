@@ -52,22 +52,27 @@ const STATUS_CONFIG: Record<string, { icon: typeof Clock; color: string; label: 
 export default function PositionsDashboard() {
   const [searchParams] = useSearchParams();
   const emailParam = searchParams.get('email');
+  const walletParam = searchParams.get('wallet');
   
-  const [email, setEmail] = useState(emailParam || '');
+  const [searchValue, setSearchValue] = useState(emailParam || walletParam || '');
   const [positions, setPositions] = useState<Position[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
 
-  const fetchPositions = async (searchEmail: string) => {
-    if (!searchEmail) return;
+  const fetchPositions = async (value: string) => {
+    if (!value) return;
     
     setIsLoading(true);
     setError(null);
     setHasSearched(true);
     
     try {
-      const response = await fetch(`/api/positions?email=${encodeURIComponent(searchEmail)}`);
+      // Determine if value is email or wallet address
+      const isWallet = value.startsWith('0x');
+      const param = isWallet ? `wallet=${value}` : `email=${encodeURIComponent(value)}`;
+      
+      const response = await fetch(`/api/positions?${param}`);
       const data = await response.json();
       
       if (data.success) {
@@ -85,12 +90,14 @@ export default function PositionsDashboard() {
   useEffect(() => {
     if (emailParam) {
       fetchPositions(emailParam);
+    } else if (walletParam) {
+      fetchPositions(walletParam);
     }
-  }, [emailParam]);
+  }, [emailParam, walletParam]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    fetchPositions(email);
+    fetchPositions(searchValue);
   };
 
   const totalValue = positions.reduce((sum, p) => sum + p.usdcAmount, 0);
@@ -124,19 +131,19 @@ export default function PositionsDashboard() {
               View Your Positions
             </CardTitle>
             <CardDescription>
-              Enter the email you used when making your deposit
+              Enter your email or wallet address to view your positions
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="flex gap-2">
               <Input
-                type="email"
-                placeholder="your@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                type="text"
+                placeholder="Email or Wallet Address (0x...)"
+                value={searchValue}
+                onChange={(e) => setSearchValue(e.target.value)}
                 className="flex-1"
               />
-              <Button type="submit" disabled={isLoading || !email}>
+              <Button type="submit" disabled={isLoading || !searchValue}>
                 {isLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
@@ -295,7 +302,7 @@ export default function PositionsDashboard() {
         {/* Refresh Button */}
         {hasSearched && positions.length > 0 && (
           <div className="mt-6 text-center">
-            <Button variant="outline" onClick={() => fetchPositions(email)}>
+            <Button variant="outline" onClick={() => fetchPositions(searchValue)}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
