@@ -13,8 +13,22 @@ import {
   AlertCircle,
   ExternalLink,
   RefreshCw,
-  Mail
+  Mail,
+  Wallet,
+  Link2,
+  LogOut
 } from 'lucide-react';
+
+// MetaMask ethereum provider type
+type EthereumProvider = {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  on?: (event: string, callback: (...args: unknown[]) => void) => void;
+  removeListener?: (event: string, callback: (...args: unknown[]) => void) => void;
+};
+
+const getEthereum = (): EthereumProvider | undefined => {
+  return (window as { ethereum?: EthereumProvider }).ethereum;
+};
 
 interface Position {
   id: string;
@@ -59,6 +73,109 @@ export default function PositionsDashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  
+  // MetaMask integration state
+  const [connectedWallet, setConnectedWallet] = useState<string | null>(null);
+  const [linkedEmail, setLinkedEmail] = useState<string | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [showLinkForm, setShowLinkForm] = useState(false);
+  const [emailToLink, setEmailToLink] = useState('');
+
+  // Check for saved session on mount
+  useEffect(() => {
+    const savedEmail = localStorage.getItem('tiltvault_email');
+    const savedWallet = localStorage.getItem('tiltvault_wallet');
+    
+    if (savedEmail) {
+      setLinkedEmail(savedEmail);
+      setSearchValue(savedEmail);
+      fetchPositions(savedEmail);
+    }
+    if (savedWallet) {
+      setConnectedWallet(savedWallet);
+    }
+  }, []);
+
+  // Connect MetaMask wallet
+  const connectMetaMask = async () => {
+    const ethereum = getEthereum();
+    if (!ethereum) {
+      setError('MetaMask not installed. Please install MetaMask to continue.');
+      return;
+    }
+
+    setIsConnecting(true);
+    setError(null);
+
+    try {
+      const accounts = await ethereum.request({ method: 'eth_requestAccounts' }) as string[];
+      if (accounts && accounts.length > 0) {
+        const wallet = accounts[0];
+        setConnectedWallet(wallet);
+        localStorage.setItem('tiltvault_wallet', wallet);
+
+        // Check if wallet is already linked to an email
+        const linkResponse = await fetch(`/api/accounts/link?wallet=${wallet}`);
+        const linkData = await linkResponse.json();
+        
+        if (linkData.email) {
+          // Wallet already linked - auto-login
+          setLinkedEmail(linkData.email);
+          setSearchValue(linkData.email);
+          localStorage.setItem('tiltvault_email', linkData.email);
+          await fetchPositions(linkData.email);
+        } else {
+          // Wallet not linked - show link form
+          setShowLinkForm(true);
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to connect MetaMask');
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  // Link wallet to email
+  const linkWalletToEmail = async () => {
+    if (!connectedWallet || !emailToLink) return;
+
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/accounts/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailToLink, walletAddress: connectedWallet }),
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        setLinkedEmail(emailToLink);
+        setSearchValue(emailToLink);
+        localStorage.setItem('tiltvault_email', emailToLink);
+        setShowLinkForm(false);
+        await fetchPositions(emailToLink);
+      } else {
+        setError(data.error || 'Failed to link wallet');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to link wallet');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Disconnect/logout
+  const disconnect = () => {
+    setConnectedWallet(null);
+    setLinkedEmail(null);
+    setPositions([]);
+    setHasSearched(false);
+    setSearchValue('');
+    setShowLinkForm(false);
+    localStorage.removeItem('tiltvault_email');
+    localStorage.removeItem('tiltvault_wallet');
+  };
 
   const fetchPositions = async (value: string) => {
     if (!value) return;
@@ -123,36 +240,125 @@ export default function PositionsDashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-8 max-w-4xl">
-        {/* Email Search */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Mail className="h-5 w-5" />
-              View Your Positions
-            </CardTitle>
-            <CardDescription>
-              Enter your email or wallet address to view your positions
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="flex gap-2">
-              <Input
-                type="text"
-                placeholder="Email or Wallet Address (0x...)"
-                value={searchValue}
-                onChange={(e) => setSearchValue(e.target.value)}
-                className="flex-1"
-              />
-              <Button type="submit" disabled={isLoading || !searchValue}>
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  'View Positions'
-                )}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+        {/* Connected Wallet Status */}
+        {connectedWallet && linkedEmail && (
+          <Card className="mb-6 border-green-500/30 bg-green-500/5">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-full bg-green-500/20">
+                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-green-700 dark:text-green-400">Connected</p>
+                    <p className="text-sm text-muted-foreground">{linkedEmail}</p>
+                    <p className="text-xs text-muted-foreground font-mono">
+                      {connectedWallet.slice(0, 6)}...{connectedWallet.slice(-4)}
+                    </p>
+                  </div>
+                </div>
+                <Button variant="ghost" size="sm" onClick={disconnect}>
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Disconnect
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Login Options - Show when not logged in */}
+        {!linkedEmail && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wallet className="h-5 w-5" />
+                Access Your Positions
+              </CardTitle>
+              <CardDescription>
+                Connect your wallet or enter your email to view positions
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* MetaMask Connect Button */}
+              {!connectedWallet && (
+                <Button 
+                  onClick={connectMetaMask} 
+                  disabled={isConnecting}
+                  className="w-full bg-orange-500 hover:bg-orange-600"
+                  size="lg"
+                >
+                  {isConnecting ? (
+                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                  ) : (
+                    <Wallet className="h-5 w-5 mr-2" />
+                  )}
+                  Continue with MetaMask
+                </Button>
+              )}
+
+              {/* Link Wallet Form - Show after connecting */}
+              {showLinkForm && connectedWallet && (
+                <div className="p-4 rounded-lg border bg-muted/50 space-y-3">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Link2 className="h-4 w-4 text-green-500" />
+                    <span>Wallet connected: </span>
+                    <code className="text-xs bg-background px-2 py-1 rounded">
+                      {connectedWallet.slice(0, 6)}...{connectedWallet.slice(-4)}
+                    </code>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Enter your email to link this wallet and easily access your positions:
+                  </p>
+                  <div className="flex gap-2">
+                    <Input
+                      type="email"
+                      placeholder="your@email.com"
+                      value={emailToLink}
+                      onChange={(e) => setEmailToLink(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button onClick={linkWalletToEmail} disabled={isLoading || !emailToLink}>
+                      {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Link'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Divider */}
+              {!showLinkForm && (
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">Or</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Email Search */}
+              {!showLinkForm && (
+                <form onSubmit={handleSubmit} className="flex gap-2">
+                  <Input
+                    type="text"
+                    placeholder="Email or Wallet Address (0x...)"
+                    value={searchValue}
+                    onChange={(e) => setSearchValue(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button type="submit" variant="outline" disabled={isLoading || !searchValue}>
+                    {isLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Mail className="h-4 w-4 mr-2" />
+                    )}
+                    {isLoading ? '' : 'Search'}
+                  </Button>
+                </form>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Error */}
         {error && (
