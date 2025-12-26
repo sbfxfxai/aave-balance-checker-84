@@ -9,6 +9,7 @@ import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { parseUnits } from 'viem';
 import { CONTRACTS } from '@/config/contracts';
 import { toast } from 'sonner';
+import { useAaveRates } from '@/hooks/useAaveRates';
 
 // Minimal Aave Pool ABI
 const AAVE_POOL_ABI = [
@@ -48,6 +49,7 @@ interface WorkingSupplyModalProps {
 export function WorkingSupplyModal({ isOpen, onClose }: WorkingSupplyModalProps) {
   const { address, isConnected } = useAccount();
   const { writeContract, data: hash, isPending } = useWriteContract();
+  const { supplyAPY } = useAaveRates();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ 
     hash,
     confirmations: 1
@@ -178,7 +180,7 @@ export function WorkingSupplyModal({ isOpen, onClose }: WorkingSupplyModalProps)
           ) : (
             <Alert>
               <AlertDescription>
-                Now supply your USDC to Aave to earn interest at ~3.14% APY.
+                Now supply your USDC to Aave to earn interest at {supplyAPY.toFixed(2)}% APY.
               </AlertDescription>
             </Alert>
           )}

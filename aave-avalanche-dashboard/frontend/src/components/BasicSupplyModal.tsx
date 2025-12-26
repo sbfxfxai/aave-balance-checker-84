@@ -10,6 +10,7 @@ import { parseUnits } from 'viem';
 import { CONTRACTS } from '@/config/contracts';
 import { toast } from 'sonner';
 import { ArrowDownUp } from 'lucide-react';
+import { useAaveRates } from '@/hooks/useAaveRates';
 
 // Simple ERC20 ABI for USDC
 const ERC20_ABI = [
@@ -56,6 +57,7 @@ interface BasicSupplyModalProps {
 export function BasicSupplyModal({ isOpen, onClose }: BasicSupplyModalProps) {
   const { address, isConnected } = useAccount();
   const { writeContract, isPending, data: hash } = useWriteContract();
+  const { supplyAPY } = useAaveRates();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
   
   // Get USDC balance
@@ -177,7 +179,7 @@ export function BasicSupplyModal({ isOpen, onClose }: BasicSupplyModalProps) {
 
           <Alert>
             <AlertDescription>
-              Supply your USDC to Aave to earn interest. Current APY: ~3.14%
+              Supply your USDC to Aave to earn interest. Current APY: {supplyAPY.toFixed(2)}%
             </AlertDescription>
           </Alert>
 

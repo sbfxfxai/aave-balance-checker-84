@@ -5,6 +5,7 @@ import { Wallet, LogOut, TrendingUp, TrendingDown, Wallet2, ArrowUpRight, Shield
 import { toast } from 'sonner';
 import { useAavePositions } from '@/hooks/useAavePositions';
 import { useWalletBalances } from '@/hooks/useWalletBalances';
+import { useAaveRates } from '@/hooks/useAaveRates';
 import { SupplyModal } from '@/components/SupplyModal';
 import { BorrowModal } from '@/components/BorrowModal';
 // Modal components - can be implemented later if needed
@@ -20,6 +21,7 @@ export function WalletInfo() {
   const { disconnect } = useDisconnect();
   const { avaxBalance, usdcBalance, isLoading: balanceLoading } = useWalletBalances();
   const positions = useAavePositions();
+  const { supplyAPY } = useAaveRates();
   const [isSupplyModalOpen, setIsSupplyModalOpen] = useState(false);
   const [isBorrowModalOpen, setIsBorrowModalOpen] = useState(false);
   const [isStrategiesModalOpen, setIsStrategiesModalOpen] = useState(false);
@@ -275,7 +277,7 @@ export function WalletInfo() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-medium text-green-500">Active Strategy</p>
-                <p className="text-sm text-muted-foreground">Balanced Growth (8.2% APY)</p>
+                <p className="text-sm text-muted-foreground">Balanced Growth ({supplyAPY.toFixed(2)}% APY)</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Auto-rebalancing enabled • Target HF: 2.2
                 </p>
