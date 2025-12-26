@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DollarSign, ArrowRight, Shield, TrendingUp, Zap, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,13 +8,21 @@ import { useToast } from '@/hooks/use-toast';
 import { DepositModal } from '@/components/stack/DepositModal';
 import { Link } from 'react-router-dom';
 
-const RISK_PROFILES = [
+// Helper to calculate blended APY based on USDC allocation percentage
+const calculateBlendedAPY = (usdcPercent: number, aaveAPY: number, btcLevReturn: number = 15) => {
+  const usdcComponent = (usdcPercent / 100) * aaveAPY;
+  const btcComponent = ((100 - usdcPercent) / 100) * btcLevReturn;
+  return usdcComponent + btcComponent;
+};
+
+// Generate risk profiles with real Aave APY
+const getRiskProfiles = (aaveAPY: number) => [
   {
     id: 'conservative',
     name: 'Conservative',
     description: '100% USDC on Aave',
     allocation: '100% USDC',
-    apy: '3-5%',
+    apy: `${aaveAPY.toFixed(2)}%`,
     leverage: '1x',
     color: 'bg-green-500/10 text-green-600 border-green-500/20',
   },
@@ -23,7 +31,7 @@ const RISK_PROFILES = [
     name: 'Balanced Conservative',
     description: '75% USDC / 25% GMX 3x BTC Long',
     allocation: '75% USDC / 25% Lev BTC',
-    apy: '4-7%',
+    apy: `${calculateBlendedAPY(75, aaveAPY, 12).toFixed(1)}-${calculateBlendedAPY(75, aaveAPY, 20).toFixed(0)}%`,
     leverage: '3x',
     color: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
   },
@@ -32,7 +40,7 @@ const RISK_PROFILES = [
     name: 'Balanced',
     description: '50% USDC / 50% GMX 3x BTC Long',
     allocation: '50% USDC / 50% Lev BTC',
-    apy: '5-10%',
+    apy: `${calculateBlendedAPY(50, aaveAPY, 12).toFixed(1)}-${calculateBlendedAPY(50, aaveAPY, 25).toFixed(0)}%`,
     leverage: '3x',
     color: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
   },
@@ -41,7 +49,7 @@ const RISK_PROFILES = [
     name: 'Aggressive',
     description: '25% USDC / 75% GMX 3x BTC Long',
     allocation: '25% USDC / 75% Lev BTC',
-    apy: '6-15%',
+    apy: `${calculateBlendedAPY(25, aaveAPY, 12).toFixed(1)}-${calculateBlendedAPY(25, aaveAPY, 30).toFixed(0)}%`,
     leverage: '3x',
     color: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
   },
@@ -50,20 +58,43 @@ const RISK_PROFILES = [
     name: 'Very Aggressive',
     description: '100% GMX 4-5x BTC Long',
     allocation: '100% Lev BTC',
-    apy: '8-20%',
+    apy: '10-30%',
     leverage: '4-5x',
     color: 'bg-red-500/10 text-red-600 border-red-500/20',
   },
 ] as const;
 
 type DepositType = 'usd' | null;
-type RiskProfileId = typeof RISK_PROFILES[number]['id'] | null;
+type RiskProfileId = 'conservative' | 'balanced-conservative' | 'balanced' | 'aggressive' | 'very-aggressive' | null;
 
 const StackApp = () => {
   const [selectedDepositType, setSelectedDepositType] = useState<DepositType>(null);
   const [selectedRiskProfile, setSelectedRiskProfile] = useState<RiskProfileId>(null);
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
+  const [aaveAPY, setAaveAPY] = useState<number>(3.5); // Default fallback
   const { toast } = useToast();
+
+  // Fetch real Aave USDC rates on mount
+  useEffect(() => {
+    const fetchAaveRates = async () => {
+      try {
+        const response = await fetch('/api/aave/rates');
+        const data = await response.json();
+        if (data.success && data.supplyAPY) {
+          setAaveAPY(data.supplyAPY);
+        }
+      } catch (error) {
+        console.error('Failed to fetch Aave rates:', error);
+      }
+    };
+    fetchAaveRates();
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchAaveRates, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Generate risk profiles with current Aave APY
+  const riskProfiles = getRiskProfiles(aaveAPY);
 
   const handleDepositTypeSelect = (type: DepositType) => {
     setSelectedDepositType(type);
@@ -99,7 +130,7 @@ const StackApp = () => {
     setIsDepositModalOpen(true);
   };
 
-  const selectedProfile = RISK_PROFILES.find(p => p.id === selectedRiskProfile);
+  const selectedProfile = riskProfiles.find((p: { id: string }) => p.id === selectedRiskProfile);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
@@ -197,7 +228,7 @@ const StackApp = () => {
                   onValueChange={(value) => handleRiskProfileSelect(value as RiskProfileId)}
                   className="space-y-4"
                 >
-                  {RISK_PROFILES.map((profile) => (
+                  {riskProfiles.map((profile) => (
                     <div key={profile.id} className="flex items-start space-x-3">
                       <RadioGroupItem
                         value={profile.id}
