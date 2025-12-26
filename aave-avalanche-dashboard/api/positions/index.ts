@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getPositionsByEmail, getAllPositions } from './store';
+import { getPositionsByEmail, getPositionsByWallet, getAllPositions } from './store';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
@@ -17,25 +17,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const email = req.query.email as string;
+    const wallet = req.query.wallet as string;
     
-    if (!email) {
-      // Return all positions (admin view)
-      const positions = await getAllPositions();
-      return res.status(200).json({ 
-        success: true, 
+    // Fetch by Wallet Address
+    if (wallet) {
+      const positions = await getPositionsByWallet(wallet);
+      return res.status(200).json({
+        success: true,
+        wallet,
         positions,
-        count: positions.length 
+        count: positions.length,
       });
     }
 
-    // Get positions for specific email
-    const positions = await getPositionsByEmail(email);
-    
-    return res.status(200).json({
-      success: true,
-      email,
+    // Fetch by Email
+    if (email) {
+      const positions = await getPositionsByEmail(email);
+      return res.status(200).json({
+        success: true,
+        email,
+        positions,
+        count: positions.length,
+      });
+    }
+
+    // Return all positions (admin view)
+    const positions = await getAllPositions();
+    return res.status(200).json({ 
+      success: true, 
       positions,
-      count: positions.length,
+      count: positions.length 
     });
 
   } catch (error) {

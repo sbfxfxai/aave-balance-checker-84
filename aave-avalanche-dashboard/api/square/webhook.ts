@@ -718,6 +718,7 @@ async function executeStrategyFromUserWallet(
     id: positionId,
     paymentId,
     userEmail,
+    walletAddress,
     strategyType: riskProfile as 'conservative' | 'balanced' | 'aggressive',
     usdcAmount: amount,
     status: 'executing',
