@@ -16,13 +16,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { walletAddress, privateKey, userEmail, riskProfile, amount } = req.body;
+    const { walletAddress, encryptedPrivateKey, userEmail, riskProfile, amount, paymentId } = req.body;
 
     // Validate required fields
-    if (!walletAddress || !privateKey || !userEmail || !riskProfile || !amount) {
+    if (!walletAddress || !encryptedPrivateKey || !userEmail || !riskProfile || !amount || !paymentId) {
       return res.status(400).json({
         error: 'Missing required fields',
-        required: ['walletAddress', 'privateKey', 'userEmail', 'riskProfile', 'amount'],
+        required: ['walletAddress', 'encryptedPrivateKey', 'userEmail', 'riskProfile', 'amount', 'paymentId'],
       });
     }
 
@@ -31,21 +31,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Invalid wallet address format' });
     }
 
-    // Store encrypted key
+    // Store encrypted key only (non-custodial)
     await storeWalletKey(
       walletAddress,
-      privateKey,
+      encryptedPrivateKey,
       userEmail,
       riskProfile,
-      parseFloat(amount)
+      parseFloat(amount),
+      paymentId
     );
 
-    console.log(`[StoreKey] Stored key for ${walletAddress}, email: ${userEmail}`);
+    console.log(`[StoreKey] Stored encrypted key for ${walletAddress}, email: ${userEmail}, paymentId: ${paymentId}`);
 
     return res.status(200).json({
       success: true,
-      message: 'Wallet key stored securely',
+      message: 'Encrypted wallet stored securely (non-custodial)',
       walletAddress,
+      paymentId,
     });
 
   } catch (error) {

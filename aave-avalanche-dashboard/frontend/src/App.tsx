@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Lazy load routes for code splitting
-const Index = lazy(() => import("./pages/IndexStatic"));
+const DashboardWithWeb3 = lazy(() => import("./pages/DashboardWithWeb3"));
 const StackApp = lazy(() => import("./pages/StackApp"));
 const GmxIntegration = lazy(() => import("./pages/GmxIntegration"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -61,7 +61,7 @@ const App = () => (
       <BrowserRouter>
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            <Route path="/" element={<Index />} />
+            <Route path="/" element={<DashboardWithWeb3 />} />
             <Route path="/stack" element={<StackApp />} />
             <Route
               path="/gmx"

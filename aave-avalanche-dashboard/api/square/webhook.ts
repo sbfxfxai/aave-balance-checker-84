@@ -118,8 +118,20 @@ const GMX_MIN_POSITION_SIZE_USD = 10;
 const AAVE_MIN_SUPPLY_USD = 0.5;
 
 // Fee and gas settings
-const AVAX_TO_SEND_FOR_GMX = ethers.parseEther('0.03'); // 0.03 AVAX sent to user for GMX execution
+const AVAX_TO_SEND_FOR_GMX = ethers.parseEther('0.06'); // 0.06 AVAX sent to user for GMX execution (balanced/aggressive)
+const AVAX_TO_SEND_FOR_AAVE = ethers.parseEther('0.02'); // 0.02 AVAX sent to user for exit fees (conservative)
+const TOTAL_AVAX_FEE = ethers.parseEther('0.23'); // 0.23 AVAX total fee (0.06 to user, 0.17 platform) - balanced/aggressive
+const TOTAL_AVAX_FEE_CONSERVATIVE = ethers.parseEther('0.1'); // 0.1 AVAX total fee (0.02 to user, 0.08 platform) - conservative
+const TOTAL_AVAX_FEE_DISCOUNTED = ethers.parseEther('0.1'); // 0.1 AVAX with ERGC discount
+const PLATFORM_FEE_PERCENT = 5; // 5% platform fee on deposits
 const MAX_GAS_PRICE_GWEI = 1.01; // Max gas price in gwei for all transactions
+
+// EnergyCoin (ERGC) - Fee discount token
+const ERGC_CONTRACT = '0xDC353b94284E7d3aEAB2588CEA3082b9b87C184B';
+const ERGC_DISCOUNT_THRESHOLD = ethers.parseUnits('100', 18); // 100 ERGC for discount
+const ERGC_PURCHASE_AMOUNT = 100; // 100 ERGC purchased
+const ERGC_BURN_PER_TX = 1; // 1 ERGC burned per transaction
+const ERGC_SEND_TO_USER = ethers.parseUnits('99', 18); // 99 ERGC sent to user (100 - 1 burned)
 
 // Risk profile configurations - maps to user selection
 const RISK_PROFILES = {
@@ -266,12 +278,116 @@ async function sendUsdcTransfer(
 }
 
 /**
- * Send AVAX to user wallet for GMX execution fees
+ * Check if user has ERGC discount (100+ ERGC)
  */
-async function sendAvaxForGmx(
+async function checkErgcDiscount(userAddress: string): Promise<boolean> {
+  try {
+    const provider = new ethers.JsonRpcProvider(AVALANCHE_RPC);
+    const ergcContract = new ethers.Contract(ERGC_CONTRACT, ERC20_ABI, provider);
+    const balance = await ergcContract.balanceOf(userAddress);
+    const hasDiscount = balance >= ERGC_DISCOUNT_THRESHOLD;
+    console.log(`[ERGC] User ${userAddress} balance: ${ethers.formatUnits(balance, 18)} ERGC, discount: ${hasDiscount}`);
+    return hasDiscount;
+  } catch (error) {
+    console.error('[ERGC] Balance check error:', error);
+    return false;
+  }
+}
+
+/**
+ * Transfer ERGC tokens to user wallet (99 ERGC - 1 is burned for this transaction)
+ */
+async function sendErgcTokens(
   toAddress: string
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
-  console.log(`[AVAX] Sending ${ethers.formatEther(AVAX_TO_SEND_FOR_GMX)} AVAX to ${toAddress} for GMX execution`);
+  console.log(`[ERGC] Sending ${ethers.formatUnits(ERGC_SEND_TO_USER, 18)} ERGC to ${toAddress} (1 burned for this tx)`);
+
+  if (!HUB_WALLET_PRIVATE_KEY) {
+    console.error('[ERGC] Hub wallet private key not configured');
+    return { success: false, error: 'Hub wallet not configured' };
+  }
+
+  try {
+    const provider = new ethers.JsonRpcProvider(AVALANCHE_RPC);
+    const wallet = new ethers.Wallet(HUB_WALLET_PRIVATE_KEY, provider);
+    const ergcContract = new ethers.Contract(ERGC_CONTRACT, ERC20_ABI, wallet);
+    
+    // Check ERGC balance (need at least 99 to send, 1 is "burned" by keeping in treasury)
+    const balance = await ergcContract.balanceOf(wallet.address);
+    console.log(`[ERGC] Hub ERGC balance: ${ethers.formatUnits(balance, 18)}`);
+    
+    if (balance < ERGC_SEND_TO_USER) {
+      console.error(`[ERGC] Insufficient ERGC balance`);
+      return { success: false, error: 'Insufficient ERGC in treasury wallet' };
+    }
+    
+    // Send 99 ERGC with fixed gas price (1 ERGC is "burned" by staying in treasury)
+    const gasPrice = ethers.parseUnits(MAX_GAS_PRICE_GWEI.toString(), 'gwei');
+    const tx = await ergcContract.transfer(toAddress, ERGC_SEND_TO_USER, { gasPrice });
+    
+    console.log(`[ERGC] Transaction hash: ${tx.hash}`);
+    await tx.wait();
+    console.log(`[ERGC] Transfer confirmed - 99 ERGC sent, 1 ERGC burned (kept in treasury)`);
+    
+    return { success: true, txHash: tx.hash };
+  } catch (error) {
+    console.error('[ERGC] Transfer error:', error);
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * Debit ERGC from user's wallet (transfer to treasury/burn address)
+ * Used when user opts to use existing ERGC for fee discount
+ */
+async function debitErgcFromUser(
+  userPrivateKey: string,
+  amount: number = 1
+): Promise<{ success: boolean; txHash?: string; error?: string }> {
+  const debitAmount = ethers.parseUnits(amount.toString(), 18);
+  console.log(`[ERGC] Debiting ${amount} ERGC from user wallet`);
+
+  try {
+    const provider = new ethers.JsonRpcProvider(AVALANCHE_RPC);
+    const userWallet = new ethers.Wallet(userPrivateKey, provider);
+    const ergcContract = new ethers.Contract(ERGC_CONTRACT, ERC20_ABI, userWallet);
+    
+    // Check user's ERGC balance
+    const balance = await ergcContract.balanceOf(userWallet.address);
+    console.log(`[ERGC] User ERGC balance: ${ethers.formatUnits(balance, 18)}`);
+    
+    if (balance < debitAmount) {
+      console.error(`[ERGC] User has insufficient ERGC balance`);
+      return { success: false, error: 'Insufficient ERGC balance in user wallet' };
+    }
+    
+    // Transfer ERGC to hub wallet (effectively burning it for fee discount)
+    const gasPrice = ethers.parseUnits(MAX_GAS_PRICE_GWEI.toString(), 'gwei');
+    const tx = await ergcContract.transfer(HUB_WALLET_ADDRESS, debitAmount, { gasPrice });
+    
+    console.log(`[ERGC] Debit transaction hash: ${tx.hash}`);
+    await tx.wait();
+    console.log(`[ERGC] Debit confirmed - ${amount} ERGC transferred to treasury`);
+    
+    return { success: true, txHash: tx.hash };
+  } catch (error) {
+    console.error('[ERGC] Debit error:', error);
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * Send AVAX to user wallet for execution/exit fees
+ * @param toAddress - User wallet address
+ * @param amount - Amount of AVAX to send (use AVAX_TO_SEND_FOR_GMX or AVAX_TO_SEND_FOR_AAVE)
+ * @param purpose - Description for logging (e.g., 'GMX execution' or 'exit fees')
+ */
+async function sendAvaxToUser(
+  toAddress: string,
+  amount: bigint,
+  purpose: string
+): Promise<{ success: boolean; txHash?: string; error?: string }> {
+  console.log(`[AVAX] Sending ${ethers.formatEther(amount)} AVAX to ${toAddress} for ${purpose}`);
 
   if (!HUB_WALLET_PRIVATE_KEY) {
     console.error('[AVAX] Hub wallet private key not configured');
@@ -286,7 +402,7 @@ async function sendAvaxForGmx(
     const balance = await provider.getBalance(wallet.address);
     console.log(`[AVAX] Hub AVAX balance: ${ethers.formatEther(balance)}`);
     
-    if (balance < AVAX_TO_SEND_FOR_GMX) {
+    if (balance < amount) {
       console.error(`[AVAX] Insufficient AVAX balance`);
       return { success: false, error: 'Insufficient AVAX in hub wallet' };
     }
@@ -295,7 +411,7 @@ async function sendAvaxForGmx(
     const gasPrice = ethers.parseUnits(MAX_GAS_PRICE_GWEI.toString(), 'gwei');
     const tx = await wallet.sendTransaction({
       to: toAddress,
-      value: AVAX_TO_SEND_FOR_GMX,
+      value: amount,
       gasPrice,
     });
     
@@ -312,14 +428,16 @@ async function sendAvaxForGmx(
 
 /**
  * Parse wallet address and risk profile from payment note
- * Format: "wallet:0x... risk:balanced email:user@example.com"
+ * Format: "wallet:0x... risk:balanced email:user@example.com ergc:100 debit_ergc:1"
  */
 function parsePaymentNote(note: string): { 
   walletAddress?: string; 
   riskProfile?: string;
   email?: string;
+  ergcPurchase?: number;
+  debitErgc?: number;
 } {
-  const result: { walletAddress?: string; riskProfile?: string; email?: string } = {};
+  const result: { walletAddress?: string; riskProfile?: string; email?: string; ergcPurchase?: number; debitErgc?: number } = {};
   
   if (!note) return result;
 
@@ -331,6 +449,10 @@ function parsePaymentNote(note: string): {
       result.riskProfile = part.replace('risk:', '');
     } else if (part.startsWith('email:')) {
       result.email = part.replace('email:', '');
+    } else if (part.startsWith('ergc:')) {
+      result.ergcPurchase = parseInt(part.replace('ergc:', ''), 10);
+    } else if (part.startsWith('debit_ergc:')) {
+      result.debitErgc = parseInt(part.replace('debit_ergc:', ''), 10);
     }
   }
 
@@ -1142,7 +1264,7 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
   }
 
   // Parse wallet address from note
-  const { walletAddress, riskProfile, email } = parsePaymentNote(note);
+  const { walletAddress, riskProfile, email, ergcPurchase, debitErgc } = parsePaymentNote(note);
 
   if (!walletAddress) {
     console.log('[Webhook] No wallet address found in payment note');
@@ -1156,6 +1278,8 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
   console.log(`[Webhook] Wallet address: ${walletAddress}`);
   console.log(`[Webhook] Risk profile: ${riskProfile}`);
   console.log(`[Webhook] Email: ${email}`);
+  console.log(`[Webhook] ERGC purchase: ${ergcPurchase || 0}`);
+  console.log(`[Webhook] Debit ERGC: ${debitErgc || 0}`);
 
   // Option C: Non-custodial - Execute strategy from USER's wallet
   // 1. Transfer USDC from hub wallet to user wallet (deposit amount only, not fees)
@@ -1169,10 +1293,15 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
   
   // Get the original deposit amount from stored wallet data (before fees were added)
   const walletData = await getWalletKey(walletAddress);
-  const depositAmount = walletData?.amount || amountUsd; // Fallback to full amount if not found
+  const rawDepositAmount = walletData?.amount || amountUsd; // Fallback to full amount if not found
+  
+  // Platform fee was already charged upfront (added to payment total), so send full deposit amount
+  // User paid: depositAmount + 5% fee = total charged
+  // We send: depositAmount (the full amount they requested to deposit)
+  const depositAmount = rawDepositAmount;
   
   console.log(`[Webhook] Initiating USDC transfer to user wallet...`);
-  console.log(`[Webhook] Deposit amount: $${depositAmount} (charged: $${amountUsd})`);
+  console.log(`[Webhook] Deposit amount: $${depositAmount} (platform fee was charged upfront in payment)`);
   
   const transferResult = await sendUsdcTransfer(walletAddress, depositAmount, paymentId);
   
@@ -1188,16 +1317,42 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
   
   console.log(`[Webhook] USDC transferred: ${transferResult.txHash}`);
   
-  // Send AVAX for GMX execution if needed
-  if (hasGmx) {
-    console.log('[Webhook] GMX strategy detected, sending AVAX for execution fees...');
-    const avaxResult = await sendAvaxForGmx(walletAddress);
-    if (!avaxResult.success) {
-      console.error(`[Webhook] AVAX transfer failed: ${avaxResult.error}`);
-      // Continue anyway - GMX will fail but AAVE might still work
+  // Send ERGC tokens if user purchased them
+  if (ergcPurchase && ergcPurchase > 0) {
+    console.log(`[Webhook] ERGC purchase detected: ${ergcPurchase} tokens`);
+    const ergcResult = await sendErgcTokens(walletAddress);
+    if (!ergcResult.success) {
+      console.error(`[Webhook] ERGC transfer failed: ${ergcResult.error}`);
+      // Continue anyway - main deposit should still work
     } else {
-      console.log(`[Webhook] AVAX transferred: ${avaxResult.txHash}`);
+      console.log(`[Webhook] ERGC transferred: ${ergcResult.txHash}`);
     }
+  }
+
+  // Debit ERGC from user's wallet if they opted to use existing ERGC
+  if (debitErgc && debitErgc > 0 && walletData?.privateKey) {
+    console.log(`[Webhook] Debiting ${debitErgc} ERGC from user wallet for fee discount`);
+    const debitResult = await debitErgcFromUser(walletData.privateKey, debitErgc);
+    if (!debitResult.success) {
+      console.error(`[Webhook] ERGC debit failed: ${debitResult.error}`);
+      // Continue anyway - user still gets the trade but we couldn't collect the ERGC
+    } else {
+      console.log(`[Webhook] ERGC debited: ${debitResult.txHash}`);
+    }
+  }
+
+  // Send AVAX to user - different amounts based on profile
+  // Conservative: 0.02 AVAX for exit fees
+  // Balanced/Aggressive: 0.06 AVAX for GMX execution
+  const avaxAmount = hasGmx ? AVAX_TO_SEND_FOR_GMX : AVAX_TO_SEND_FOR_AAVE;
+  const avaxPurpose = hasGmx ? 'GMX execution fees' : 'exit fees';
+  console.log(`[Webhook] Sending ${ethers.formatEther(avaxAmount)} AVAX for ${avaxPurpose}...`);
+  const avaxResult = await sendAvaxToUser(walletAddress, avaxAmount, avaxPurpose);
+  if (!avaxResult.success) {
+    console.error(`[Webhook] AVAX transfer failed: ${avaxResult.error}`);
+    // Continue anyway - main deposit should still work
+  } else {
+    console.log(`[Webhook] AVAX transferred: ${avaxResult.txHash}`);
   }
   
   console.log('[Webhook] Executing strategy from user wallet...');

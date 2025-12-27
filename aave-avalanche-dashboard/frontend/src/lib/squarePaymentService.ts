@@ -199,7 +199,11 @@ export class SquarePaymentService {
     token: string,
     amount: number,
     orderId: string,
-    riskProfile?: string
+    riskProfile?: string,
+    includeErgc?: boolean,
+    useExistingErgc?: boolean,
+    walletAddress?: string,
+    userEmail?: string
   ): Promise<PaymentResponse> {
     try {
       // Use same origin for API calls (works in production)
@@ -210,6 +214,10 @@ export class SquarePaymentService {
         amount,
         orderId,
         apiUrl,
+        includeErgc,
+        useExistingErgc,
+        walletAddress,
+        userEmail,
       });
 
       const response = await fetch(apiUrl, {
@@ -223,6 +231,10 @@ export class SquarePaymentService {
           currency: 'USD',
           idempotency_key: orderId,
           risk_profile: riskProfile,
+          include_ergc: includeErgc ? 100 : 0, // 100 ERGC if buying new
+          use_existing_ergc: useExistingErgc ? 1 : 0, // 1 ERGC to debit from user wallet
+          wallet_address: walletAddress,
+          user_email: userEmail,
         }),
       });
 

@@ -30,8 +30,8 @@ const RISK_PROFILES = {
     color: 'text-blue-500',
     bgColor: 'bg-blue-500/10',
     borderColor: 'border-blue-500/20',
-    allocation: { aave: 50, gmx: 50 },
-    description: '50% AAVE lending, 50% GMX 2.5x long BTC',
+    allocation: { aave: 100, gmx: 0 },
+    description: '100% AAVE lending',
   },
   balanced: {
     name: 'Balanced',
@@ -39,8 +39,8 @@ const RISK_PROFILES = {
     color: 'text-purple-500',
     bgColor: 'bg-purple-500/10',
     borderColor: 'border-purple-500/20',
-    allocation: { aave: 25, gmx: 75 },
-    description: '25% AAVE lending, 75% GMX 2.5x long BTC',
+    allocation: { aave: 50, gmx: 50 },
+    description: '50% AAVE lending, 50% GMX 2.5x long BTC',
   },
   aggressive: {
     name: 'Aggressive',

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DollarSign, ArrowRight, Shield, TrendingUp, Zap, Home } from 'lucide-react';
+import { DollarSign, ArrowRight, Shield, TrendingUp, Zap, Home, Bitcoin, Landmark } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -20,52 +20,34 @@ const getRiskProfiles = (aaveAPY: number) => [
   {
     id: 'conservative',
     name: 'Conservative',
-    description: '100% USDC on Aave',
+    description: '100% Savings',
     allocation: '100% USDC',
     apy: `${aaveAPY.toFixed(2)}%`,
     leverage: '1x',
-    color: 'bg-green-500/10 text-green-600 border-green-500/20',
-  },
-  {
-    id: 'balanced-conservative',
-    name: 'Balanced Conservative',
-    description: '75% USDC / 25% GMX 3x BTC Long',
-    allocation: '75% USDC / 25% Lev BTC',
-    apy: `${calculateBlendedAPY(75, aaveAPY, 12).toFixed(1)}-${calculateBlendedAPY(75, aaveAPY, 20).toFixed(0)}%`,
-    leverage: '3x',
     color: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
   },
   {
     id: 'balanced',
     name: 'Balanced',
-    description: '50% USDC / 50% GMX 3x BTC Long',
+    description: '50% Savings, 50% Bitcoin 2.5x',
     allocation: '50% USDC / 50% Lev BTC',
-    apy: `${calculateBlendedAPY(50, aaveAPY, 12).toFixed(1)}-${calculateBlendedAPY(50, aaveAPY, 25).toFixed(0)}%`,
-    leverage: '3x',
+    apy: 'Varies',
+    leverage: '2.5x',
     color: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
   },
   {
     id: 'aggressive',
     name: 'Aggressive',
-    description: '25% USDC / 75% GMX 3x BTC Long',
-    allocation: '25% USDC / 75% Lev BTC',
-    apy: `${calculateBlendedAPY(25, aaveAPY, 12).toFixed(1)}-${calculateBlendedAPY(25, aaveAPY, 30).toFixed(0)}%`,
-    leverage: '3x',
-    color: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
-  },
-  {
-    id: 'very-aggressive',
-    name: 'Very Aggressive',
-    description: '100% GMX 4-5x BTC Long',
+    description: '100% Bitcoin 2.5x',
     allocation: '100% Lev BTC',
-    apy: '10-30%',
-    leverage: '4-5x',
-    color: 'bg-red-500/10 text-red-600 border-red-500/20',
+    apy: 'Varies',
+    leverage: '2.5x',
+    color: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
   },
 ] as const;
 
 type DepositType = 'usd' | null;
-type RiskProfileId = 'conservative' | 'balanced-conservative' | 'balanced' | 'aggressive' | 'very-aggressive' | null;
+type RiskProfileId = 'conservative' | 'balanced' | 'aggressive' | null;
 
 const StackApp = () => {
   const [selectedDepositType, setSelectedDepositType] = useState<DepositType>(null);
@@ -136,30 +118,32 @@ const StackApp = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
       {/* Header */}
       <header className="border-b border-border/50 backdrop-blur-sm bg-background/80 sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
+        <div className="container mx-auto px-4 py-3 sm:py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-gradient-primary">
-                <TrendingUp className="h-6 w-6 text-white" />
-              </div>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <img 
+                src="/tiltvault-logo.png" 
+                alt="TiltVault" 
+                className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg"
+              />
               <div>
-                <h1 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-                  Stack App
+                <h1 className="text-lg sm:text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+                  Auto
                 </h1>
-                <p className="text-sm text-muted-foreground">Automated DeFi Leverage</p>
+                <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Automated Investing</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <Link to="/gmx">
-                <Button variant="outline" className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4" />
-                  GMX
+                <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
+                  <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4" />
+                  <span className="hidden sm:inline">Bitcoin</span>
                 </Button>
               </Link>
               <Link to="/">
-                <Button variant="outline" className="flex items-center gap-2">
-                  <Home className="h-4 w-4" />
-                  Dashboard
+                <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
+                  <Landmark className="h-3 w-3 sm:h-4 sm:w-4" />
+                  <span className="hidden sm:inline">Banking</span>
                 </Button>
               </Link>
             </div>
@@ -171,15 +155,15 @@ const StackApp = () => {
       <main className="container mx-auto px-4 py-12">
         <div className="max-w-4xl mx-auto">
           {/* Welcome Section */}
-          <div className="text-center mb-12">
-            <h2 className="text-4xl font-bold mb-4 bg-gradient-primary bg-clip-text text-transparent">
-              Welcome to Stack App
+          <div className="text-center mb-8 sm:mb-12 px-2">
+            <h2 className="text-2xl sm:text-4xl font-bold mb-3 sm:mb-4 bg-gradient-primary bg-clip-text text-transparent">
+              Welcome to Auto Invest
             </h2>
-            <p className="text-xl text-muted-foreground mb-2">
+            <p className="text-base sm:text-xl text-muted-foreground mb-2">
               Set your risk tolerance, we handle everything else
             </p>
-            <p className="text-sm text-muted-foreground">
-              Automated leverage exposure on GMX + Aave • US-compliant • No KYC required
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              Automated savings & Bitcoin exposure • US-compliant • No KYC required
             </p>
           </div>
 

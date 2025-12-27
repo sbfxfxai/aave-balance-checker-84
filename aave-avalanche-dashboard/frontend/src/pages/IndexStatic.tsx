@@ -66,15 +66,15 @@ export default function IndexStatic() {
       <main className="container mx-auto px-4 py-8">
         <div className="max-w-6xl mx-auto text-center space-y-8">
           <div className="space-y-4">
-            <h2 className="text-4xl font-bold">Track your Aave positions</h2>
+            <h2 className="text-4xl font-bold">Earn 5-8% on Your Savings</h2>
             <p className="text-xl text-muted-foreground">
-              Supply, borrow, and manage your DeFi portfolio on Avalanche C-Chain
+              Traditional banks pay 0.5%. Get real returns through battle-tested protocols—no crypto knowledge needed.
             </p>
           </div>
           <div className="flex justify-center gap-4">
             <Button size="lg" className="flex items-center gap-2" onClick={() => setShowWeb3(true)}>
               <Wallet className="h-5 w-5" />
-              Connect Wallet to Start
+              Get Started
             </Button>
           </div>
         </div>

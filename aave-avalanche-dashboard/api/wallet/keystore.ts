@@ -23,15 +23,13 @@ const ENCRYPTION_KEY = process.env.WALLET_ENCRYPTION_KEY || '';
 const KEY_TTL_SECONDS = 24 * 60 * 60; // 24 hours - keys auto-expire
 
 interface StoredWalletData {
-  encryptedPrivateKey: string;
-  iv: string;
-  authTag: string;
+  encryptedPrivateKey: string; // Now already encrypted client-side
   walletAddress: string;
   userEmail: string;
   riskProfile: string;
   amount: number;
   createdAt: string;
-  paymentId?: string;
+  paymentId: string;
 }
 
 /**
@@ -81,25 +79,21 @@ function decryptPrivateKey(encrypted: string, iv: string, authTag: string): stri
 }
 
 /**
- * Store encrypted wallet data in Vercel KV
+ * Store client-side encrypted wallet data in Vercel KV (non-custodial)
  * Key format: wallet:{walletAddress}
  */
 export async function storeWalletKey(
   walletAddress: string,
-  privateKey: string,
+  encryptedPrivateKey: string, // Already encrypted client-side
   userEmail: string,
   riskProfile: string,
   amount: number,
-  paymentId?: string
+  paymentId: string
 ): Promise<void> {
-  console.log(`[Keystore] Storing encrypted key for wallet ${walletAddress}`);
-
-  const { encrypted, iv, authTag } = encryptPrivateKey(privateKey);
+  console.log(`[Keystore] Storing client-side encrypted key for wallet ${walletAddress}`);
 
   const data: StoredWalletData = {
-    encryptedPrivateKey: encrypted,
-    iv,
-    authTag,
+    encryptedPrivateKey, // Store as-is (already encrypted)
     walletAddress,
     userEmail,
     riskProfile,
@@ -114,20 +108,21 @@ export async function storeWalletKey(
     ex: KEY_TTL_SECONDS,
   });
 
-  console.log(`[Keystore] Key stored with ${KEY_TTL_SECONDS}s TTL`);
+  console.log(`[Keystore] Client-encrypted key stored with ${KEY_TTL_SECONDS}s TTL`);
 }
 
 /**
- * Retrieve and decrypt wallet private key from Vercel KV
+ * Retrieve client-side encrypted wallet data from Vercel KV (non-custodial)
+ * Note: Cannot decrypt - only return encrypted data for client-side decryption
  */
 export async function getWalletKey(walletAddress: string): Promise<{
-  privateKey: string;
+  encryptedPrivateKey: string;
   userEmail: string;
   riskProfile: string;
   amount: number;
-  paymentId?: string;
+  paymentId: string;
 } | null> {
-  console.log(`[Keystore] Retrieving key for wallet ${walletAddress}`);
+  console.log(`[Keystore] Retrieving encrypted key for wallet ${walletAddress}`);
 
   const redis = await getRedis();
   const dataStr = await redis.get(`wallet:${walletAddress.toLowerCase()}`);
@@ -138,21 +133,15 @@ export async function getWalletKey(walletAddress: string): Promise<{
 
   const data: StoredWalletData = typeof dataStr === 'string' ? JSON.parse(dataStr) : dataStr;
 
-  try {
-    const privateKey = decryptPrivateKey(data.encryptedPrivateKey, data.iv, data.authTag);
-    console.log(`[Keystore] Key decrypted successfully`);
+  console.log(`[Keystore] Encrypted key retrieved (non-custodial)`);
 
-    return {
-      privateKey,
-      userEmail: data.userEmail,
-      riskProfile: data.riskProfile,
-      amount: data.amount,
-      paymentId: data.paymentId,
-    };
-  } catch (error) {
-    console.error(`[Keystore] Decryption failed:`, error);
-    return null;
-  }
+  return {
+    encryptedPrivateKey: data.encryptedPrivateKey,
+    userEmail: data.userEmail,
+    riskProfile: data.riskProfile,
+    amount: data.amount,
+    paymentId: data.paymentId,
+  };
 }
 
 /**

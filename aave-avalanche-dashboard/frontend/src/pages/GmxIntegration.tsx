@@ -740,26 +740,44 @@ export default function GmxIntegration() {
                 }
               });
               
-              // Calculate and attach execution fee if sendWnt was found
+              // Log execution fee info but DON'T modify opts.value - let SDK handle it
               if (totalWntAmount > 0n) {
-                const baseValue = (opts as { value?: bigint } | undefined)?.value || 0n;
-                const totalValue = baseValue + totalWntAmount;
+                const existingValue = (opts as { value?: bigint } | undefined)?.value || 0n;
                 
-                console.log('[GMX] Calculated execution fee:', {
-                  wntValue: totalWntAmount.toString(),
-                  baseValue: baseValue.toString(),
-                  totalValue: totalValue.toString(),
+                console.log('[GMX] Execution fee (SDK-managed):', {
+                  sendWntAmount: formatUnits(totalWntAmount, 18),
+                  existingValue: formatUnits(existingValue, 18),
+                  note: 'Letting SDK handle msg.value - not modifying',
                 });
-                
-                // Ensure the calculated value is always used
-                opts = { ...opts, value: totalValue };
-                console.log('[GMX] Attached execution fee as msg.value:', totalValue.toString());
-              } else if (dataItems.some(d => typeof d === 'string' && d.toLowerCase().startsWith('0x7d39aaf1'))) {
-                console.warn('[GMX] sendWnt found but extraction failed - possible SDK issue');
+                // Don't modify opts.value - SDK already set it correctly
               }
             }
           } catch (e) {
             console.log('[GMX SDK callContract log failed]', e);
+          }
+
+          // Set gas parameters: maxFeePerGas = baseFee + minerTip + 1 gwei for profitability
+          try {
+            const baseFee = await publicClient.getGasPrice();
+            const minerTip = parseUnits('12', 9); // 12 gwei miner tip
+            const maxFeeBuffer = parseUnits('1', 9); // 1 gwei buffer
+            const maxFeePerGas = baseFee + minerTip + maxFeeBuffer;
+            
+            console.log('[GMX] Gas parameters:', {
+              baseFee: formatUnits(baseFee, 9) + ' gwei',
+              minerTip: '12 gwei',
+              maxFeeBuffer: '1 gwei',
+              maxFeePerGas: formatUnits(maxFeePerGas, 9) + ' gwei',
+              note: 'maxFee = baseFee + minerTip + 1 for profitability',
+            });
+            
+            opts = { 
+              ...opts, 
+              maxFeePerGas,
+              maxPriorityFeePerGas: minerTip,
+            };
+          } catch (gasError) {
+            console.warn('[GMX] Failed to set custom gas, using defaults:', gasError);
           }
 
           console.log('[GMX] About to call originalCallContract...');
@@ -906,18 +924,25 @@ export default function GmxIntegration() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
       <header className="border-b border-border/50 backdrop-blur-sm bg-background/80 sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
+        <div className="container mx-auto px-4 py-3 sm:py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">GMX Integration</h1>
-              <p className="text-sm text-muted-foreground">Avalanche C-Chain • BTC Long 2.5x (USDC collateral)</p>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <img 
+                src="/tiltvault-logo.png" 
+                alt="TiltVault" 
+                className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg"
+              />
+              <div>
+                <h1 className="text-lg sm:text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">Bitcoin</h1>
+                <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Leveraged Trading</p>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <Link to="/">
-                <Button variant="outline">Dashboard</Button>
+                <Button variant="outline" size="sm" className="text-xs sm:text-sm px-2 sm:px-4">Banking</Button>
               </Link>
               <Link to="/stack">
-                <Button variant="outline">Stack App</Button>
+                <Button variant="outline" size="sm" className="text-xs sm:text-sm px-2 sm:px-4">Auto</Button>
               </Link>
             </div>
           </div>

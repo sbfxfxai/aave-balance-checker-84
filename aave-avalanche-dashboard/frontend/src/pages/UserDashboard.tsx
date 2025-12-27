@@ -72,10 +72,31 @@ interface ExecutionStep {
 }
 
 interface GmxMarketData {
-  btcToken: { symbol: string; address: string; decimals: number };
-  usdcToken: { symbol: string; address: string; decimals: number };
-  market: { marketToken: string; indexToken: string };
+  btcToken: GmxToken;
+  usdcToken: GmxToken;
+  market: GmxMarket;
 }
+
+ type GmxToken = {
+  symbol: string;
+  address: string;
+  decimals: number;
+ };
+
+ type GmxMarket = {
+  marketToken: string;
+  indexToken: string;
+  shortToken: string;
+  isListed: boolean;
+ };
+
+ type GmxTokensResponse = {
+  tokens: GmxToken[];
+ };
+
+ type GmxMarketsResponse = {
+  markets: GmxMarket[];
+ };
 
 export default function UserDashboard() {
   const [searchParams] = useSearchParams();
@@ -129,28 +150,35 @@ export default function UserDashboard() {
   };
 
   // Resolve GMX market data
-  const resolveGmxMarket = async (): Promise<GmxMarketData> => {
+  const resolveGmxMarket = useCallback(async (): Promise<GmxMarketData> => {
     const [tokensRes, marketsRes] = await Promise.all([
       fetch(`${GMX_AVALANCHE_API}/tokens`),
       fetch(`${GMX_AVALANCHE_API}/markets`),
     ]);
 
-    const tokensJson = await tokensRes.json();
-    const marketsJson = await marketsRes.json();
+    const tokensJson = (await tokensRes.json()) as GmxTokensResponse;
+    const marketsJson = (await marketsRes.json()) as GmxMarketsResponse;
 
-    const btc = tokensJson.tokens.find((t: any) => t.symbol === 'BTC');
-    const usdc = tokensJson.tokens.find((t: any) => t.symbol === 'USDC');
+    const btc = tokensJson.tokens.find((t: GmxToken) => t.symbol === 'BTC');
+    const usdc = tokensJson.tokens.find((t: GmxToken) => t.symbol === 'USDC');
+    if (!btc || !usdc) {
+      throw new Error('Unable to resolve BTC/USDC tokens from GMX API');
+    }
+
     const btcUsdcMarket = marketsJson.markets.find(
-      (m: any) => m.isListed && 
+      (m: GmxMarket) => m.isListed &&
         m.indexToken.toLowerCase() === btc.address.toLowerCase() &&
         m.shortToken.toLowerCase() === usdc.address.toLowerCase()
     );
+    if (!btcUsdcMarket) {
+      throw new Error('Unable to resolve BTC/USDC market from GMX API');
+    }
 
     return { btcToken: btc, usdcToken: usdc, market: btcUsdcMarket };
-  };
+  }, []);
 
   // Execute GMX position
-  const executeGmxPosition = async (amount: number, leverage: number): Promise<string> => {
+  const executeGmxPosition = useCallback(async (amount: number, leverage: number): Promise<string> => {
     if (!walletClient || !publicClient || !address) {
       throw new Error('Wallet not connected');
     }
@@ -203,7 +231,7 @@ export default function UserDashboard() {
     // Capture tx hash
     let txHash = '';
     const originalCallContract = sdk.callContract.bind(sdk);
-    sdk.callContract = async (...args: any[]) => {
+    sdk.callContract = async (...args: Parameters<typeof originalCallContract>) => {
       const result = await originalCallContract(...args);
       if (typeof result === 'string' && result.startsWith('0x')) {
         txHash = result;
@@ -223,7 +251,7 @@ export default function UserDashboard() {
     });
 
     return txHash || 'pending';
-  };
+  }, [address, publicClient, resolveGmxMarket, walletClient]);
 
   // Execute full strategy
   const executeStrategy = useCallback(async () => {
@@ -296,7 +324,7 @@ export default function UserDashboard() {
       setError(err instanceof Error ? err.message : 'Strategy execution failed');
       setDashboardState('error');
     }
-  }, [usdcBalanceFormatted, profile, riskProfile, supplyUSDC, aaveData, refetchGmx, refetchBalance, toast]);
+  }, [usdcBalanceFormatted, profile, riskProfile, supplyUSDC, aaveData, executeGmxPosition, refetchGmx, refetchBalance, toast]);
 
   // Poll for USDC balance
   useEffect(() => {
@@ -563,22 +591,24 @@ export default function UserDashboard() {
                   </div>
                 ) : gmxPositions && gmxPositions.length > 0 ? (
                   <div className="space-y-3">
-                    {gmxPositions.map((pos: any, i: number) => (
+                    {gmxPositions.map((pos, i: number) => (
                       <div key={i} className="p-4 rounded-lg bg-muted">
                         <div className="flex justify-between items-center mb-2">
-                          <span className="font-medium">BTC/USD Long</span>
-                          <span className={`text-sm ${pos.pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                            {pos.pnl >= 0 ? '+' : ''}{pos.pnl?.toFixed(2) || '0.00'}%
+                          <span className="font-medium">
+                            {pos.marketInfo?.name || 'Market'} {pos.isLong ? 'Long' : 'Short'}
+                          </span>
+                          <span className="text-sm text-muted-foreground">
+                            Entry ${parseFloat(pos.entryPrice || '0').toFixed(2)}
                           </span>
                         </div>
                         <div className="grid grid-cols-3 gap-4 text-sm">
                           <div>
                             <p className="text-muted-foreground">Size</p>
-                            <p className="font-mono">${pos.size?.toFixed(2) || '0.00'}</p>
+                            <p className="font-mono">${parseFloat(pos.sizeInUsd || '0').toFixed(2)}</p>
                           </div>
                           <div>
                             <p className="text-muted-foreground">Collateral</p>
-                            <p className="font-mono">${pos.collateral?.toFixed(2) || '0.00'}</p>
+                            <p className="font-mono">${parseFloat(pos.collateralAmount || '0').toFixed(2)}</p>
                           </div>
                           <div>
                             <p className="text-muted-foreground">Leverage</p>

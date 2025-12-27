@@ -10,25 +10,46 @@
     <link rel="preconnect" href="https://pulse.walletconnect.org" crossorigin />
     <link rel="dns-prefetch" href="https://web.squarecdn.com" />
     <link rel="dns-prefetch" href="https://relay.walletconnect.org" />
+    <link rel="dns-prefetch" href="https://sandbox.kit.cash.app" />
+    <link rel="dns-prefetch" href="https://kit.cash.app" />
     
-    <title>5984adeb-813b-4511-b385-6cbb43806d8f</title>
-    <meta name="description" content="Lovable Generated Project" />
-    <meta name="author" content="Lovable" />
+    <title>TiltVault - Banking that works as hard as you do</title>
+    <meta name="description" content="Traditional banks give you 0.5%. TiltVault gives you 5-8% APY through battle-tested DeFi protocols—without the complexity. Secured by Aave's $70B+ protocol." />
+    <meta name="author" content="TiltVault" />
 
     <!-- Content Security Policy is set in vercel.json headers -->
 
-    <meta property="og:title" content="5984adeb-813b-4511-b385-6cbb43806d8f" />
-    <meta property="og:description" content="Lovable Generated Project" />
+    <meta property="og:title" content="TiltVault - Banking that works as hard as you do" />
+    <meta property="og:description" content="Traditional banks give you 0.5%. TiltVault gives you 5-8% APY through battle-tested DeFi protocols—without the complexity." />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@Lovable" />
+    <meta name="twitter:site" content="@TiltVault" />
     <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
-  </head>
+      </head>
 
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Critical initial render - shows immediately while JS loads -->
+      <div class="tv-initial-shell">
+        <header class="tv-initial-header">
+          <div class="tv-initial-header-inner">
+            <div class="tv-initial-logo"></div>
+            <div>
+              <div class="tv-initial-title">TiltVault</div>
+              <div class="tv-initial-subtitle">Smart Savings</div>
+            </div>
+          </div>
+        </header>
+        <main class="tv-initial-main">
+          <div class="tv-initial-center">
+            <div class="tv-initial-spinner"></div>
+            <p class="tv-initial-loading">Loading TiltVault...</p>
+          </div>
+        </main>
+      </div>
+    </div>
     <!-- Square Web Payments SDK loaded dynamically when needed (not render-blocking) -->
     <script type="module" src="/src/main.tsx"></script>
   </body>

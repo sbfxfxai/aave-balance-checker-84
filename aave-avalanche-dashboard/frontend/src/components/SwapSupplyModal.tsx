@@ -196,13 +196,13 @@ export function SwapSupplyModal({ isOpen, onClose }: SwapSupplyModalProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <Card className="w-full max-w-md p-6 bg-white">
-        <h2 className="text-xl font-bold mb-4">Swap AVAX → USDC → Supply to Aave</h2>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <Card className="w-full max-w-md p-6 bg-background border border-border">
+        <h2 className="text-xl font-bold mb-4 text-foreground">Swap AVAX → USDC → Supply to Aave</h2>
         
         <div className="space-y-4">
           <div>
-            <Label htmlFor="avax-amount">AVAX Amount</Label>
+            <Label htmlFor="avax-amount" className="text-foreground">AVAX Amount</Label>
             <Input
               id="avax-amount"
               type="number"
@@ -210,27 +210,28 @@ export function SwapSupplyModal({ isOpen, onClose }: SwapSupplyModalProps) {
               value={avaxAmount}
               onChange={(e) => handleAvaxChange(e.target.value)}
               step="0.001"
+              className="bg-background text-foreground"
             />
           </div>
 
           <div className="flex justify-center">
-            <ArrowDownUp className="h-5 w-5 text-gray-400" />
+            <ArrowDownUp className="h-5 w-5 text-muted-foreground" />
           </div>
 
           <div>
-            <Label htmlFor="usdc-amount">USDC You'll Receive (≈)</Label>
+            <Label htmlFor="usdc-amount" className="text-foreground">USDC You'll Receive (≈)</Label>
             <Input
               id="usdc-amount"
               type="number"
               placeholder="0.00"
               value={usdcAmount}
               readOnly
-              className="bg-gray-50"
+              className="bg-muted text-foreground"
             />
           </div>
 
-          <Alert>
-            <AlertDescription>
+          <Alert className="bg-muted border-border">
+            <AlertDescription className="text-muted-foreground">
               This will swap your AVAX for USDC on Trader Joe DEX and automatically supply the USDC to Aave to earn interest.
             </AlertDescription>
           </Alert>

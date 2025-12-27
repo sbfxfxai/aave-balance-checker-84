@@ -18,23 +18,38 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     target: "es2020",
+    cssCodeSplit: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          "react-vendor": ["react", "react-dom", "react-router-dom"],
-          "web3-vendor": ["wagmi", "@wagmi/core", "viem", "ethers"],
-          "ui-vendor": [
-            "@radix-ui/react-accordion",
-            "@radix-ui/react-alert-dialog",
-            "@radix-ui/react-dialog",
-            "@radix-ui/react-dropdown-menu",
-            "@radix-ui/react-select",
-            "@radix-ui/react-tabs",
-            "@radix-ui/react-toast",
-            "@radix-ui/react-tooltip",
-          ],
-          "chart-vendor": ["recharts"],
-          "query-vendor": ["@tanstack/react-query"],
+        manualChunks: (id) => {
+          // Core React - needed immediately
+          if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
+            return 'react-core';
+          }
+          // Router - can be slightly deferred
+          if (id.includes('react-router')) {
+            return 'react-router';
+          }
+          // Web3 - heavy, lazy load
+          if (id.includes('wagmi') || id.includes('viem') || id.includes('ethers') || id.includes('@wagmi')) {
+            return 'web3-vendor';
+          }
+          // UI components - lazy load
+          if (id.includes('@radix-ui')) {
+            return 'ui-vendor';
+          }
+          // Charts - lazy load
+          if (id.includes('recharts') || id.includes('d3-')) {
+            return 'chart-vendor';
+          }
+          // Query - lazy load
+          if (id.includes('@tanstack')) {
+            return 'query-vendor';
+          }
+          // Lucide icons - lazy load
+          if (id.includes('lucide-react')) {
+            return 'icons';
+          }
         },
       },
     },

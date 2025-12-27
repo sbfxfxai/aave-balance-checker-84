@@ -1449,17 +1449,17 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
   const actionInfo = getActionInfo();
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-sm p-4 bg-white max-h-[90vh] overflow-y-auto">
-        <h2 className="text-lg font-bold mb-3">{actionInfo.title}</h2>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <Card className="w-full max-w-sm p-4 bg-background border border-border max-h-[90vh] overflow-y-auto">
+        <h2 className="text-lg font-bold mb-3 text-foreground">{actionInfo.title}</h2>
         
         <div className="space-y-2.5">
           {/* Balance Display for Supply */}
           {action === 'supply' && usdcBalance && (
-            <div className="bg-blue-50 p-2 rounded border border-blue-200">
+            <div className="bg-blue-500/10 p-2 rounded border border-blue-500/30">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-xs text-gray-600">Available Balance</div>
+                  <div className="text-xs text-muted-foreground">Available Balance</div>
                   <div className="text-base font-semibold text-blue-700">
                     {parseFloat(usdcBalance.formatted).toFixed(2)} USDC
                   </div>
@@ -1484,10 +1484,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           {action === 'repay' && (
             <>
               {wavaxBalance && (
-                <div className="bg-orange-50 p-2 rounded border border-orange-200">
+                <div className="bg-orange-500/10 p-2 rounded border border-orange-500/30">
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-xs text-gray-600">WAVAX Balance</div>
+                      <div className="text-xs text-muted-foreground">WAVAX Balance</div>
                       <div className="text-base font-semibold text-orange-700">
                         {parseFloat(wavaxBalance.formatted).toFixed(4)} WAVAX
                       </div>
@@ -1543,15 +1543,15 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                 </div>
               )}
               {positions.avaxBorrowed && parseFloat(positions.avaxBorrowed) > 0 && (
-                <div className="bg-red-50 p-2 rounded border border-red-200">
-                  <div className="text-xs text-gray-600">Current Debt</div>
+                <div className="bg-red-500/10 p-2 rounded border border-red-500/30">
+                  <div className="text-xs text-muted-foreground">Current Debt</div>
                   <div className="text-base font-semibold text-red-700">
                     {parseFloat(positions.avaxBorrowed).toFixed(4)} AVAX
                   </div>
                 </div>
               )}
               {/* Repay Mode Toggle */}
-              <div className="flex items-center gap-2 p-2 bg-gray-50 rounded border">
+              <div className="flex items-center gap-2 p-2 bg-muted rounded border border-border">
                 <Label className="text-xs flex-1">Repay Mode:</Label>
                 <div className="flex gap-1">
                   <Button
@@ -1577,7 +1577,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                 </div>
               </div>
               {repayMode === 'full' && (
-                <Alert className="py-2 bg-yellow-50 border-yellow-200">
+                <Alert className="py-2 bg-yellow-500/10 border-yellow-500/30">
                   <AlertDescription className="text-xs">
                     Full debt repayment (recommended) - repays entire debt to avoid interest accrual issues
                   </AlertDescription>
@@ -1590,7 +1590,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
             <div className="flex items-center justify-between mb-1.5">
               <Label htmlFor="amount" className="text-sm">{actionInfo.token} Amount</Label>
               {action === 'supply' && usdcBalance && (
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-muted-foreground">
                   Max: {parseFloat(usdcBalance.formatted).toFixed(2)}
                 </span>
               )}
@@ -1618,16 +1618,16 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
             )}
           </div>
 
-          <Alert className="py-2">
-            <AlertDescription className="text-xs">
+          <Alert className="py-2 bg-muted border-border">
+            <AlertDescription className="text-xs text-muted-foreground">
               {actionInfo.description}
             </AlertDescription>
           </Alert>
 
           {/* Transaction Hash Display */}
           {hash && (
-            <Alert className="py-2">
-              <AlertDescription className="text-xs">
+            <Alert className="py-2 bg-muted border-border">
+              <AlertDescription className="text-xs text-foreground">
                 <div className="flex items-center justify-between">
                   <span>Transaction:</span>
                   <a
@@ -1653,10 +1653,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
           {/* Current Aave Position for Supply */}
           {action === 'supply' && positions.usdcSupply && (
-            <Alert className="bg-green-50 border-green-200 py-2">
-              <AlertDescription className="text-xs">
-                <div className="font-semibold text-green-700">Current Aave Position</div>
-                <div className="mt-0.5">Supplied: {parseFloat(positions.usdcSupply).toFixed(2)} USDC</div>
+            <Alert className="bg-green-500/10 border-green-500/30 py-2">
+              <AlertDescription className="text-xs text-foreground">
+                <div className="font-semibold text-green-600">Current Aave Position</div>
+                <div className="mt-0.5 text-foreground">Supplied: {parseFloat(positions.usdcSupply).toFixed(2)} USDC</div>
                 {positions.usdcSupplyApy && (
                   <div>APY: {positions.usdcSupplyApy.toFixed(2)}%</div>
                 )}
@@ -1666,13 +1666,13 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
           {/* Step Indicator for Supply */}
           {action === 'supply' && (
-            <Alert className={`${step === 'approve' ? 'bg-yellow-50 border-yellow-200' : 'bg-blue-50 border-blue-200'} py-2`}>
-              <AlertDescription className="text-xs">
+            <Alert className={`${step === 'approve' ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-blue-500/10 border-blue-500/30'} py-2`}>
+              <AlertDescription className="text-xs text-foreground">
                 <div className="font-semibold">
                   {step === 'approve' ? '📝 Step 1: Approve USDC' : '💰 Step 2: Supply to Aave V3'}
                 </div>
                 {step === 'supply' && (
-                  <div className="text-xs mt-0.5 text-green-700">✅ Approval complete! Ready to supply.</div>
+                  <div className="text-xs mt-0.5 text-green-600">✅ Approval complete! Ready to supply.</div>
                 )}
               </AlertDescription>
             </Alert>
@@ -1680,14 +1680,14 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
           {/* Debug Info for Supply */}
           {action === 'supply' && poolAddress && (
-            <Alert className="bg-gray-50 py-2">
-              <AlertDescription className="text-xs">
+            <Alert className="bg-muted border-border py-2">
+              <AlertDescription className="text-xs text-foreground">
                 <div>Pool: {poolAddress.slice(0, 8)}...{poolAddress.slice(-6)}</div>
                 <div>Token: {CONTRACTS.USDC.slice(0, 8)}...{CONTRACTS.USDC.slice(-6)} (Native USDC)</div>
                 {allowance !== undefined && (
                   <div>Allowance: {formatUnits(allowance, 6)} USDC</div>
                 )}
-                <div className="mt-0.5 text-gray-500">Current Step: {step}</div>
+                <div className="mt-0.5 text-muted-foreground">Current Step: {step}</div>
               </AlertDescription>
             </Alert>
           )}

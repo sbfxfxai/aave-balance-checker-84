@@ -7,6 +7,7 @@ import { useAavePositions } from '@/hooks/useAavePositions';
 import { useWalletBalances } from '@/hooks/useWalletBalances';
 import { ActionModal } from '@/components/ActionModal';
 import { WalletConnect } from '@/components/WalletConnect';
+import { GmxPositionCard } from '@/components/GmxPositionCard';
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { CONTRACTS, AAVE_DATA_PROVIDER_ABI } from '@/config/contracts';
@@ -27,9 +28,9 @@ export function SimpleDashboard() {
     address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
     abi: AAVE_DATA_PROVIDER_ABI,
     functionName: 'getUserReserveData',
-    args: address ? [CONTRACTS.WAVAX as `0x${string}`, address] : undefined,
+    args: walletAddress ? [CONTRACTS.WAVAX as `0x${string}`, walletAddress] : undefined,
     query: {
-      enabled: isConnected && !!address,
+      enabled: (isConnected || hasDirectWallet) && !!walletAddress,
     },
   });
   
@@ -85,7 +86,10 @@ export function SimpleDashboard() {
     toast.info('Wallet disconnected');
   };
 
-  if (!isConnected) {
+  // Check for both wagmi connection and our direct wallet connection
+  const hasDirectWallet = (window as any).tiltvaultWallet?.address;
+  
+  if (!isConnected && !hasDirectWallet) {
     return (
       <div className="max-w-md mx-auto">
         <WalletConnect />
@@ -93,8 +97,25 @@ export function SimpleDashboard() {
     );
   }
 
+  // If we have direct wallet but not wagmi, show connecting state
+  if (!isConnected && hasDirectWallet) {
+    return (
+      <div className="max-w-md mx-auto">
+        <Card className="p-6">
+          <div className="text-center">
+            <p className="text-muted-foreground">Connecting wallet...</p>
+            <p className="text-xs text-muted-foreground mt-2">
+              Address: {(window as any).tiltvaultWallet.address?.slice(0, 6)}...{(window as any).tiltvaultWallet.address?.slice(-4)}
+            </p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   // Safety check - ensure address exists before rendering
-  if (!address) {
+  const walletAddress = address || hasDirectWallet;
+  if (!walletAddress) {
     return (
       <div className="max-w-md mx-auto">
         <Card className="p-6">
@@ -113,7 +134,7 @@ export function SimpleDashboard() {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold flex items-center gap-2">
             <Wallet className="h-5 w-5" />
-            Connected Wallet
+            Your Account
           </h3>
           <Button variant="outline" onClick={handleDisconnect}>
             <LogOut className="h-4 w-4 mr-2" />
@@ -122,23 +143,23 @@ export function SimpleDashboard() {
         </div>
         <div className="space-y-2">
           <p className="text-sm text-gray-600">Address</p>
-          <p className="font-mono">{address?.slice(0, 6)}...{address?.slice(-4)}</p>
+          <p className="font-mono">{walletAddress?.slice(0, 6)}...{walletAddress?.slice(-4)}</p>
         </div>
       </Card>
 
       {/* Balances */}
       <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4">Your Balances</h3>
+        <h3 className="text-lg font-semibold mb-4">Available Cash</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
             <p className="font-medium text-blue-500">AVAX</p>
             <p className="text-2xl font-bold">{balanceLoading ? '...' : (avaxBalance ? parseFloat(avaxBalance).toFixed(4) : '0.0000')}</p>
-            <p className="text-sm text-gray-600">In Wallet</p>
+            <p className="text-sm text-gray-600">For network fees</p>
           </div>
           <div className="p-4 rounded-lg bg-green-500/5 border border-green-500/20">
-            <p className="font-medium text-green-500">USDC (Native)</p>
-            <p className="text-2xl font-bold">{balanceLoading ? '...' : parseFloat(usdcBalance).toFixed(2)}</p>
-            <p className="text-sm text-gray-600">In Wallet</p>
+            <p className="font-medium text-green-500">USD Balance</p>
+            <p className="text-2xl font-bold">${balanceLoading ? '...' : parseFloat(usdcBalance).toFixed(2)}</p>
+            <p className="text-sm text-gray-600">Ready to invest</p>
             {needsMigration && parseFloat(usdcEBalance) > 0 && (
               <p className="text-xs text-orange-500 mt-1">
                 ⚠️ You have {parseFloat(usdcEBalance).toFixed(2)} USDC.e - swap to native USDC for Aave V3
@@ -151,7 +172,7 @@ export function SimpleDashboard() {
       {/* Aave Positions */}
       <Card className="p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Your Aave Positions</h3>
+          <h3 className="text-lg font-semibold">Your Earnings</h3>
           <Button
             variant="outline"
             size="sm"
@@ -165,12 +186,12 @@ export function SimpleDashboard() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-4 rounded-lg bg-green-500/5 border border-green-500/20">
-            <p className="font-medium text-green-500">USDC Supplied</p>
-            <p className="text-2xl font-bold">{parseFloat(positions.usdcSupply).toFixed(2)}</p>
-            <p className="text-sm text-gray-600">Earn {(positions.usdcSupplyApy || 3.14).toFixed(2)}% APY</p>
+            <p className="font-medium text-green-500">Savings Balance</p>
+            <p className="text-2xl font-bold">${parseFloat(positions.usdcSupply).toFixed(2)}</p>
+            <p className="text-sm text-gray-600">Earning {(positions.usdcSupplyApy || 3.14).toFixed(2)}% APY</p>
           </div>
           <div className="p-4 rounded-lg bg-red-500/5 border border-red-500/20">
-            <p className="font-medium text-red-500">AVAX Borrowed</p>
+            <p className="font-medium text-red-500">Loan Balance</p>
             <p className="text-2xl font-bold">{parseFloat(positions.avaxBorrowed || '0').toFixed(4)}</p>
             <p className="text-sm text-gray-600">Pay {(positions.avaxBorrowApy || 3.55).toFixed(2)}% APY</p>
             {/* Debug info - remove in production */}
@@ -183,9 +204,12 @@ export function SimpleDashboard() {
         </div>
       </Card>
 
+      {/* GMX Positions */}
+      <GmxPositionCard walletAddress={address} onRefresh={handleRefresh} />
+
       {/* Action Buttons */}
       <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4">Actions</h3>
+        <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Button 
             onClick={() => setActiveAction('swap')}
@@ -201,7 +225,7 @@ export function SimpleDashboard() {
             variant="outline"
           >
             <Plus className="h-4 w-4" />
-            Supply USDC to Aave
+            Add to Savings
           </Button>
           
           <Button 
@@ -210,7 +234,7 @@ export function SimpleDashboard() {
             variant="outline"
           >
             <Minus className="h-4 w-4" />
-            Withdraw USDC
+            Withdraw Savings
           </Button>
           
           <Button 
@@ -219,7 +243,7 @@ export function SimpleDashboard() {
             variant="outline"
           >
             <TrendingDown className="h-4 w-4" />
-            Borrow AVAX
+            Take a Loan
           </Button>
           
           <Button 
@@ -228,7 +252,7 @@ export function SimpleDashboard() {
             variant="outline"
           >
             <TrendingUp className="h-4 w-4" />
-            Repay AVAX
+            Repay Loan
           </Button>
         </div>
       </Card>

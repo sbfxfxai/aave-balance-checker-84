@@ -82,7 +82,7 @@ export const SquarePaymentForm: React.FC<SquarePaymentFormProps> = ({
       squareServiceRef.current?.destroy();
       squareServiceRef.current = null;
     };
-  }, [onPaymentError]);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,7 +117,7 @@ export const SquarePaymentForm: React.FC<SquarePaymentFormProps> = ({
     <form onSubmit={handleSubmit} className="space-y-4">
       {/* Square Card Container */}
       <div className="space-y-2">
-        <label className="text-sm font-medium">Card Information</label>
+        <label className="text-sm font-medium sr-only">Card Information</label>
         <div
           id="sq-card"
           ref={cardContainerRef}

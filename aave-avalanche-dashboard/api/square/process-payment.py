@@ -126,6 +126,11 @@ def process_payment(request_data):
     amount = request_data.get("amount")
     currency = request_data.get("currency", "USD").upper()
     idempotency_key = request_data.get("idempotency_key") or request_data.get("idempotencyKey") or request_data.get("orderId")
+    risk_profile = request_data.get("risk_profile", "balanced")
+    include_ergc = request_data.get("include_ergc", 0)
+    use_existing_ergc = request_data.get("use_existing_ergc", 0)
+    wallet_address = request_data.get("wallet_address", "")
+    user_email = request_data.get("user_email", "")
     
     if not idempotency_key:
         idempotency_key = f"{int(time.time() * 1000)}-{''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=9))}"
@@ -136,6 +141,20 @@ def process_payment(request_data):
     except (InvalidOperation, ValueError) as e:
         return 400, {"success": False, "error": {"message": f"Invalid amount: {e}", "code": "INVALID_AMOUNT"}}
     
+    # Build payment note for webhook processing
+    # Format: "wallet:0x... risk:balanced email:user@example.com ergc:100 debit_ergc:1"
+    note_parts = []
+    if wallet_address:
+        note_parts.append(f"wallet:{wallet_address}")
+    note_parts.append(f"risk:{risk_profile}")
+    if user_email:
+        note_parts.append(f"email:{user_email}")
+    if include_ergc and include_ergc > 0:
+        note_parts.append(f"ergc:{include_ergc}")
+    if use_existing_ergc and use_existing_ergc > 0:
+        note_parts.append(f"debit_ergc:{use_existing_ergc}")
+    payment_note = " ".join(note_parts)
+    
     square_payload = {
         "source_id": source_id,
         "idempotency_key": idempotency_key,
@@ -145,6 +164,7 @@ def process_payment(request_data):
         },
         "location_id": config["location_id"],
         "autocomplete": True,
+        "note": payment_note,
     }
     
     api_url = f"{config['api_base_url']}/v2/payments"

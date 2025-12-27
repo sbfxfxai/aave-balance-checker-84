@@ -303,7 +303,7 @@ export function AdminDashboard() {
           <div className="text-center p-4 bg-muted/50 rounded-lg">
             <Wallet className="h-8 w-8 mx-auto mb-2 text-purple-500" />
             <p className="text-sm font-medium">USDC Hub</p>
-            <p className="text-xs text-muted-foreground font-mono text-[10px]">
+            <p className="text-xs text-muted-foreground font-mono">
               {HUB_WALLET.slice(0, 6)}...{HUB_WALLET.slice(-4)}
             </p>
           </div>

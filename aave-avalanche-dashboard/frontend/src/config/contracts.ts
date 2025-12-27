@@ -7,6 +7,7 @@ export const CONTRACTS = {
   WAVAX: '0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7',
   USDC: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E', // Native USDC
   USDC_E: '0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664', // Bridged USDC.e
+  ERGC: '0xDC353b94284E7d3aEAB2588CEA3082b9b87C184B', // EnergyCoin - fee discount token
   
   // Aave V3 Avalanche Mainnet - VERIFIED ADDRESSES
   AAVE_POOL_ADDRESSES_PROVIDER: '0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb',
@@ -16,6 +17,17 @@ export const CONTRACTS = {
   
   // DEX Routers
   TRADER_JOE_ROUTER: '0x60aE616a2155Ee3d9A68541Ba4544862310933d4',
+} as const;
+
+// ERGC Fee Discount Constants
+export const ERGC_DISCOUNT = {
+  THRESHOLD: 100n * 10n ** 18n, // 100 ERGC required for discount
+  STANDARD_FEE: 0.23, // 0.23 AVAX standard GMX fee
+  DISCOUNTED_FEE: 0.1, // 0.1 AVAX with ERGC discount
+  PRICE_USD: 0.10, // $0.10 per ERGC
+  PURCHASE_AMOUNT: 100, // 100 ERGC per purchase ($10)
+  BURN_PER_TX: 1, // 1 ERGC burned per transaction
+  SEND_TO_USER: 99, // 99 ERGC sent to user (100 - 1 burned)
 } as const;
 
 export const ERC20_ABI = erc20Abi;

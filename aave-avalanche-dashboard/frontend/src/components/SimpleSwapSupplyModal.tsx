@@ -193,9 +193,9 @@ export function SimpleSwapSupplyModal({ isOpen, onClose }: SimpleSwapSupplyModal
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <Card className="w-full max-w-md p-6 bg-white">
-        <h2 className="text-xl font-bold mb-4">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <Card className="w-full max-w-md p-6 bg-background border border-border">
+        <h2 className="text-xl font-bold mb-4 text-foreground">
           {step === 'swap' ? 'Swap AVAX → USDC' : 'Supply USDC to Aave'}
         </h2>
         
@@ -203,7 +203,7 @@ export function SimpleSwapSupplyModal({ isOpen, onClose }: SimpleSwapSupplyModal
           {step === 'swap' ? (
             <>
               <div>
-                <Label htmlFor="avax-amount">AVAX Amount</Label>
+                <Label htmlFor="avax-amount" className="text-foreground">AVAX Amount</Label>
                 <Input
                   id="avax-amount"
                   type="number"
@@ -211,27 +211,28 @@ export function SimpleSwapSupplyModal({ isOpen, onClose }: SimpleSwapSupplyModal
                   value={avaxAmount}
                   onChange={(e) => handleAvaxChange(e.target.value)}
                   step="0.001"
+                  className="bg-background text-foreground"
                 />
               </div>
 
               <div className="flex justify-center">
-                <ArrowDownUp className="h-5 w-5 text-gray-400" />
+                <ArrowDownUp className="h-5 w-5 text-muted-foreground" />
               </div>
 
               <div>
-                <Label htmlFor="usdc-amount">USDC You'll Receive (≈)</Label>
+                <Label htmlFor="usdc-amount" className="text-foreground">USDC You'll Receive (≈)</Label>
                 <Input
                   id="usdc-amount"
                   type="number"
                   placeholder="0.00"
                   value={usdcAmount}
                   readOnly
-                  className="bg-gray-50"
+                  className="bg-muted text-foreground"
                 />
               </div>
 
-              <Alert>
-                <AlertDescription>
+              <Alert className="bg-muted border-border">
+                <AlertDescription className="text-muted-foreground">
                   This will swap your AVAX for USDC on Trader Joe DEX.
                 </AlertDescription>
               </Alert>
@@ -252,17 +253,17 @@ export function SimpleSwapSupplyModal({ isOpen, onClose }: SimpleSwapSupplyModal
           ) : (
             <>
               <div className="text-center py-4">
-                <div className="text-lg font-semibold mb-2">Swap Completed!</div>
-                <div className="text-gray-600 mb-4">
+                <div className="text-lg font-semibold mb-2 text-foreground">Swap Completed!</div>
+                <div className="text-muted-foreground mb-4">
                   You received approximately {usdcAmount} USDC
                 </div>
-                <div className="text-sm text-gray-500">
+                <div className="text-sm text-muted-foreground">
                   Now supply it to Aave to earn interest.
                 </div>
               </div>
 
-              <Alert>
-                <AlertDescription>
+              <Alert className="bg-muted border-border">
+                <AlertDescription className="text-muted-foreground">
                   Supply your USDC to Aave to earn {avaxToUsdcRate}% APY.
                 </AlertDescription>
               </Alert>
