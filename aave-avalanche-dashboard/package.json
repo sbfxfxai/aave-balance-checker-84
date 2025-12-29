@@ -16,7 +16,7 @@
     "ethers": "^6.16.0",
     "form-data": "^4.0.0",
     "mailgun.js": "^12.4.0",
-    "permissionless": "^0.3.2",
+    "permissionless": "^0.2.57",
     "viem": "^2.43.3"
   },
   "devDependencies": {
