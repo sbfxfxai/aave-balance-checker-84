@@ -2,6 +2,7 @@ import { Suspense, ReactNode } from 'react';
 import { WagmiProvider } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { config } from '@/config/wagmi';
+import { PrivyAuthProvider } from '@/components/PrivyAuthProvider';
 
 // Optimized QueryClient for web3 usage
 // Created here so it's only instantiated when Web3Providers is loaded
@@ -30,12 +31,14 @@ interface Web3ProvidersProps {
 
 export function Web3Providers({ children }: Web3ProvidersProps) {
   return (
-    <WagmiProvider config={config}>
-      <QueryClientProvider client={queryClient}>
-        <Suspense fallback={<Web3Fallback />}>
-          {children}
-        </Suspense>
-      </QueryClientProvider>
-    </WagmiProvider>
+    <PrivyAuthProvider>
+      <WagmiProvider config={config}>
+        <QueryClientProvider client={queryClient}>
+          <Suspense fallback={<Web3Fallback />}>
+            {children}
+          </Suspense>
+        </QueryClientProvider>
+      </WagmiProvider>
+    </PrivyAuthProvider>
   );
 }
