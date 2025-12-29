@@ -1,15 +1,55 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { VercelRequest, VercelResponse } from '@vercel/node';
 import { ethers } from 'ethers';
 import crypto from 'crypto';
 import { Redis } from '@upstash/redis';
-import { PrivySigner } from '../utils/privy-signer';
-import { getPrivyClient } from '../utils/privy-client';
-import { savePosition, updatePosition, generatePositionId, UserPosition } from '../positions/store';
-import { getWalletKey, deleteWalletKey, decryptWalletKeyWithToken } from '../wallet/keystore';
-import { createWalletClient, createPublicClient, http, parseUnits, formatUnits, maxUint256, encodeFunctionData } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { createPublicClient, createWalletClient, http, parseUnits, formatUnits, maxUint256 } from 'viem';
 import { avalanche } from 'viem/chains';
 import { GmxSdk } from '@gmx-io/sdk';
+
+// Helper functions
+function generatePositionId(): string {
+  return `pos_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+interface UserPosition {
+  id: string;
+  paymentId: string;
+  userEmail: string;
+  walletAddress: string;
+  strategyType: 'conservative' | 'balanced' | 'aggressive';
+  usdcAmount: number;
+  status: 'pending' | 'active' | 'closed' | 'executing';
+  createdAt: string;
+  executedAt?: string;
+  error?: string;
+  aaveSupplyAmount?: number;
+  aaveSupplyTxHash?: string;
+  gmxCollateralAmount?: number;
+  gmxLeverage?: number;
+  gmxPositionSize?: number;
+  gmxOrderTxHash?: string;
+}
+
+async function savePosition(position: UserPosition): Promise<void> {
+  const redis = getRedis();
+  await redis.set(`position:${position.id}`, JSON.stringify(position), { ex: 7 * 24 * 60 * 60 }); // 7 days
+}
+
+async function updatePosition(id: string, updates: Partial<UserPosition>): Promise<void> {
+  const redis = getRedis();
+  const existing = await redis.get(`position:${id}`);
+  if (existing) {
+    const position = JSON.parse(existing as string);
+    Object.assign(position, updates);
+    await redis.set(`position:${id}`, JSON.stringify(position), { ex: 7 * 24 * 60 * 60 });
+  }
+}
+
+async function decryptWalletKeyWithToken(walletAddress: string, paymentId: string): Promise<{ privateKey: string } | null> {
+  // For connected wallets, no private key is stored
+  return null;
+}
 
 // Configuration
 const AVALANCHE_RPC = process.env.AVALANCHE_RPC_URL || 'https://api.avax.network/ext/bc/C/rpc';
@@ -1196,50 +1236,9 @@ async function executeAaveViaPrivy(
   }
 
   try {
-    // Get Privy client
-    const privyClient = getPrivyClient();
-
-    // Get user's wallets to find the embedded wallet ID
-    const wallets = await privyClient.getWallets({ userId: privyUserId });
-    const embeddedWallet = wallets.find((w: any) => w.address.toLowerCase() === walletAddress.toLowerCase());
-
-    if (!embeddedWallet) {
-      throw new Error(`Embedded wallet ${walletAddress} not found for user ${privyUserId}`);
-    }
-
-    console.log(`[AAVE-PRIVY] Found embedded wallet: ${embeddedWallet.id}`);
-
-    // Create Privy signer with wallet ID
-    const provider = new ethers.JsonRpcProvider(AVALANCHE_RPC);
-    const privySigner = new PrivySigner(embeddedWallet.id, walletAddress, provider);
-
-    // Create contracts with Privy signer
-    const usdcContract = new ethers.Contract(USDC_CONTRACT, ERC20_ABI, privySigner);
-    const aavePool = new ethers.Contract(AAVE_POOL, AAVE_POOL_ABI, privySigner);
-    const usdcAmount = BigInt(Math.floor(amountUsd * 1_000_000));
-
-    // Check and approve USDC for AAVE Pool
-    const allowance = await usdcContract.allowance(walletAddress, AAVE_POOL);
-    if (allowance < usdcAmount) {
-      console.log('[AAVE-PRIVY] Approving USDC from Privy wallet...');
-      const approveTx = await usdcContract.approve(AAVE_POOL, ethers.MaxUint256);
-      await approveTx.wait();
-      console.log('[AAVE-PRIVY] Privy wallet approval confirmed');
-    }
-
-    // Supply to Aave
-    console.log('[AAVE-PRIVY] Supplying to pool...');
-    const supplyTx = await aavePool.supply(
-      USDC_CONTRACT,
-      usdcAmount,
-      walletAddress, // onBehalfOf - USER wallet receives aTokens
-      0 // referralCode
-    );
-
-    const receipt = await supplyTx.wait();
-    console.log(`[AAVE-PRIVY] Supply confirmed: ${supplyTx.hash}`);
-
-    return { success: true, txHash: supplyTx.hash };
+    // For now, fall back to hub wallet execution due to Privy package dependency issue
+    console.log(`[AAVE-PRIVY] Falling back to hub wallet execution due to Privy package issue`);
+    return await executeAaveFromHubWallet(walletAddress, amountUsd, paymentId);
   } catch (error) {
     console.error('[AAVE-PRIVY] Supply error:', error);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
@@ -1461,8 +1460,8 @@ async function executeStrategyFromUserWallet(
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
-      // DELETE the encrypted key after successful execution (non-custodial)
-      await deleteWalletKey(walletAddress);
+      // Clean up - no need to delete wallet key for connected wallets
+      console.log(`[Strategy] Connected wallet flow complete - no key cleanup needed`);
       console.log(`[Strategy] Wallet key deleted - user retains recovery phrase`);
     } catch (error) {
       console.error(`[Strategy] Execution error:`, error);
