@@ -163,9 +163,6 @@ const StackApp = () => {
             <p className="text-base sm:text-xl text-muted-foreground mb-2">
               Set your risk tolerance, we handle everything else
             </p>
-            <p className="text-xs sm:text-sm text-muted-foreground">
-              Automated savings & Bitcoin exposure • US-compliant • No KYC required
-            </p>
           </div>
 
           {/* Deposit Type Selection */}
@@ -173,10 +170,10 @@ const StackApp = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Zap className="h-5 w-5" />
-                How would you like to deposit?
+                Choose your deposit method
               </CardTitle>
               <CardDescription>
-                Choose your deposit method to get started
+                Step 1: Select how you want to deposit funds
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -204,7 +201,7 @@ const StackApp = () => {
                   Select your risk profile
                 </CardTitle>
                 <CardDescription>
-                  Choose your preferred risk/return allocation strategy
+                  Step 2: Choose your preferred risk/return allocation strategy
                 </CardDescription>
               </CardHeader>
               <CardContent>
