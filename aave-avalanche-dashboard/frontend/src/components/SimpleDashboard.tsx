@@ -31,16 +31,21 @@ export function SimpleDashboard() {
   const [activeAction, setActiveAction] = useState<'swap' | 'supply' | 'withdraw' | 'borrow' | 'repay' | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Get the most relevant wallet address
+  // Get the most relevant wallet address - prioritize Privy for authenticated users
   const walletAddress = useMemo(() => {
-    if (wagmiAddress) return wagmiAddress;
+    // If user is authenticated with Privy, use Privy wallet
+    if (authenticated && ready) {
+      const privyWallet = wallets.find(w => w.walletClientType === 'privy');
+      if (privyWallet) return privyWallet.address;
+      return user?.wallet?.address;
+    }
+    
+    // Fall back to wagmi wallet
+    return wagmiAddress || (window as TiltVaultWindow).tiltvaultWallet?.address;
+  }, [authenticated, ready, wallets, user, wagmiAddress]);
 
-    // Check Privy wallets
-    const privyWallet = wallets.find(w => w.walletClientType === 'privy');
-    if (privyWallet) return privyWallet.address;
-
-    return user?.wallet?.address || (window as TiltVaultWindow).tiltvaultWallet?.address;
-  }, [wagmiAddress, wallets, user]);
+  // Check if user has any wallet connected (Privy or wagmi)
+  const hasWallet = Boolean(walletAddress && (authenticated || isWagmiConnected));
 
   const { avaxBalance, usdcBalance, usdcEBalance, needsMigration, isLoading: balanceLoading } = useWalletBalances();
   const positions = useAavePositions();
@@ -53,7 +58,7 @@ export function SimpleDashboard() {
     functionName: 'getUserReserveData',
     args: hasRequiredArgs ? [CONTRACTS.WAVAX as `0x${string}`, walletAddress as `0x${string}`] : undefined,
     query: {
-      enabled: Boolean((authenticated || isWagmiConnected) && hasRequiredArgs),
+      enabled: Boolean(hasWallet && hasRequiredArgs),
     },
   });
 
@@ -96,7 +101,7 @@ export function SimpleDashboard() {
   };
 
   // Show loading state while Privy/Wagmi is initializing
-  if (!ready) {
+  if (!ready && !authenticated && !isWagmiConnected) {
     return (
       <div className="flex items-center justify-center p-12">
         <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
@@ -104,13 +109,12 @@ export function SimpleDashboard() {
     );
   }
 
-  // If no address is found at all, we shouldn't really be here due to AuthGuard,
-  // but we'll show a fallback just in case.
-  if (!walletAddress) {
+  // If no wallet is connected, show the onboarding flow
+  if (!hasWallet) {
     return (
       <div className="max-w-md mx-auto text-center p-8">
         <Card className="p-6">
-          <p className="text-muted-foreground">Initializing wallet...</p>
+          <p className="text-muted-foreground">Please sign up with email or connect a wallet to continue</p>
           <Button className="mt-4" onClick={() => window.location.reload()}>Reload App</Button>
         </Card>
       </div>
