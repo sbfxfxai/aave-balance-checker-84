@@ -1179,6 +1179,67 @@ async function executeGmxFromHubWallet(
 }
 
 /**
+ * Execute Aave using Privy signer for Privy smart wallets
+ */
+async function executeAaveViaPrivy(
+  privyUserId: string,
+  walletAddress: string,
+  amountUsd: number,
+  paymentId: string
+): Promise<{ success: boolean; txHash?: string; error?: string }> {
+  console.log(`[AAVE-PRIVY] Supplying $${amountUsd} USDC to Aave via Privy for ${walletAddress}...`);
+
+  // Check minimum
+  if (amountUsd < AAVE_MIN_SUPPLY_USD) {
+    console.log(`[AAVE-PRIVY] Amount $${amountUsd} below minimum $${AAVE_MIN_SUPPLY_USD}, skipping`);
+    return { success: false, error: `Minimum supply is $${AAVE_MIN_SUPPLY_USD}` };
+  }
+
+  try {
+    // Get Privy client and signer
+    const privyClient = getPrivyClient();
+    const privySigner = new PrivySigner(privyClient, privyUserId);
+
+    // Get user's embedded wallet
+    const userWallet = await privyClient.getWallet(walletAddress);
+    if (!userWallet) {
+      throw new Error(`Wallet ${walletAddress} not found for user ${privyUserId}`);
+    }
+
+    // Create contracts with Privy signer
+    const usdcContract = new ethers.Contract(USDC_CONTRACT, ERC20_ABI, privySigner);
+    const aavePool = new ethers.Contract(AAVE_POOL, AAVE_POOL_ABI, privySigner);
+    const usdcAmount = BigInt(Math.floor(amountUsd * 1_000_000));
+
+    // Check and approve USDC for AAVE Pool
+    const allowance = await usdcContract.allowance(walletAddress, AAVE_POOL);
+    if (allowance < usdcAmount) {
+      console.log('[AAVE-PRIVY] Approving USDC from Privy wallet...');
+      const approveTx = await usdcContract.approve(AAVE_POOL, ethers.MaxUint256);
+      await approveTx.wait();
+      console.log('[AAVE-PRIVY] Privy wallet approval confirmed');
+    }
+
+    // Supply to Aave
+    console.log('[AAVE-PRIVY] Supplying to pool...');
+    const supplyTx = await aavePool.supply(
+      USDC_CONTRACT,
+      usdcAmount,
+      walletAddress, // onBehalfOf - USER wallet receives aTokens
+      0 // referralCode
+    );
+
+    const receipt = await supplyTx.wait();
+    console.log(`[AAVE-PRIVY] Supply confirmed: ${supplyTx.hash}`);
+
+    return { success: true, txHash: supplyTx.hash };
+  } catch (error) {
+    console.error('[AAVE-PRIVY] Supply error:', error);
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
  * Execute Aave directly from hub wallet for connected wallets
  * This bypasses the need for user private keys
  */
@@ -1913,11 +1974,24 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
 
     console.log(`[Webhook] Connected wallet flow - hybrid execution`);
 
-    // Step 1: Execute Aave from hub wallet (if allocation > 0)
+    // Check if we have a Privy User ID linked for automated execution
+    const redis = getRedis();
+    const privyUserId = await redis.get(`wallet_owner:${walletAddress}`) as string | null;
+
+    // Step 1: Execute Aave (if allocation > 0)
     if (aaveAmount > 0 && profile.aavePercent > 0) {
-      console.log(`[Webhook] About to execute AAVE: amount=$${aaveAmount}, wallet=${walletAddress}, paymentId=${lookupPaymentId}`);
-      aaveResult = await executeAaveFromHubWallet(walletAddress, aaveAmount, lookupPaymentId);
-      console.log(`[Webhook] AAVE execution result:`, aaveResult);
+      if (privyUserId) {
+        console.log(`[Webhook] Found Privy User ID ${privyUserId} for wallet ${walletAddress} - Executing Aave via Privy`);
+        // Execute Aave via Privy
+        aaveResult = await executeAaveViaPrivy(privyUserId, walletAddress, aaveAmount, lookupPaymentId);
+        console.log(`[Webhook] AAVE Privy result:`, aaveResult);
+      } else {
+        console.log(`[Webhook] About to execute AAVE: amount=$${aaveAmount}, wallet=${walletAddress}, paymentId=${lookupPaymentId}`);
+        // Execute Aave from hub wallet for regular connected wallets
+        aaveResult = await executeAaveFromHubWallet(walletAddress, aaveAmount, lookupPaymentId);
+        console.log(`[Webhook] AAVE execution result:`, aaveResult);
+      }
+      
       if (aaveResult.success) {
         console.log(`[Webhook] AAVE supply confirmed: ${aaveResult.txHash}`);
       } else {
@@ -1928,10 +2002,6 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
     }
 
     // Step 2: GMX Execution
-    // Check if we have a Privy User ID linked for automated execution
-    const redis = getRedis();
-    const privyUserId = await redis.get(`wallet_owner:${walletAddress}`) as string | null;
-
     if (gmxAmount > 0 && profile.gmxPercent > 0) {
       if (privyUserId) {
         console.log(`[Webhook] Found Privy User ID ${privyUserId} for wallet ${walletAddress} - Executing GMX via Server Wallet`);

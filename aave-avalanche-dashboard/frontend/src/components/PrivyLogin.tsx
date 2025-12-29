@@ -3,6 +3,7 @@ import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, Mail, Shield, Zap } from 'lucide-react';
+import { toast } from 'sonner';
 
 /**
  * PrivyLogin component for email-based authentication
@@ -15,6 +16,34 @@ export function PrivyLogin() {
     // Get the user's smart wallet address
     const smartWallet = wallets.find(w => w.walletClientType === 'privy');
     const walletAddress = smartWallet?.address || user?.wallet?.address;
+
+    // Associate user with wallet on successful authentication
+    React.useEffect(() => {
+        if (authenticated && user && walletAddress) {
+            const associateUser = async () => {
+                try {
+                    const response = await fetch('/api/wallet/associate-user', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            walletAddress,
+                            privyUserId: user.id,
+                        }),
+                    });
+
+                    if (response.ok) {
+                        console.log('[PrivyLogin] User associated with wallet successfully');
+                    } else {
+                        console.error('[PrivyLogin] Failed to associate user with wallet');
+                    }
+                } catch (error) {
+                    console.error('[PrivyLogin] Error associating user:', error);
+                }
+            };
+
+            associateUser();
+        }
+    }, [authenticated, user, walletAddress]);
 
     if (!ready) {
         return (
