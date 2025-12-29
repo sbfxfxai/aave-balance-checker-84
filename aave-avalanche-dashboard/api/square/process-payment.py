@@ -21,7 +21,7 @@ MIN_AMOUNT = 0.01
 REQUESTS_AVAILABLE = False
 requests = None
 try:
-    import requests
+    import requests  # type: ignore[import-untyped]
     REQUESTS_AVAILABLE = True
 except ImportError:
     pass
@@ -131,6 +131,7 @@ def process_payment(request_data):
     use_existing_ergc = request_data.get("use_existing_ergc", 0)
     wallet_address = request_data.get("wallet_address", "")
     user_email = request_data.get("user_email", "")
+    payment_id = request_data.get("payment_id", "")  # Frontend's paymentId for payment_info lookup
     
     if not idempotency_key:
         idempotency_key = f"{int(time.time() * 1000)}-{''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=9))}"
@@ -142,7 +143,7 @@ def process_payment(request_data):
         return 400, {"success": False, "error": {"message": f"Invalid amount: {e}", "code": "INVALID_AMOUNT"}}
     
     # Build payment note for webhook processing
-    # Format: "wallet:0x... risk:balanced email:user@example.com ergc:100 debit_ergc:1"
+    # Format: "wallet:0x... risk:balanced email:user@example.com ergc:100 debit_ergc:1 paymentId:xxx"
     note_parts = []
     if wallet_address:
         note_parts.append(f"wallet:{wallet_address}")
@@ -153,6 +154,8 @@ def process_payment(request_data):
         note_parts.append(f"ergc:{include_ergc}")
     if use_existing_ergc and use_existing_ergc > 0:
         note_parts.append(f"debit_ergc:{use_existing_ergc}")
+    if payment_id:
+        note_parts.append(f"paymentId:{payment_id}")  # Add paymentId for payment_info lookup
     payment_note = " ".join(note_parts)
     
     square_payload = {

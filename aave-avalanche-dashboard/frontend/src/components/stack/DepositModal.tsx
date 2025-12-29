@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useAccount } from 'wagmi';
 import { Wallet as EthersWallet } from 'ethers';
 import {
   Dialog,
@@ -37,8 +38,8 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   onClose,
   riskProfile,
 }) => {
+  const { address: connectedAddress, isConnected } = useAccount();
   const [amount, setAmount] = useState('');
-  const [email, setEmail] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
@@ -49,29 +50,8 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   const [useExistingErgc, setUseExistingErgc] = useState(false); // Use existing ERGC from wallet
   const [userErgcBalance, setUserErgcBalance] = useState(0); // User's ERGC balance
   const [isCheckingErgc, setIsCheckingErgc] = useState(false);
-  const [generatedWallet, setGeneratedWallet] = useState<{ address: string; mnemonic: string; privateKey: string } | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
-  const [walletConnected, setWalletConnected] = useState(false);
   const { toast } = useToast();
-
-  useEffect(() => {
-    if (paymentSuccess && generatedWallet && !walletConnected) {
-      // Store wallet in sessionStorage for immediate use
-      sessionStorage.setItem('tiltvault_wallet', JSON.stringify({
-        address: generatedWallet.address,
-        privateKey: generatedWallet.privateKey,
-        mnemonic: generatedWallet.mnemonic,
-      }));
-      
-      setWalletConnected(true);
-      
-      // Auto-redirect to dashboard after 2 seconds
-      const timer = setTimeout(() => {
-        window.location.href = '/';
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [paymentSuccess, generatedWallet, walletConnected]);
 
   // ERGC purchase cost ($10 for 100 ERGC)
   const ergcCost = 10;
@@ -135,7 +115,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   }, [isOpen, toast]);
 
   // Check user's ERGC balance when they want to use existing ERGC
-  const checkUserErgcBalance = async (walletAddress: string) => {
+  const checkUserErgcBalance = useCallback(async (walletAddress: string) => {
     setIsCheckingErgc(true);
     try {
       const response = await fetch(`/api/ergc/balance?address=${walletAddress}`);
@@ -149,12 +129,6 @@ export const DepositModal: React.FC<DepositModalProps> = ({
             title: 'ERGC Found!',
             description: `You have ${data.balance} ERGC. 1 will be used for fee discount.`,
           });
-        } else {
-          toast({
-            title: 'Insufficient ERGC',
-            description: 'You need at least 1 ERGC for the discount. Consider buying 100 ERGC.',
-            variant: 'destructive',
-          });
         }
       }
     } catch (error) {
@@ -162,56 +136,22 @@ export const DepositModal: React.FC<DepositModalProps> = ({
     } finally {
       setIsCheckingErgc(false);
     }
-  };
+  }, [toast]);
 
-  // Encrypt private key with email + payment ID using Web Crypto API
-  const encryptPrivateKey = async (privateKey: string, email: string, paymentId: string): Promise<string> => {
-    // Create key from email + payment ID
-    const encoder = new TextEncoder();
-    const keyMaterial = await window.crypto.subtle.importKey(
-      'raw',
-      encoder.encode(email + paymentId),
-      { name: 'PBKDF2' },
-      false,
-      ['deriveBits', 'deriveKey']
-    );
-    
-    // Derive encryption key
-    const key = await window.crypto.subtle.deriveKey(
-      {
-        name: 'PBKDF2',
-        salt: encoder.encode('tiltvault-salt'),
-        iterations: 100000,
-        hash: 'SHA-256',
-      },
-      keyMaterial,
-      { name: 'AES-GCM', length: 256 },
-      true,
-      ['encrypt', 'decrypt']
-    );
-    
-    // Encrypt the private key
-    const iv = window.crypto.getRandomValues(new Uint8Array(12));
-    const encrypted = await window.crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv },
-      key,
-      encoder.encode(privateKey)
-    );
-    
-    // Combine iv + encrypted data
-    const combined = new Uint8Array(iv.length + new Uint8Array(encrypted).length);
-    combined.set(iv);
-    combined.set(new Uint8Array(encrypted), iv.length);
-    
-    return btoa(String.fromCharCode(...combined));
-  };
+  // Auto-check ERGC balance when wallet is connected
+  useEffect(() => {
+    if (isOpen && isConnected && connectedAddress && riskProfile.id !== 'conservative') {
+      checkUserErgcBalance(connectedAddress);
+    }
+  }, [isOpen, isConnected, connectedAddress, riskProfile.id, checkUserErgcBalance]);
+
 
   const handleDeposit = async () => {
-    // Validate email
-    if (!email || !email.includes('@')) {
+    // REQUIRE: Web3 wallet must be connected (funds go to connected wallet)
+    if (!isConnected || !connectedAddress) {
       toast({
-        title: 'Email required',
-        description: 'Please enter a valid email address',
+        title: 'Wallet required',
+        description: 'Please connect your Web3 wallet (MetaMask) to make a deposit. Funds will be sent to your connected wallet.',
         variant: 'destructive',
       });
       return;
@@ -226,7 +166,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       return;
     }
 
-    const minAmount = riskProfile.id === 'conservative' ? 1 : 10;
+    const minAmount = riskProfile.id === 'conservative' ? 1 : 5;
     const maxAmount = 100;
     
     if (parseFloat(amount) < minAmount) {
@@ -250,51 +190,51 @@ export const DepositModal: React.FC<DepositModalProps> = ({
     setIsProcessing(true);
 
     try {
-      // Generate wallet for user (client-side)
-      const wallet = EthersWallet.createRandom();
-      const walletAddress = wallet.address;
-      const privateKey = wallet.privateKey;
-      const mnemonic = wallet.mnemonic?.phrase || '';
-
-      if (!mnemonic) {
-        throw new Error('Failed to generate wallet');
-      }
-
-      // Generate payment ID for encryption
+      // SECURITY: Generate payment ID first (validated format)
       const paymentId = `payment-${Date.now()}-${Math.random().toString(36).substring(7)}`;
       
-      // Encrypt private key before sending to backend
-      const encryptedPrivateKey = await encryptPrivateKey(privateKey, email, paymentId);
+      // Use connected Web3 wallet address (required)
+      const walletAddress = connectedAddress;
+      
+      // Get email from localStorage if available (optional, for payment info)
+      const userEmail = localStorage.getItem('tiltvault_email') || '';
 
-      // Store only encrypted wallet in backend
-      const storeResponse = await fetch('/api/wallet/store-key', {
+      // Store payment info with wallet address (for webhook)
+      const runtimeApiBaseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+      const paymentInfoResponse = await fetch(`${runtimeApiBaseUrl}/api/wallet/store-payment-info`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          paymentId,
           walletAddress,
-          encryptedPrivateKey,
-          userEmail: email,
+          userEmail: userEmail || undefined, // Optional - only if user is logged in
           riskProfile: riskProfile.id,
           amount: parseFloat(amount),
-          paymentId,
         }),
       });
 
-      if (!storeResponse.ok) {
-        const errorData = await storeResponse.json();
-        throw new Error(errorData.error || 'Failed to store encrypted wallet');
+      if (!paymentInfoResponse.ok) {
+        const errorData = await paymentInfoResponse.json().catch(() => ({}));
+        console.warn('[DepositModal] Failed to store payment info:', errorData.error || 'Unknown error');
+        toast({
+          title: 'Warning',
+          description: 'Payment info storage failed, but deposit will continue',
+          variant: 'destructive',
+        });
       }
 
-      // Save generated wallet info for immediate use
-      setGeneratedWallet({ address: walletAddress, mnemonic, privateKey });
+      toast({
+        title: 'Using connected wallet',
+        description: `Deposits will be sent to ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`,
+      });
 
       // Show payment form
       setShowPaymentForm(true);
     } catch (error) {
-      console.error('Wallet generation error:', error);
+      console.error('Deposit setup error:', error);
       toast({
         title: 'Setup failed',
-        description: error instanceof Error ? error.message : 'Failed to set up wallet',
+        description: error instanceof Error ? error.message : 'Failed to set up deposit',
         variant: 'destructive',
       });
     } finally {
@@ -307,8 +247,9 @@ export const DepositModal: React.FC<DepositModalProps> = ({
     setIsProcessing(true);
     
     try {
-      if (!generatedWallet) {
-        throw new Error('Wallet not generated');
+      // REQUIRE: Web3 wallet must be connected
+      if (!isConnected || !connectedAddress) {
+        throw new Error('Wallet not connected');
       }
 
       // Process payment directly using SquarePaymentService
@@ -324,6 +265,30 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       const ergcPurchase = includeErgc ? ergcCost : 0; // Only charge for new ERGC, not existing
       const totalAmount = parseFloat(amount) + platformFee + avaxFeeUsd + ergcPurchase;
       
+      // Get email from localStorage if available (optional)
+      const userEmail = localStorage.getItem('tiltvault_email') || '';
+      
+      // Get paymentId from earlier step (stored in state or generate if needed)
+      const paymentId = `payment-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+      
+      // Store payment info with paymentId BEFORE processing payment
+      const runtimeApiBaseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+      const paymentInfoResponse = await fetch(`${runtimeApiBaseUrl}/api/wallet/store-payment-info`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paymentId,
+          walletAddress: connectedAddress,
+          userEmail: userEmail || undefined,
+          riskProfile: riskProfile.id,
+          amount: parseFloat(amount),
+        }),
+      });
+
+      if (!paymentInfoResponse.ok) {
+        console.warn('[DepositModal] Failed to store payment info before payment');
+      }
+
       const result = await squarePaymentService.processPayment(
         nonce,
         totalAmount,
@@ -331,49 +296,24 @@ export const DepositModal: React.FC<DepositModalProps> = ({
         riskProfile.id,
         includeErgc,
         useExistingErgc,
-        generatedWallet.address,
-        email
+        connectedAddress, // Use connected wallet address
+        userEmail || undefined, // Optional email
+        paymentId // Pass paymentId so it can be included in payment note
       );
 
       if (result.success) {
-        
-        // Send wallet details email to user
-        try {
-          const emailResponse = await fetch('/api/wallet/send-email', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: email,
-              wallet_address: generatedWallet.address,
-              mnemonic: generatedWallet.mnemonic,
-              name: '', // Optional name field
-            }),
-          });
-          
-          const emailData = await emailResponse.json();
-          if (!emailData.success) {
-            console.error('Email send failed:', emailData.error);
-            // Don't fail the whole flow - user can still see wallet on screen
-          }
-        } catch (emailError) {
-          console.error('Email send error:', emailError);
-          // Don't fail the whole flow
-        }
-        
-        // Store wallet details for auto-connection
-        localStorage.setItem('tiltvault_wallet_address', generatedWallet.address);
-        localStorage.setItem('tiltvault_wallet_mnemonic', generatedWallet.mnemonic);
-        localStorage.setItem('tiltvault_wallet_email', email);
-        
-        // Show success with wallet info
+        // Show success
         setPaymentSuccess(true);
         
         toast({
           title: 'Payment successful!',
-          description: `Your wallet is being funded. You're being logged in automatically!`,
+          description: `Funds will be sent to your connected wallet: ${connectedAddress.slice(0, 6)}...${connectedAddress.slice(-4)}`,
         });
         
-        // Don't auto-redirect - let user see their wallet info first
+        // Auto-redirect to dashboard after 2 seconds
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 2000);
       } else {
         throw new Error(result.error || 'Payment processing failed');
       }
@@ -447,7 +387,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
                     {riskProfile.id !== 'conservative' ? (
                       <div className="text-xs text-muted-foreground">*0.06 AVAX sent to you for execution</div>
                     ) : (
-                      <div className="text-xs text-muted-foreground">*0.02 AVAX sent to you for exit fees</div>
+                      <div className="text-xs text-muted-foreground">*0.005 AVAX sent to you for exit fees</div>
                     )}
                     <div className="font-medium text-foreground pt-1">
                       Total Charge: ${(parseFloat(amount) + (parseFloat(amount) * 0.05) + ((riskProfile.id === 'conservative' ? ERGC_DISCOUNT.DISCOUNTED_FEE : ((includeErgc || useExistingErgc) ? ERGC_DISCOUNT.DISCOUNTED_FEE : ERGC_DISCOUNT.STANDARD_FEE)) * (avaxPrice ?? 30))).toFixed(2)}
@@ -458,25 +398,6 @@ export const DepositModal: React.FC<DepositModalProps> = ({
             </div>
           )}
 
-          {/* Email Input */}
-          {!showPaymentForm && !paymentSuccess && (
-            <div className="space-y-2">
-              <Label htmlFor="email">
-                Email Address
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={isProcessing}
-              />
-              <p className="text-xs text-muted-foreground">
-                Wallet details will be sent to this email
-              </p>
-            </div>
-          )}
 
           {/* Amount Input */}
           {!showPaymentForm && !paymentSuccess && (
@@ -487,16 +408,16 @@ export const DepositModal: React.FC<DepositModalProps> = ({
               <Input
                 id="amount"
                 type="number"
-                placeholder={riskProfile.id === 'conservative' ? '1.00' : '10.00'}
+                placeholder={riskProfile.id === 'conservative' ? '1.00' : '5.00'}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 disabled={isProcessing}
-                min={riskProfile.id === 'conservative' ? 1 : 10}
+                min={riskProfile.id === 'conservative' ? 1 : 5}
                 max={100}
                 step={0.01}
               />
               <p className="text-xs text-muted-foreground">
-                Min: ${riskProfile.id === 'conservative' ? '1' : '10'} · Max: $100
+                Min: ${riskProfile.id === 'conservative' ? '1' : '5'} · Max: $100
               </p>
             </div>
           )}
@@ -514,12 +435,18 @@ export const DepositModal: React.FC<DepositModalProps> = ({
                     ? 'bg-green-500/10 border-green-500/50' 
                     : 'bg-muted/50 border-border hover:border-green-500/50'
                 }`}
-                onClick={() => {
+                onClick={async () => {
                   if (!useExistingErgc) {
-                    // Check balance when selecting this option
-                    // For now, just toggle - balance check happens on payment
-                    setUseExistingErgc(true);
-                    setIncludeErgc(false);
+                    // Check balance using connected wallet
+                    if (isConnected && connectedAddress) {
+                      await checkUserErgcBalance(connectedAddress);
+                    } else {
+                      toast({
+                        title: 'Wallet required',
+                        description: 'Please connect your wallet to check ERGC balance',
+                        variant: 'destructive',
+                      });
+                    }
                   } else {
                     setUseExistingErgc(false);
                   }
@@ -666,8 +593,8 @@ export const DepositModal: React.FC<DepositModalProps> = ({
             </div>
           )}
 
-          {/* Payment Success - Show wallet info */}
-          {paymentSuccess && generatedWallet && (
+          {/* Payment Success */}
+          {paymentSuccess && isConnected && connectedAddress && (
             <div className="space-y-4">
               <div className="flex items-center gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
                 <CheckCircle2 className="h-5 w-5 text-green-600" />
@@ -678,32 +605,19 @@ export const DepositModal: React.FC<DepositModalProps> = ({
               
               <div className="p-4 rounded-lg bg-muted space-y-3">
                 <div>
-                  <div className="text-xs text-muted-foreground mb-1">Your Wallet Address</div>
+                  <div className="text-xs text-muted-foreground mb-1">Your Connected Wallet</div>
                   <div className="text-sm font-mono bg-background p-2 rounded border break-all">
-                    {generatedWallet.address}
+                    {connectedAddress}
                   </div>
-                </div>
-                
-                <div className="border-t pt-3">
-                  <div className="text-xs text-muted-foreground mb-1">
-                    Recovery Phrase (SAVE THIS!)
-                  </div>
-                  <div className="text-sm font-mono bg-yellow-500/10 border border-yellow-500/30 p-2 rounded break-all">
-                    {generatedWallet.mnemonic}
-                  </div>
-                  <p className="text-xs text-yellow-600 mt-2">
-                    ⚠️ Write this down and keep it safe. You'll need it to recover your wallet.
-                  </p>
                 </div>
               </div>
 
               <div className="text-sm text-muted-foreground">
                 <p>
                   ✅ USDC +{' '}
-                  {riskProfile.id === 'conservative' ? '0.02' : '0.06'} AVAX being sent to your wallet
+                  {riskProfile.id === 'conservative' ? '0.005' : '0.06'} AVAX being sent to your wallet
                 </p>
                 {includeErgc && <p>✅ 99 ERGC being sent (1 used for fee discount)</p>}
-                <p>✅ Wallet details sent to {email}</p>
               </div>
 
               <Button
@@ -730,7 +644,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
               </Button>
               <Button
                 onClick={handleDeposit}
-                disabled={isProcessing || !amount || !email || !isConfigured}
+                disabled={isProcessing || !amount || !isConnected || !connectedAddress || !isConfigured}
                 className="flex-1"
               >
                 Continue to Payment

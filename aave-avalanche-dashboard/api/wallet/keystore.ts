@@ -22,14 +22,21 @@ async function getRedis(): Promise<any> {
 const ENCRYPTION_KEY = process.env.WALLET_ENCRYPTION_KEY || '';
 const KEY_TTL_SECONDS = 24 * 60 * 60; // 24 hours - keys auto-expire
 
+// Client-side encryption parameters (mirrors frontend DepositModal.tsx)
+const CLIENT_SIDE_SALT = 'tiltvault-salt';
+const CLIENT_SIDE_PBKDF2_ITERATIONS = 100_000;
+const CLIENT_SIDE_KEY_LENGTH = 32; // 256 bits
+const CLIENT_SIDE_IV_LENGTH = 12; // AES-GCM default IV
+const CLIENT_SIDE_AUTH_TAG_LENGTH = 16; // AES-GCM default auth tag
+
 interface StoredWalletData {
-  encryptedPrivateKey: string; // Now already encrypted client-side
+  encryptedPrivateKey: string; // Already encrypted client-side using userEmail + paymentId
   walletAddress: string;
-  userEmail: string;
   riskProfile: string;
   amount: number;
   createdAt: string;
-  paymentId: string;
+  // Note: userEmail and paymentId are NOT stored here - they're in payment_info and auth tokens
+  // This prevents redundant storage and reduces attack surface
 }
 
 /**
@@ -81,25 +88,28 @@ function decryptPrivateKey(encrypted: string, iv: string, authTag: string): stri
 /**
  * Store client-side encrypted wallet data in Vercel KV (non-custodial)
  * Key format: wallet:{walletAddress}
+ * 
+ * @returns Authorization token for one-time decryption (for webhook flows)
  */
 export async function storeWalletKey(
   walletAddress: string,
-  encryptedPrivateKey: string, // Already encrypted client-side
+  encryptedPrivateKey: string, // Already encrypted client-side using userEmail + paymentId
   userEmail: string,
   riskProfile: string,
   amount: number,
   paymentId: string
-): Promise<void> {
+): Promise<string> {
   console.log(`[Keystore] Storing client-side encrypted key for wallet ${walletAddress}`);
 
+  // SECURITY: Don't store userEmail and paymentId with encrypted key
+  // They're already stored in payment_info and auth tokens
+  // This reduces redundant storage and attack surface
   const data: StoredWalletData = {
-    encryptedPrivateKey, // Store as-is (already encrypted)
+    encryptedPrivateKey, // Store as-is (already encrypted using userEmail + paymentId)
     walletAddress,
-    userEmail,
     riskProfile,
     amount,
     createdAt: new Date().toISOString(),
-    paymentId,
   };
 
   // Store with TTL - key auto-deletes after 24 hours
@@ -108,20 +118,89 @@ export async function storeWalletKey(
     ex: KEY_TTL_SECONDS,
   });
 
-  console.log(`[Keystore] Client-encrypted key stored with ${KEY_TTL_SECONDS}s TTL`);
+  // Create authorization token for webhook decryption (one-time use, 1 hour expiry)
+  // Token stores userEmail and paymentId for decryption
+  const authToken = await createDecryptionAuthToken(walletAddress, userEmail, paymentId);
+  
+  // Also store token indexed by paymentId for webhook lookup
+  await redis.set(`payment_auth:${paymentId}`, authToken, { ex: 3600 });
+
+  console.log(`[Keystore] Client-encrypted key stored (without email/paymentId) with ${KEY_TTL_SECONDS}s TTL, auth token created`);
+  
+  return authToken;
+}
+
+export interface RetrievedWalletKeyData {
+  walletAddress: string;
+  encryptedPrivateKey: string;
+  privateKey?: string; // Only set if explicitly decrypted with authentication
+  riskProfile: string;
+  amount: number;
+  // Note: userEmail and paymentId are provided during decryption but not stored in wallet data
+}
+
+export interface EncryptedWalletData {
+  walletAddress: string;
+  encryptedPrivateKey: string;
+  riskProfile: string;
+  amount: number;
+  createdAt: string;
+  // Note: userEmail and paymentId are NOT stored here - get them from payment_info or auth token
+}
+
+function decryptClientEncryptedKey(
+  encryptedBase64: string,
+  userEmail: string,
+  paymentId: string
+): string {
+  if (!userEmail || !paymentId) {
+    throw new Error('Missing email or paymentId for client-side key decryption');
+  }
+
+  const combined = Buffer.from(encryptedBase64, 'base64');
+  if (combined.length <= CLIENT_SIDE_IV_LENGTH + CLIENT_SIDE_AUTH_TAG_LENGTH) {
+    throw new Error('Encrypted private key payload is malformed');
+  }
+
+  const iv = new Uint8Array(combined.subarray(0, CLIENT_SIDE_IV_LENGTH));
+  const cipherWithTag = combined.subarray(CLIENT_SIDE_IV_LENGTH);
+  const authTag = new Uint8Array(
+    cipherWithTag.subarray(cipherWithTag.length - CLIENT_SIDE_AUTH_TAG_LENGTH)
+  );
+  const ciphertext = new Uint8Array(
+    cipherWithTag.subarray(0, cipherWithTag.length - CLIENT_SIDE_AUTH_TAG_LENGTH)
+  );
+
+  const keyMaterial = `${userEmail}${paymentId}`;
+  const derivedKey = crypto.pbkdf2Sync(
+    keyMaterial,
+    CLIENT_SIDE_SALT,
+    CLIENT_SIDE_PBKDF2_ITERATIONS,
+    CLIENT_SIDE_KEY_LENGTH,
+    'sha256'
+  );
+  const derivedKeyBytes = new Uint8Array(derivedKey);
+
+  const decipher = crypto.createDecipheriv('aes-256-gcm', derivedKeyBytes, iv);
+  decipher.setAuthTag(authTag);
+
+  const decryptedParts = [new Uint8Array(decipher.update(ciphertext)), new Uint8Array(decipher.final())];
+  const totalLength = decryptedParts.reduce((sum, part) => sum + part.length, 0);
+  const decrypted = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const part of decryptedParts) {
+    decrypted.set(part, offset);
+    offset += part.length;
+  }
+  return Buffer.from(decrypted).toString('utf8');
 }
 
 /**
  * Retrieve client-side encrypted wallet data from Vercel KV (non-custodial)
- * Note: Cannot decrypt - only return encrypted data for client-side decryption
+ * Returns encrypted data only - does NOT decrypt automatically for security.
+ * Use decryptWalletKeyWithAuth() to decrypt with proper authentication.
  */
-export async function getWalletKey(walletAddress: string): Promise<{
-  encryptedPrivateKey: string;
-  userEmail: string;
-  riskProfile: string;
-  amount: number;
-  paymentId: string;
-} | null> {
+export async function getWalletKey(walletAddress: string): Promise<EncryptedWalletData | null> {
   console.log(`[Keystore] Retrieving encrypted key for wallet ${walletAddress}`);
 
   const redis = await getRedis();
@@ -133,15 +212,140 @@ export async function getWalletKey(walletAddress: string): Promise<{
 
   const data: StoredWalletData = typeof dataStr === 'string' ? JSON.parse(dataStr) : dataStr;
 
-  console.log(`[Keystore] Encrypted key retrieved (non-custodial)`);
+  console.log(`[Keystore] Encrypted key retrieved (non-custodial, not decrypted)`);
 
   return {
+    walletAddress: data.walletAddress,
     encryptedPrivateKey: data.encryptedPrivateKey,
-    userEmail: data.userEmail,
     riskProfile: data.riskProfile,
     amount: data.amount,
-    paymentId: data.paymentId,
+    createdAt: data.createdAt,
   };
+}
+
+/**
+ * Decrypt wallet key with authentication.
+ * SECURITY: Requires userEmail and paymentId to be provided explicitly.
+ * These are used to derive the decryption key (same as encryption).
+ * 
+ * @param encryptedData - Encrypted wallet data from getWalletKey()
+ * @param userEmail - User's email (used for key derivation)
+ * @param paymentId - Payment ID (used for key derivation)
+ * @returns Decrypted wallet data with private key
+ */
+export function decryptWalletKeyWithAuth(
+  encryptedData: EncryptedWalletData,
+  userEmail: string,
+  paymentId: string
+): RetrievedWalletKeyData {
+  console.log(`[Keystore] Decrypting key for ${userEmail} with authentication`);
+
+  // Decrypt using provided email and paymentId (same as encryption)
+  const privateKey = decryptClientEncryptedKey(
+    encryptedData.encryptedPrivateKey,
+    userEmail,
+    paymentId
+  );
+
+  return {
+    walletAddress: encryptedData.walletAddress,
+    encryptedPrivateKey: encryptedData.encryptedPrivateKey,
+    privateKey,
+    riskProfile: encryptedData.riskProfile,
+    amount: encryptedData.amount,
+  };
+}
+
+/**
+ * Create a time-limited authorization token for automated decryption.
+ * Used for webhook flows where user has already authorized the transaction.
+ * Token expires after 1 hour.
+ * 
+ * @param walletAddress - Wallet address
+ * @param userEmail - User's email
+ * @param paymentId - Payment ID
+ * @returns Authorization token
+ */
+export async function createDecryptionAuthToken(
+  walletAddress: string,
+  userEmail: string,
+  paymentId: string
+): Promise<string> {
+  const redis = await getRedis();
+  const token = crypto.randomBytes(32).toString('hex');
+  const tokenKey = `decrypt_auth:${token}`;
+  
+  // Store token with 1 hour expiry
+  await redis.set(tokenKey, JSON.stringify({
+    walletAddress: walletAddress.toLowerCase(),
+    userEmail: userEmail.toLowerCase(),
+    paymentId,
+    createdAt: new Date().toISOString(),
+  }), { ex: 3600 }); // 1 hour
+  
+  console.log(`[Keystore] Created decryption auth token for ${walletAddress}`);
+  return token;
+}
+
+/**
+ * Decrypt wallet key using an authorization token.
+ * Used for automated flows (webhooks) where user has pre-authorized.
+ * 
+ * @param walletAddress - Wallet address
+ * @param authToken - Authorization token from createDecryptionAuthToken() or paymentId
+ * @returns Decrypted wallet data
+ */
+export async function decryptWalletKeyWithToken(
+  walletAddress: string,
+  authToken: string
+): Promise<RetrievedWalletKeyData | null> {
+  const redis = await getRedis();
+  
+  // Try to get token from paymentId if authToken looks like a paymentId
+  let actualToken = authToken;
+  const paymentToken = await redis.get(`payment_auth:${authToken}`);
+  if (paymentToken) {
+    actualToken = paymentToken as string;
+  }
+  
+  const tokenKey = `decrypt_auth:${actualToken}`;
+  const tokenDataStr = await redis.get(tokenKey);
+  
+  if (!tokenDataStr) {
+    console.error(`[Keystore] Invalid or expired auth token`);
+    return null;
+  }
+
+  const tokenData = typeof tokenDataStr === 'string' ? JSON.parse(tokenDataStr) : tokenDataStr;
+  
+  // Verify wallet address matches
+  if (tokenData.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+    console.error(`[Keystore] Wallet address mismatch in auth token`);
+    return null;
+  }
+
+  // Get encrypted wallet data
+  const encryptedData = await getWalletKey(walletAddress);
+  if (!encryptedData) {
+    console.error(`[Keystore] Wallet data not found`);
+    return null;
+  }
+
+  // Decrypt using token data
+  const decrypted = decryptWalletKeyWithAuth(
+    encryptedData,
+    tokenData.userEmail,
+    tokenData.paymentId
+  );
+
+  // Delete token after use (one-time use)
+  await redis.del(tokenKey);
+  if (paymentToken) {
+    await redis.del(`payment_auth:${authToken}`);
+  }
+  console.log(`[Keystore] Decrypted key using auth token (token deleted)`);
+
+  return decrypted;
 }
 
 /**
@@ -174,23 +378,15 @@ export async function hasWalletKey(walletAddress: string): Promise<boolean> {
 
 /**
  * Update wallet data with payment ID when payment is initiated
+ * NOTE: This function is deprecated - paymentId is now stored in payment_info, not with wallet key
+ * Keeping for backward compatibility but it's a no-op now
  */
 export async function updateWalletPaymentId(
   walletAddress: string,
   paymentId: string
 ): Promise<boolean> {
-  const redis = await getRedis();
-  const dataStr = await redis.get(`wallet:${walletAddress.toLowerCase()}`);
-  if (!dataStr) return false;
-
-  const data: StoredWalletData = typeof dataStr === 'string' ? JSON.parse(dataStr) : dataStr;
-  data.paymentId = paymentId;
-
-  // Get remaining TTL and preserve it
-  const ttl = await redis.ttl(`wallet:${walletAddress.toLowerCase()}`);
-  await redis.set(`wallet:${walletAddress.toLowerCase()}`, JSON.stringify(data), {
-    ex: ttl > 0 ? ttl : KEY_TTL_SECONDS,
-  });
-
+  // No-op: paymentId is stored in payment_info, not with wallet key
+  // This function is kept for backward compatibility
+  console.log(`[Keystore] updateWalletPaymentId called (deprecated - paymentId stored in payment_info)`);
   return true;
 }

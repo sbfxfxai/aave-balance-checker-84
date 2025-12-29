@@ -13,7 +13,7 @@ import time
 REQUESTS_AVAILABLE = False
 requests = None
 try:
-    import requests
+    import requests  # type: ignore[import-untyped]
     REQUESTS_AVAILABLE = True
 except ImportError:
     pass

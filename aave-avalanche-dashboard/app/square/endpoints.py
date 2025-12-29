@@ -5,9 +5,9 @@ import os
 import traceback
 import sys
 import json
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Request  # type: ignore[import-untyped]
+from fastapi.responses import JSONResponse  # type: ignore[import-untyped]
+from pydantic import BaseModel, Field  # type: ignore[import-untyped]
 from typing import Optional
 import requests  # pyright: ignore[reportMissingModuleSource]
 
@@ -46,6 +46,19 @@ async def health_check():
         "service": "square-api",
         "python_version": sys.version.split()[0],  # Just version number
         "environment": os.getenv("VERCEL_ENV", "unknown"),
+        "credentials_configured": bool(SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID),
+    }
+
+
+@router.get("/config")
+async def get_config():
+    """Public (non-secret) Square config for frontend runtime discovery"""
+    return {
+        "environment": SQUARE_ENVIRONMENT,
+        "api_base_url": SQUARE_API_BASE_URL,
+        "application_id": os.getenv("SQUARE_APPLICATION_ID", ""),
+        "location_id": SQUARE_LOCATION_ID,
+        "has_access_token": bool(SQUARE_ACCESS_TOKEN),
         "credentials_configured": bool(SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID),
     }
 

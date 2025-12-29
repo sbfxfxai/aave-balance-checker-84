@@ -4,6 +4,8 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { AuthGuard } from "@/components/AuthGuard";
+import { PrivyAuthProvider } from "@/components/PrivyAuthProvider";
 
 // Lazy load routes for code splitting
 const DashboardWithWeb3 = lazy(() => import("./pages/DashboardWithWeb3"));
@@ -32,7 +34,7 @@ const PageLoader = () => (
         </div>
       </div>
     </header>
-    
+
     {/* Main content skeleton */}
     <main className="container mx-auto px-4 py-8">
       <div className="max-w-6xl mx-auto">
@@ -41,7 +43,7 @@ const PageLoader = () => (
         </div>
       </div>
     </main>
-    
+
     {/* Footer skeleton - matches actual footer */}
     <footer className="border-t border-border/50 mt-16">
       <div className="container mx-auto px-4 py-6">
@@ -55,28 +57,47 @@ const PageLoader = () => (
 
 const App = () => (
   <ErrorBoundary>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Suspense fallback={<PageLoader />}>
-          <Routes>
-            <Route path="/" element={<DashboardWithWeb3 />} />
-            <Route path="/stack" element={<StackApp />} />
-            <Route
-              path="/gmx"
-              element={
+    <PrivyAuthProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route path="/" element={
                 <Web3Providers>
-                  <GmxIntegration />
+                  <AuthGuard>
+                    <DashboardWithWeb3 />
+                  </AuthGuard>
                 </Web3Providers>
-              }
-            />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
-    </TooltipProvider>
+              } />
+              <Route
+                path="/stack"
+                element={
+                  <Web3Providers>
+                    <AuthGuard>
+                      <StackApp />
+                    </AuthGuard>
+                  </Web3Providers>
+                }
+              />
+              <Route
+                path="/gmx"
+                element={
+                  <Web3Providers>
+                    <AuthGuard>
+                      <GmxIntegration />
+                    </AuthGuard>
+                  </Web3Providers>
+                }
+              />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+        </BrowserRouter>
+      </TooltipProvider>
+    </PrivyAuthProvider>
   </ErrorBoundary>
 );
 

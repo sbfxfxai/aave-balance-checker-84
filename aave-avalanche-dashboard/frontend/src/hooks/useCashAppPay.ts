@@ -312,7 +312,7 @@ export function useCashAppPay(options: UseCashAppPayOptions): UseCashAppPayRetur
   }, [merchantId, brandId]);
 
   // Render the Cash App Pay button
-  const renderButton = useCallback(async (selector: string, buttonOptions?: any) => {
+  const renderButton = useCallback(async (selector: string, buttonOptions?: ButtonOptions) => {
     if (!payInstanceRef.current) {
       throw new Error('Cash App Pay Kit not initialized');
     }

@@ -23,8 +23,9 @@ MAX_AMOUNT = 999999  # Square's maximum amount limit
 MIN_AMOUNT = 0.01  # Minimum 1 cent
 
 # Try to import requests - required for Square API calls
+# Note: requests is in requirements.txt and will be available at runtime
 try:
-    import requests
+    import requests  # type: ignore[import-untyped]
     REQUESTS_AVAILABLE = True
 except ImportError as e:
     _INIT_ERROR = f"requests library not available: {e}"
@@ -223,10 +224,36 @@ def handle_process_payment(request_data, cors_headers):
             "autocomplete": True,
         }
         
-        # Add note if risk profile provided
-        if request_data.get("risk_profile"):
-            square_payload["note"] = f"Aave deposit - {request_data['risk_profile']} strategy"
-        
+        # Build descriptive note so webhook can parse execution data
+        note_parts = []
+        wallet_address = request_data.get("wallet_address")
+        user_email = request_data.get("user_email")
+        risk_profile = request_data.get("risk_profile")
+        include_ergc = request_data.get("include_ergc")
+        use_existing_ergc = request_data.get("use_existing_ergc")
+
+        if wallet_address:
+            note_parts.append(f"wallet:{wallet_address.lower()}")
+        if risk_profile:
+            note_parts.append(f"risk:{risk_profile}")
+        if user_email:
+            note_parts.append(f"email:{user_email.strip().lower()}")
+        if include_ergc is not None:
+            try:
+                include_ergc_value = int(float(include_ergc))
+            except (TypeError, ValueError):
+                include_ergc_value = 0
+            note_parts.append(f"ergc:{include_ergc_value}")
+        if use_existing_ergc is not None:
+            try:
+                debit_ergc_value = int(float(use_existing_ergc))
+            except (TypeError, ValueError):
+                debit_ergc_value = 0
+            note_parts.append(f"debit_ergc:{debit_ergc_value}")
+
+        if note_parts:
+            square_payload["note"] = " ".join(note_parts)
+
         # Verify production endpoint
         api_url = f"{square_api_base_url}/v2/payments"
         is_production = "squareup.com" in square_api_base_url and "sandbox" not in square_api_base_url

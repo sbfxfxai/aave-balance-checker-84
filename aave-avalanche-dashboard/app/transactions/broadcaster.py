@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException  # type: ignore[import-untyped]
 from app.wallet.auth import validate_session
 
 router = APIRouter()

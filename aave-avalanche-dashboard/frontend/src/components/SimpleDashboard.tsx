@@ -10,8 +10,15 @@ import { WalletConnect } from '@/components/WalletConnect';
 import { GmxPositionCard } from '@/components/GmxPositionCard';
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { CONTRACTS, AAVE_DATA_PROVIDER_ABI } from '@/config/contracts';
 import { formatUnits } from 'viem';
+
+type TiltVaultWindow = Window & {
+  tiltvaultWallet?: {
+    address?: string;
+  };
+};
 
 export function SimpleDashboard() {
   const { address, isConnected } = useAccount();
@@ -19,18 +26,28 @@ export function SimpleDashboard() {
   const { avaxBalance, usdcBalance, usdcEBalance, needsMigration, isLoading: balanceLoading } = useWalletBalances();
   const positions = useAavePositions();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   
   const [activeAction, setActiveAction] = useState<'swap' | 'supply' | 'withdraw' | 'borrow' | 'repay' | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showWalletConnect, setShowWalletConnect] = useState(false);
+  
+  // Check for direct wallet connection
+  const directWalletAddress = (window as TiltVaultWindow).tiltvaultWallet?.address;
+  
+  // Safety check - ensure address exists before rendering
+  const walletAddress = address || directWalletAddress;
   
   // Direct test read of WAVAX reserve data to debug
+  // Only enable when we have all required args to prevent ABI encoding errors
+  const hasRequiredArgs = !!(walletAddress && CONTRACTS.WAVAX);
   const { data: directWavaxData, error: directWavaxError } = useReadContract({
     address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
     abi: AAVE_DATA_PROVIDER_ABI,
     functionName: 'getUserReserveData',
-    args: walletAddress ? [CONTRACTS.WAVAX as `0x${string}`, walletAddress] : undefined,
+    args: hasRequiredArgs ? [CONTRACTS.WAVAX as `0x${string}`, walletAddress as `0x${string}`] : undefined,
     query: {
-      enabled: (isConnected || hasDirectWallet) && !!walletAddress,
+      enabled: Boolean((isConnected || directWalletAddress) && hasRequiredArgs),
     },
   });
   
@@ -86,26 +103,74 @@ export function SimpleDashboard() {
     toast.info('Wallet disconnected');
   };
 
-  // Check for both wagmi connection and our direct wallet connection
-  const hasDirectWallet = (window as any).tiltvaultWallet?.address;
-  
-  if (!isConnected && !hasDirectWallet) {
+  // If not connected, show a simple three-button landing
+  if (!isConnected && !directWalletAddress) {
+    if (showWalletConnect) {
+      return (
+        <div className="max-w-md mx-auto">
+          <Card className="p-6">
+            <Button
+              variant="ghost"
+              onClick={() => setShowWalletConnect(false)}
+              className="mb-4"
+            >
+              ← Back
+            </Button>
+            <WalletConnect />
+          </Card>
+        </div>
+      );
+    }
+
     return (
-      <div className="max-w-md mx-auto">
-        <WalletConnect />
+      <div className="max-w-2xl mx-auto space-y-6">
+        <Card className="p-8">
+          <div className="text-center space-y-3">
+            <h2 className="text-2xl font-bold">Welcome to TiltVault Banking</h2>
+            <p className="text-muted-foreground">
+              Choose how you want to get started. You can connect MetaMask directly or jump to Auto to deposit, invest, and withdraw.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
+            <Button 
+              variant="secondary" 
+              className="w-full"
+              onClick={() => setShowWalletConnect(true)}
+            >
+              Connect Wallet
+            </Button>
+            <Button asChild className="w-full">
+              <a
+                href="https://link.metamask.io/swap?amount=32600000000000000&from=eip155%3A1%2Fslip44%3A60&sig_params=amount%2Cfrom&sig=lcKWbD9emSvYcSy4wKZAAZK4IusikSldKuh2SLobJnCxX6_H50c7o4lrxGukMkQAlJXl_Ro-z9GOFjHlijuUSQ&attributionId=664f89ab-3a22-4f57-adff-002a5071ff39&utm_source=www.google.com"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open MetaMask
+              </a>
+            </Button>
+            <Button 
+              variant="outline" 
+              className="w-full"
+              onClick={() => navigate('/stack')}
+            >
+              Deposit / Invest / Withdraw
+            </Button>
+          </div>
+        </Card>
       </div>
     );
   }
 
   // If we have direct wallet but not wagmi, show connecting state
-  if (!isConnected && hasDirectWallet) {
+  if (!isConnected && directWalletAddress) {
+    const tiltWindow = window as TiltVaultWindow;
     return (
       <div className="max-w-md mx-auto">
         <Card className="p-6">
           <div className="text-center">
             <p className="text-muted-foreground">Connecting wallet...</p>
             <p className="text-xs text-muted-foreground mt-2">
-              Address: {(window as any).tiltvaultWallet.address?.slice(0, 6)}...{(window as any).tiltvaultWallet.address?.slice(-4)}
+              Address: {tiltWindow.tiltvaultWallet?.address?.slice(0, 6)}...{tiltWindow.tiltvaultWallet?.address?.slice(-4)}
             </p>
           </div>
         </Card>
@@ -113,8 +178,6 @@ export function SimpleDashboard() {
     );
   }
 
-  // Safety check - ensure address exists before rendering
-  const walletAddress = address || hasDirectWallet;
   if (!walletAddress) {
     return (
       <div className="max-w-md mx-auto">

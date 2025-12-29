@@ -775,7 +775,7 @@ export default function GmxIntegration() {
               ...opts, 
               maxFeePerGas,
               maxPriorityFeePerGas: minerTip,
-            };
+            } as { value?: bigint; maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
           } catch (gasError) {
             console.warn('[GMX] Failed to set custom gas, using defaults:', gasError);
           }

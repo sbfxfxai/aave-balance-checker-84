@@ -11,14 +11,13 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
-    "types": ["node", "next", "next/types/global"],
+    "types": ["node", "jest"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["./*"]
     }
   },
   "include": [
-    "next-env.d.ts",
     "app",
     "pages",
     "api",

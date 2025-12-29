@@ -13,10 +13,18 @@ import sys
 import json
 import time
 
-# Add api directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'api', 'square'))
+# Import from the index module in api/square directory using importlib
+import importlib.util
 
-from index import handle_process_payment
+api_square_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'api', 'square'))
+index_path = os.path.join(api_square_path, "index.py")
+
+spec = importlib.util.spec_from_file_location("square_index", index_path)
+index_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(index_module)
+
+process_payment = index_module.process_payment
+handle_process_payment = process_payment
 
 
 def process_one_dollar_payment(source_id: str):
@@ -52,25 +60,18 @@ def process_one_dollar_payment(source_id: str):
         "risk_profile": "conservative"
     }
     
-    cors_headers = {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    }
-    
     print("🚀 Processing payment...")
     print(f"   Idempotency Key: {idempotency_key}")
     print()
     
     try:
-        response = handle_process_payment(payment_data, cors_headers)
-        body = json.loads(response["body"])
+        # process_payment returns (status_code, response_data) tuple
+        status_code, body = process_payment(payment_data)
         
         print("=" * 70)
         print("Payment Result")
         print("=" * 70)
-        print(f"\nStatus Code: {response['statusCode']}")
+        print(f"\nStatus Code: {status_code}")
         print(f"Success: {body.get('success', False)}")
         
         if body.get('success'):
@@ -83,9 +84,11 @@ def process_one_dollar_payment(source_id: str):
             return True
         else:
             print("\n❌ PAYMENT FAILED")
-            print(f"   Error: {body.get('error', 'Unknown error')}")
-            if 'error_code' in body:
-                print(f"   Error Code: {body['error_code']}")
+            error_info = body.get('error', {})
+            error_msg = error_info.get('message', 'Unknown error') if isinstance(error_info, dict) else error_info
+            print(f"   Error: {error_msg}")
+            if isinstance(error_info, dict) and 'code' in error_info:
+                print(f"   Error Code: {error_info['code']}")
             return False
             
     except Exception as e:

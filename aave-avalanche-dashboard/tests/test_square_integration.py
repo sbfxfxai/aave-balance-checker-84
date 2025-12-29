@@ -13,14 +13,26 @@ Usage:
 """
 import os
 import json
-import pytest
+import pytest  # type: ignore[import-untyped]
 import sys
 import time
 
-# Add api directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'api', 'square'))
+# Import from the index module in api/square directory using importlib
+import importlib.util
 
-from index import handler, handle_process_payment, handle_health
+api_square_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'api', 'square'))
+index_path = os.path.join(api_square_path, "index.py")
+
+spec = importlib.util.spec_from_file_location("square_index", index_path)
+index_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(index_module)
+
+handler = index_module.handler
+process_payment = index_module.process_payment
+handle_health = index_module.handle_health
+
+# Alias for backward compatibility with test code
+handle_process_payment = process_payment
 
 
 @pytest.mark.integration

@@ -62,6 +62,9 @@ contract TiltVaultManager is ReentrancyGuard, Ownable {
     event GmxCollateralAdded(address indexed user, uint256 amount, uint256 timestamp);
     event GmxCollateralRemoved(address indexed user, uint256 amount, uint256 timestamp);
     event GmxPositionClosed(address indexed user, uint256 timestamp);
+    event EmergencyWithdraw(address indexed token, address indexed to, uint256 amount, uint256 timestamp);
+    event EmergencyWithdrawAvax(address indexed to, uint256 amount, uint256 timestamp);
+    event ExcessAvaxReturned(address indexed user, uint256 amount);
 
     // ============ Modifiers ============
     
@@ -108,6 +111,7 @@ contract TiltVaultManager is ReentrancyGuard, Ownable {
      */
     function revokeAccess() external {
         isAuthorized[msg.sender] = false;
+        // Note: authorizedManagers mapping remains but is gated by isAuthorized check, so effective revocation is safe
         emit UserRevoked(msg.sender, block.timestamp);
     }
     
@@ -198,6 +202,14 @@ contract TiltVaultManager is ReentrancyGuard, Ownable {
         require(sizeDeltaUsd > 0, "Size must be greater than 0");
         require(msg.value >= executionFee, "Insufficient execution fee");
         
+        // Refund excess AVAX if provided
+        if (msg.value > executionFee) {
+            uint256 excess = msg.value - executionFee;
+            (bool success, ) = payable(msg.sender).call{value: excess}("");
+            require(success, "AVAX refund failed");
+            emit ExcessAvaxReturned(msg.sender, excess);
+        }
+        
         // Transfer USDC from user to this contract
         IERC20(USDC).safeTransferFrom(user, address(this), collateralAmount);
         
@@ -252,6 +264,14 @@ contract TiltVaultManager is ReentrancyGuard, Ownable {
         require(amount > 0, "Amount must be greater than 0");
         require(msg.value >= executionFee, "Insufficient execution fee");
         
+        // Refund excess AVAX if provided
+        if (msg.value > executionFee) {
+            uint256 excess = msg.value - executionFee;
+            (bool success, ) = payable(msg.sender).call{value: excess}("");
+            require(success, "AVAX refund failed");
+            emit ExcessAvaxReturned(msg.sender, excess);
+        }
+        
         // Transfer USDC from user to GMX Order Vault
         IERC20(USDC).safeTransferFrom(user, GMX_ORDER_VAULT, amount);
         
@@ -303,6 +323,14 @@ contract TiltVaultManager is ReentrancyGuard, Ownable {
         require(amount > 0, "Amount must be greater than 0");
         require(msg.value >= executionFee, "Insufficient execution fee");
         
+        // Refund excess AVAX if provided
+        if (msg.value > executionFee) {
+            uint256 excess = msg.value - executionFee;
+            (bool success, ) = payable(msg.sender).call{value: excess}("");
+            require(success, "AVAX refund failed");
+            emit ExcessAvaxReturned(msg.sender, excess);
+        }
+        
         // Create decrease order with 0 size delta (collateral only)
         IGmxExchangeRouter.CreateOrderParams memory params = IGmxExchangeRouter.CreateOrderParams({
             addresses: IGmxExchangeRouter.CreateOrderParamsAddresses({
@@ -349,6 +377,14 @@ contract TiltVaultManager is ReentrancyGuard, Ownable {
         uint256 executionFee
     ) external payable nonReentrant onlyAuthorizedFor(user) {
         require(msg.value >= executionFee, "Insufficient execution fee");
+        
+        // Refund excess AVAX if provided
+        if (msg.value > executionFee) {
+            uint256 excess = msg.value - executionFee;
+            (bool success, ) = payable(msg.sender).call{value: excess}("");
+            require(success, "AVAX refund failed");
+            emit ExcessAvaxReturned(msg.sender, excess);
+        }
         
         // Create decrease order to close position
         IGmxExchangeRouter.CreateOrderParams memory params = IGmxExchangeRouter.CreateOrderParams({
@@ -406,6 +442,7 @@ contract TiltVaultManager is ReentrancyGuard, Ownable {
     function emergencyWithdraw(address token, address to, uint256 amount) external onlyOwner {
         require(to != address(0), "Invalid recipient");
         IERC20(token).safeTransfer(to, amount);
+        emit EmergencyWithdraw(token, to, amount, block.timestamp);
     }
     
     /**
@@ -417,6 +454,25 @@ contract TiltVaultManager is ReentrancyGuard, Ownable {
         require(to != address(0), "Invalid recipient");
         (bool success, ) = to.call{value: amount}("");
         require(success, "AVAX transfer failed");
+        emit EmergencyWithdrawAvax(to, amount, block.timestamp);
+    }
+    
+    /**
+     * @notice Reset USDC allowance to AAVE Pool (emergency use)
+     * @param newAllowance New allowance amount (0 to revoke, type(uint256).max for unlimited)
+     */
+    function resetAaveAllowance(uint256 newAllowance) external onlyOwner {
+        IERC20(USDC).approve(AAVE_POOL, 0); // Reset first
+        IERC20(USDC).approve(AAVE_POOL, newAllowance);
+    }
+    
+    /**
+     * @notice Reset USDC allowance to GMX Router (emergency use)
+     * @param newAllowance New allowance amount (0 to revoke, type(uint256).max for unlimited)
+     */
+    function resetGmxAllowance(uint256 newAllowance) external onlyOwner {
+        IERC20(USDC).approve(GMX_ROUTER, 0); // Reset first
+        IERC20(USDC).approve(GMX_ROUTER, newAllowance);
     }
 
     // ============ View Functions ============

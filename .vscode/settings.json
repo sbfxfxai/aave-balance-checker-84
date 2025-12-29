@@ -1,5 +1,8 @@
 {
   "typescript.tsserver.experimental.enableProjectDiagnostics": false,
   "typescript.enablePromptUseWorkspaceTsdk": false,
-  "typescript.preferences.includePackageJsonAutoImports": "off"
+  "typescript.preferences.includePackageJsonAutoImports": "off",
+  "css.lint.unknownAtRules": "ignore",
+  "scss.lint.unknownAtRules": "ignore",
+  "less.lint.unknownAtRules": "ignore"
 }

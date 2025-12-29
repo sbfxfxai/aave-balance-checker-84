@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Web3Providers } from '@/components/Web3Providers';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { DirectWalletConnect } from '@/components/DirectWalletConnect';
+import { PrivyLogin } from '@/components/PrivyLogin';
+import { SessionKeyAuth } from '@/components/SessionKeyAuth';
 
 function DashboardContent() {
   const { isConnected } = useAccount();
@@ -18,9 +20,9 @@ function DashboardContent() {
         <div className="container mx-auto px-4 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 sm:gap-3">
-              <img 
-                src="/tiltvault-logo.png" 
-                alt="TiltVault" 
+              <img
+                src="/tiltvault-logo.png"
+                alt="TiltVault"
                 className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg"
               />
               <div>
@@ -53,7 +55,16 @@ function DashboardContent() {
         <div className="max-w-6xl mx-auto">
           {/* Network Guard - Shows warning if on wrong chain */}
           <NetworkGuard />
-          
+
+          <div className="grid gap-6 md:grid-cols-2 mb-8">
+            <div className="md:col-span-2">
+              <PrivyLogin />
+            </div>
+            <div className="md:col-span-2">
+              <SessionKeyAuth />
+            </div>
+          </div>
+
           {/* Simple Dashboard with Error Boundary */}
           <ErrorBoundary>
             <SimpleDashboard />

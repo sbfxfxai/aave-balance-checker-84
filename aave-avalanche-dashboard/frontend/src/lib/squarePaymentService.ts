@@ -137,6 +137,11 @@ export class SquarePaymentService {
       await this.initialize();
     }
 
+    // TypeScript guard: ensure payments is initialized
+    if (!this.payments) {
+      throw new Error('Square Payments not initialized');
+    }
+
     try {
       console.log('Creating Square card form...');
       
@@ -180,11 +185,9 @@ export class SquarePaymentService {
       } else {
         // Handle tokenization errors
         const errorMessage = result.errors?.[0]?.detail ?? 'Card tokenization failed';
-        const errorCode = result.errors?.[0]?.code ?? 'UNKNOWN';
         console.error('Card tokenization failed:', {
           status: result.status,
           errors: result.errors,
-          code: errorCode,
           message: errorMessage,
         });
         throw new Error(errorMessage);
@@ -203,7 +206,8 @@ export class SquarePaymentService {
     includeErgc?: boolean,
     useExistingErgc?: boolean,
     walletAddress?: string,
-    userEmail?: string
+    userEmail?: string,
+    paymentId?: string
   ): Promise<PaymentResponse> {
     try {
       // Use same origin for API calls (works in production)
@@ -235,6 +239,7 @@ export class SquarePaymentService {
           use_existing_ergc: useExistingErgc ? 1 : 0, // 1 ERGC to debit from user wallet
           wallet_address: walletAddress,
           user_email: userEmail,
+          payment_id: paymentId, // Include paymentId in request
         }),
       });
 

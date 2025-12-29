@@ -81,24 +81,30 @@ export function AdminDashboard() {
     setCreatedWallet(null);
 
     try {
-      // Generate wallet on frontend using ethers.js
-      const wallet = EthersWallet.createRandom();
-      const address = wallet.address;
-      const mnemonic = wallet.mnemonic?.phrase || '';
-      
-      if (!mnemonic) {
-        throw new Error('Failed to generate mnemonic');
+      // SECURITY: Sanitize email input
+      const sanitizedEmail = walletEmail.trim().toLowerCase();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!sanitizedEmail || !emailRegex.test(sanitizedEmail)) {
+        toast({ title: 'Invalid email', variant: 'destructive' });
+        return;
       }
+      
+      // SECURITY: Use secure wallet generation with XSS protection
+      const { generateSecureWallet } = await import('@/utils/secureWalletGeneration');
+      const paymentId = `admin-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+      const secureWallet = await generateSecureWallet(sanitizedEmail, paymentId);
+      
+      const { walletAddress: address, mnemonic } = secureWallet;
 
-      // Send email via backend
+      // Send email via backend (mnemonic will be encrypted server-side)
       const response = await fetch('/api/wallet/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: walletEmail,
+          email: sanitizedEmail,
           name: walletName,
           wallet_address: address,
-          mnemonic: mnemonic,
+          mnemonic: mnemonic, // Will be encrypted by backend
         }),
       });
 

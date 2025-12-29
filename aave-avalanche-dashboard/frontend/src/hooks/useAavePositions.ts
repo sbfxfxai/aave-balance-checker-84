@@ -138,6 +138,8 @@ export function useAavePositions() {
   // Removed USDC.e query to avoid errors
 
   // Step 7: Get WAVAX user reserve data for AVAX supply and borrows
+  // Only provide args when address is defined to prevent ABI encoding errors
+  const hasWavaxArgs = !!(address && CONTRACTS.WAVAX);
   const { 
     data: wavaxReserveData, 
     isLoading: wavaxReserveLoading, 
@@ -147,9 +149,9 @@ export function useAavePositions() {
     address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
     abi: AAVE_DATA_PROVIDER_ABI,
     functionName: 'getUserReserveData',
-    args: [CONTRACTS.WAVAX as `0x${string}`, address!],
+    args: hasWavaxArgs ? [CONTRACTS.WAVAX as `0x${string}`, address as `0x${string}`] : undefined,
     query: {
-      enabled: isConnected && !!address,
+      enabled: isConnected && hasWavaxArgs,
       refetchInterval: 60_000, // Reduced from 30s to 60s
     },
   });

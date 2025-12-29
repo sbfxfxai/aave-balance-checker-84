@@ -121,7 +121,8 @@ async function loadRuntimeSquareConfig(): Promise<SquarePublicConfig | null> {
 
   runtimeConfigPromise = (async () => {
     try {
-      const response = await fetch('/api/square/config', {
+      const runtimeApiBaseUrl = getApiBaseUrlRuntime();
+      const response = await fetch(`${runtimeApiBaseUrl}/api/square/config`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
       });

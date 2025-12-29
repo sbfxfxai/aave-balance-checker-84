@@ -1,11 +1,11 @@
-import { NextApiRequest, NextApiResponse } from 'next';
-import { editGmxCollateral } from '@/api/square/webhook';
-import { getWalletKey, deleteWalletKey } from '@/api/wallet/keystore';
+import { VercelRequest, VercelResponse } from '@vercel/node';
+import { editGmxCollateral } from '../../../api/square/webhook';
+import { getWalletKey, deleteWalletKey, decryptWalletKeyWithAuth } from '../../../api/wallet/keystore';
 
 /**
  * Handle edit collateral request
  */
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -22,18 +22,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { walletAddress, collateralDeltaUsd, isDeposit } = req.body;
+    const { walletAddress, collateralDeltaUsd, isDeposit, userEmail } = req.body;
 
-    if (!walletAddress || collateralDeltaUsd === undefined || isDeposit === undefined) {
-      return res.status(400).json({ success: false, error: 'Missing required parameters' });
+    if (!walletAddress || collateralDeltaUsd === undefined || isDeposit === undefined || !userEmail) {
+      return res.status(400).json({ success: false, error: 'Missing required parameters (walletAddress, collateralDeltaUsd, isDeposit, userEmail)' });
     }
 
-    // Retrieve encrypted key from Vercel KV
-    const walletData = await getWalletKey(walletAddress);
-    if (!walletData) {
+    // SECURITY: Retrieve encrypted key and decrypt with user authentication
+    const encryptedData = await getWalletKey(walletAddress);
+    if (!encryptedData) {
       return res.status(404).json({ success: false, error: 'Wallet key not found or expired' });
     }
 
+    // Decrypt with user authentication (verifies email matches)
+    const walletData = decryptWalletKeyWithAuth(encryptedData, userEmail, encryptedData.paymentId);
     const { privateKey } = walletData;
 
     // Execute collateral edit

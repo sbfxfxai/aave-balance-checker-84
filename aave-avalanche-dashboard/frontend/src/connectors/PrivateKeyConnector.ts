@@ -1,15 +1,13 @@
 import { Wallet, ethers } from 'ethers';
 import type { Connector } from 'wagmi';
-import { InjectedConnector } from 'wagmi/connectors/injected';
 
-export class PrivateKeyConnector extends Connector {
+// Custom connector implementation (wagmi v2 doesn't export Connector as a class)
+// This is a standalone implementation that matches the Connector interface
+export class PrivateKeyConnector {
   private wallet: Wallet | null = null;
-  private provider: any;
+  private provider: ethers.Provider;
 
-  constructor({ provider }: { provider: any }) {
-    super({
-      options: {},
-    });
+  constructor({ provider }: { provider: ethers.Provider }) {
     this.provider = provider;
   }
 

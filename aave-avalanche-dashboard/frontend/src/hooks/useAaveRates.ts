@@ -16,7 +16,8 @@ export function useAaveRates(): AaveRates {
   useEffect(() => {
     const fetchRates = async () => {
       try {
-        const response = await fetch('/api/aave/rates');
+        const runtimeApiBaseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+        const response = await fetch(`${runtimeApiBaseUrl}/api/aave/rates`);
         const data = await response.json();
         if (data.success) {
           setSupplyAPY(data.supplyAPY);

@@ -25,7 +25,7 @@ MIN_AMOUNT = 0.01  # Minimum 1 cent
 
 # Try to import requests - required for Square API calls
 try:
-    import requests
+    import requests  # type: ignore[import-untyped]
     REQUESTS_AVAILABLE = True
 except ImportError as e:
     _INIT_ERROR = f"requests library not available: {e}"
