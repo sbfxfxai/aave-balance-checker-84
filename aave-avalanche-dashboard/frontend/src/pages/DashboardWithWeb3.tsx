@@ -7,8 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Web3Providers } from '@/components/Web3Providers';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { DirectWalletConnect } from '@/components/DirectWalletConnect';
-import { PrivyLogin } from '@/components/PrivyLogin';
-import { SessionKeyAuth } from '@/components/SessionKeyAuth';
 
 function DashboardContent() {
   const { isConnected } = useAccount();
@@ -55,15 +53,6 @@ function DashboardContent() {
         <div className="max-w-6xl mx-auto">
           {/* Network Guard - Shows warning if on wrong chain */}
           <NetworkGuard />
-
-          <div className="grid gap-6 md:grid-cols-2 mb-8">
-            <div className="md:col-span-2">
-              <PrivyLogin />
-            </div>
-            <div className="md:col-span-2">
-              <SessionKeyAuth />
-            </div>
-          </div>
 
           {/* Simple Dashboard with Error Boundary */}
           <ErrorBoundary>
