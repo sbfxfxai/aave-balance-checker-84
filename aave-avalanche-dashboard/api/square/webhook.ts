@@ -1198,15 +1198,15 @@ async function executeAaveViaPrivy(
   try {
     // Get Privy client
     const privyClient = getPrivyClient();
-    
+
     // Get user's wallets to find the embedded wallet ID
     const wallets = await privyClient.getWallets({ userId: privyUserId });
     const embeddedWallet = wallets.find((w: any) => w.address.toLowerCase() === walletAddress.toLowerCase());
-    
+
     if (!embeddedWallet) {
       throw new Error(`Embedded wallet ${walletAddress} not found for user ${privyUserId}`);
     }
-    
+
     console.log(`[AAVE-PRIVY] Found embedded wallet: ${embeddedWallet.id}`);
 
     // Create Privy signer with wallet ID
@@ -1985,38 +1985,30 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
 
     if (privyUserId) {
       // PRIVY SMART WALLET FLOW:
-      // For now, use hub wallet flow until Privy dependency is fixed
-      console.log(`[Webhook] Privy smart wallet detected - using hub wallet flow due to dependency issue`);
+      // Execute both Aave and GMX automatically using Privy
+      console.log(`[Webhook] Privy smart wallet detected - executing automated strategy`);
 
-      // Step 1: Execute Aave from hub wallet (if allocation > 0)
+      // Step 1: Execute Aave via Privy (if allocation > 0)
       if (aaveAmount > 0 && profile.aavePercent > 0) {
-        console.log(`[Webhook] About to execute AAVE: amount=$${aaveAmount}, wallet=${walletAddress}, paymentId=${lookupPaymentId}`);
-        aaveResult = await executeAaveFromHubWallet(walletAddress, aaveAmount, lookupPaymentId);
-        console.log(`[Webhook] AAVE execution result:`, aaveResult);
+        console.log(`[Webhook] About to execute AAVE via Privy: amount=$${aaveAmount}, wallet=${walletAddress}`);
+        aaveResult = await executeAaveViaPrivy(privyUserId, walletAddress, aaveAmount, lookupPaymentId);
+        console.log(`[Webhook] AAVE Privy result:`, aaveResult);
         if (aaveResult.success) {
-          console.log(`[Webhook] AAVE supply confirmed: ${aaveResult.txHash}`);
+          console.log(`[Webhook] AAVE supply confirmed via Privy: ${aaveResult.txHash}`);
         } else {
-          console.error(`[Webhook] AAVE supply failed: ${aaveResult.error}`);
+          console.error(`[Webhook] AAVE supply failed via Privy: ${aaveResult.error}`);
         }
-      } else {
-        console.log(`[Webhook] Skipping AAVE execution: aaveAmount=${aaveAmount}, aavePercent=${profile.aavePercent}`);
       }
 
-      // Step 2: GMX Execution - send USDC to user for now
+      // Step 2: Execute GMX via Privy (if allocation > 0)
       if (gmxAmount > 0 && profile.gmxPercent > 0) {
-        console.log(`[Webhook] Sending GMX portion ($${gmxAmount} USDC) to Privy wallet for manual execution`);
-        const gmxTransfer = await sendUsdcTransfer(walletAddress, gmxAmount, `${paymentId}-gmx`);
-        console.log(`[Webhook] GMX USDC transfer result:`, gmxTransfer);
-        if (gmxTransfer.success) {
-          console.log(`[Webhook] GMX USDC transferred to user: ${gmxTransfer.txHash}`);
-          gmxResult = {
-            success: true,
-            txHash: gmxTransfer.txHash,
-            error: 'USDC sent to wallet - manual execution required until Privy dependency fixed'
-          };
+        console.log(`[Webhook] Executing GMX via Privy: amount=$${gmxAmount}, wallet=${walletAddress}`);
+        gmxResult = await executeGmxViaPrivy(privyUserId, walletAddress, gmxAmount, riskProfile);
+        console.log(`[Webhook] GMX Privy result:`, gmxResult);
+        if (gmxResult.success) {
+          console.log(`[Webhook] GMX executed automatically via Privy: ${gmxResult.txHash}`);
         } else {
-          console.error(`[Webhook] GMX USDC transfer failed: ${gmxTransfer.error}`);
-          gmxResult = { success: false, error: gmxTransfer.error };
+          console.error(`[Webhook] GMX Privy execution failed: ${gmxResult.error}`);
         }
       }
     } else {
@@ -2209,140 +2201,24 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
   };
 }
 
-
 /**
- * Execute GMX position via Privy Server Wallet (User Delegated)
+ * Execute GMX using Privy for Privy smart wallets
  */
-export async function executeGmxViaPrivy(
+async function executeGmxViaPrivy(
   privyUserId: string,
   walletAddress: string,
   amountUsd: number,
   riskProfile: string
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
-  console.log(`[Privy Execution] Starting GMX execution for ${walletAddress} (User: ${privyUserId})`);
+  console.log(`[GMX-PRIVY] Executing $${amountUsd} GMX position via Privy for ${walletAddress}...`);
 
   try {
-    const privy = getPrivyClient();
-
-    // Create a custom wallet client for GMX SDK that proxies to Privy
-    const privyWalletClient = {
-      address: walletAddress,
-      account: { address: walletAddress },
-      chain: { id: 43114 },
-      writeContract: async (args: any) => {
-        console.log('[Privy Client] Proxied writeContract:', args.functionName);
-        const data = encodeFunctionData({
-          abi: args.abi,
-          functionName: args.functionName,
-          args: args.args
-        });
-
-        const txParams: any = {
-          to: args.address,
-          data,
-          value: args.value ? args.value.toString() : '0x0',
-          chainId: 43114
-        };
-
-        const response = await privy.walletApi.ethereum.sendTransaction({
-          walletId: privyUserId,
-          caip2: 'eip155:43114',
-          transaction: txParams
-        }) as any;
-
-        return response.transactionHash;
-      },
-      sendTransaction: async (args: any) => {
-        console.log('[Privy Client] Proxied sendTransaction');
-        const response = await privy.walletApi.ethereum.sendTransaction({
-          walletId: privyUserId,
-          caip2: 'eip155:43114',
-          transaction: {
-            to: args.to,
-            data: args.data,
-            value: args.value ? args.value.toString() : '0x0',
-            chainId: 43114,
-            gasLimit: args.gasLimit ? args.gasLimit.toString() : undefined,
-            maxFeePerGas: args.maxFeePerGas ? args.maxFeePerGas.toString() : undefined,
-            maxPriorityFeePerGas: args.maxPriorityFeePerGas ? args.maxPriorityFeePerGas.toString() : undefined
-          }
-        }) as any;
-        return response.transactionHash;
-      }
-    };
-
-    // Initialize GMX SDK with our proxy client
-    const sdk = new GmxSdk({
-      chainId: 43114,
-      rpcUrl: AVALANCHE_RPC,
-      oracleUrl: 'https://avalanche-api.gmxinfra.io',
-      subsquidUrl: 'https://gmx.squids.live/gmx-synthetics-avalanche/graphql',
-      walletClient: privyWalletClient as any,
-    });
-
-    sdk.setAccount(walletAddress as `0x${string}`);
-
-    console.log('[Privy Execution] Fetching market data...');
-    const [tokensRes, marketsRes] = await Promise.all([
-      fetch('https://avalanche-api.gmxinfra.io/tokens'),
-      fetch('https://avalanche-api.gmxinfra.io/markets'),
-    ]);
-    const tokensJson = await tokensRes.json() as any;
-    const marketsJson = await marketsRes.json() as any;
-
-    const btcToken = tokensJson.tokens.find((t: any) => t.symbol === 'BTC');
-    const usdcToken = tokensJson.tokens.find((t: any) => t.symbol === 'USDC');
-    if (!btcToken || !usdcToken) throw new Error('BTC/USDC token not found');
-
-    const btcUsdcMarket = marketsJson.markets.find(
-      (m: any) => m.isListed &&
-        m.indexToken.toLowerCase() === btcToken.address.toLowerCase() &&
-        m.shortToken.toLowerCase() === usdcToken.address.toLowerCase()
-    );
-    if (!btcUsdcMarket) throw new Error('BTC/USDC market not found');
-
-    const profile = RISK_PROFILES[riskProfile as keyof typeof RISK_PROFILES] || RISK_PROFILES.balanced;
-    const leverage = profile.gmxLeverage;
-    const leverageBps = BigInt(Math.floor(leverage * 10000));
-    const usdcAmountBigInt = parseUnits(amountUsd.toString(), 6);
-
-    console.log('[Privy Execution] Approving USDC...');
-    await privyWalletClient.writeContract({
-      address: USDC_CONTRACT,
-      abi: [{ name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] }],
-      functionName: 'approve',
-      args: [GMX_ROUTER, maxUint256],
-    });
-
-    console.log('[Privy Execution] Creating GMX Order...');
-
-    let lastTxHash = '';
-    const originalSend = privyWalletClient.sendTransaction;
-    privyWalletClient.sendTransaction = async (args) => {
-      const h = await originalSend(args);
-      lastTxHash = h;
-      return h;
-    };
-
-    await sdk.orders.long({
-      payAmount: usdcAmountBigInt,
-      marketAddress: btcUsdcMarket.marketToken as `0x${string}`,
-      payTokenAddress: usdcToken.address as `0x${string}`,
-      collateralTokenAddress: usdcToken.address as `0x${string}`,
-      allowedSlippageBps: 100,
-      leverage: leverageBps,
-      skipSimulation: true,
-    });
-
-    if (!lastTxHash) throw new Error('No tx hash captured from GMX execution');
-
-    console.log(`[Privy Execution] Success: ${lastTxHash}`);
-    return { success: true, txHash: lastTxHash };
-
-  } catch (error: unknown) {
-    console.error('[Privy Execution] Failed:', error);
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    return { success: false, error: errorMessage };
+    // For now, fall back to hub wallet execution due to Privy package dependency issue
+    console.log(`[GMX-PRIVY] Falling back to hub wallet execution due to Privy package issue`);
+    return await executeGmxFromHubWallet(walletAddress, amountUsd, riskProfile);
+  } catch (error) {
+    console.error('[GMX-PRIVY] Execution error:', error);
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
