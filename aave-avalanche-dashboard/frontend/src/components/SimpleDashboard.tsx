@@ -5,9 +5,10 @@ import { Wallet, LogOut, ArrowDownUp, Plus, Minus, TrendingUp, TrendingDown, Ref
 import { toast } from 'sonner';
 import { useAavePositions } from '@/hooks/useAavePositions';
 import { useWalletBalances } from '@/hooks/useWalletBalances';
-import { ActionModal } from '@/components/ActionModal';
+import { PrivyLogin } from '@/components/PrivyLogin';
 import { WalletConnect } from '@/components/WalletConnect';
 import { GmxPositionCard } from '@/components/GmxPositionCard';
+import { ActionModal } from '@/components/ActionModal';
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -124,11 +125,36 @@ export function SimpleDashboard() {
 
     return (
       <div className="max-w-2xl mx-auto space-y-6">
+        {/* Email Signup - Primary Option */}
+        <Card className="p-8 border-blue-500/20 bg-blue-500/5">
+          <div className="text-center space-y-4">
+            <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center mx-auto">
+              <Wallet className="h-6 w-6 text-white" />
+            </div>
+            <h3 className="text-xl font-semibold text-blue-500">Quick Start with Email</h3>
+            <p className="text-sm text-muted-foreground">
+              No wallet needed. Sign up with your email and we'll create a secure wallet for you automatically.
+            </p>
+            <PrivyLogin />
+          </div>
+        </Card>
+
+        {/* Or Divider */}
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-border/30"></div>
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-4 bg-background text-muted-foreground">Or continue with</span>
+          </div>
+        </div>
+
+        {/* Traditional Wallet Options */}
         <Card className="p-8">
           <div className="text-center space-y-3">
-            <h2 className="text-2xl font-bold">Welcome to TiltVault Banking</h2>
+            <h2 className="text-2xl font-bold">Connect Your Wallet</h2>
             <p className="text-muted-foreground">
-              Choose how you want to get started. You can connect MetaMask directly or jump to Auto to deposit, invest, and withdraw.
+              Already have a wallet? Connect MetaMask or other Web3 wallet to get started.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
