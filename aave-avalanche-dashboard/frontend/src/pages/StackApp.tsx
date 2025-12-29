@@ -166,26 +166,6 @@ const StackApp = () => {
             <p className="text-xs sm:text-sm text-muted-foreground">
               Automated savings & Bitcoin exposure • US-compliant • No KYC required
             </p>
-            <div className="mt-4 flex flex-col sm:flex-row justify-center gap-3">
-              <Button asChild variant="secondary">
-                <a
-                  href="https://portfolio.metamask.io/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Sign up with MetaMask Email
-                </a>
-              </Button>
-              <Button asChild variant="outline">
-                <a
-                  href="https://metamask.io/download/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Install MetaMask
-                </a>
-              </Button>
-            </div>
           </div>
 
           {/* Deposit Type Selection */}
