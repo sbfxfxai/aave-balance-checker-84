@@ -104,25 +104,8 @@ export function SimpleDashboard() {
     toast.info('Wallet disconnected');
   };
 
-  // If not connected, show a simple three-button landing
+  // Always show Privy email signup first, before any wallet checks
   if (!isConnected && !directWalletAddress) {
-    if (showWalletConnect) {
-      return (
-        <div className="max-w-md mx-auto">
-          <Card className="p-6">
-            <Button
-              variant="ghost"
-              onClick={() => setShowWalletConnect(false)}
-              className="mb-4"
-            >
-              ← Back
-            </Button>
-            <WalletConnect />
-          </Card>
-        </div>
-      );
-    }
-
     return (
       <div className="max-w-2xl mx-auto space-y-6">
         {/* Email Signup - Primary Option */}
@@ -182,6 +165,24 @@ export function SimpleDashboard() {
               Deposit / Invest / Withdraw
             </Button>
           </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // Wallet connect modal
+  if (showWalletConnect) {
+    return (
+      <div className="max-w-md mx-auto">
+        <Card className="p-6">
+          <Button
+            variant="ghost"
+            onClick={() => setShowWalletConnect(false)}
+            className="mb-4"
+          >
+            ← Back
+          </Button>
+          <WalletConnect />
         </Card>
       </div>
     );
