@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAccount } from 'wagmi';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Wallet as EthersWallet } from 'ethers';
 import {
   Dialog,
@@ -38,7 +39,9 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   onClose,
   riskProfile,
 }) => {
-  const { address: connectedAddress, isConnected } = useAccount();
+  const { address: wagmiAddress, isConnected: isWagmiConnected } = useAccount();
+  const { authenticated, user, ready } = usePrivy();
+  const { wallets } = useWallets();
   const [amount, setAmount] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
@@ -52,6 +55,22 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   const [isCheckingErgc, setIsCheckingErgc] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const { toast } = useToast();
+
+  // Get the most relevant wallet address - prioritize Privy for authenticated users
+  const connectedAddress = React.useMemo(() => {
+    // If user is authenticated with Privy, use Privy wallet
+    if (authenticated && ready) {
+      const privyWallet = wallets.find(w => w.walletClientType === 'privy');
+      if (privyWallet) return privyWallet.address;
+      return user?.wallet?.address;
+    }
+    
+    // Fall back to wagmi wallet
+    return wagmiAddress;
+  }, [authenticated, ready, wallets, user, wagmiAddress]);
+
+  // Check if user has any wallet connected (Privy or wagmi)
+  const isConnected = Boolean(connectedAddress && (authenticated || isWagmiConnected));
 
   // ERGC purchase cost ($10 for 100 ERGC)
   const ergcCost = 10;
