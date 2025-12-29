@@ -1985,38 +1985,39 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
 
     if (privyUserId) {
       // PRIVY SMART WALLET FLOW:
-      // 1. Send USDC to user's smart wallet
-      // 2. Execute Aave from user's wallet via Privy
-      // 3. Execute GMX from user's wallet via Privy
+      // For now, use hub wallet flow until Privy dependency is fixed
+      console.log(`[Webhook] Privy smart wallet detected - using hub wallet flow due to dependency issue`);
 
-      console.log(`[Webhook] Privy smart wallet flow - User ID: ${privyUserId}`);
-
-      // Step 1: Send USDC to user's smart wallet first
-      console.log(`[Webhook] Sending USDC to Privy smart wallet: $${depositAmount}`);
-      transferResult = await sendUsdcTransfer(walletAddress, depositAmount, lookupPaymentId);
-      if (!transferResult.success) {
-        console.error(`[Webhook] USDC transfer to Privy wallet failed: ${transferResult.error}`);
-        return {
-          action: 'transfer_failed',
-          paymentId,
-          status,
-          error: transferResult.error,
-        };
-      }
-      console.log(`[Webhook] USDC transferred to Privy wallet: ${transferResult.txHash}`);
-
-      // Step 2: Execute Aave from user's wallet via Privy (if allocation > 0)
+      // Step 1: Execute Aave from hub wallet (if allocation > 0)
       if (aaveAmount > 0 && profile.aavePercent > 0) {
-        console.log(`[Webhook] Executing AAVE via Privy: amount=$${aaveAmount}, wallet=${walletAddress}`);
-        aaveResult = await executeAaveViaPrivy(privyUserId, walletAddress, aaveAmount, lookupPaymentId);
-        console.log(`[Webhook] AAVE Privy execution result:`, aaveResult);
+        console.log(`[Webhook] About to execute AAVE: amount=$${aaveAmount}, wallet=${walletAddress}, paymentId=${lookupPaymentId}`);
+        aaveResult = await executeAaveFromHubWallet(walletAddress, aaveAmount, lookupPaymentId);
+        console.log(`[Webhook] AAVE execution result:`, aaveResult);
         if (aaveResult.success) {
-          console.log(`[Webhook] AAVE supply confirmed via Privy: ${aaveResult.txHash}`);
+          console.log(`[Webhook] AAVE supply confirmed: ${aaveResult.txHash}`);
         } else {
-          console.error(`[Webhook] AAVE Privy execution failed: ${aaveResult.error}`);
+          console.error(`[Webhook] AAVE supply failed: ${aaveResult.error}`);
         }
       } else {
         console.log(`[Webhook] Skipping AAVE execution: aaveAmount=${aaveAmount}, aavePercent=${profile.aavePercent}`);
+      }
+
+      // Step 2: GMX Execution - send USDC to user for now
+      if (gmxAmount > 0 && profile.gmxPercent > 0) {
+        console.log(`[Webhook] Sending GMX portion ($${gmxAmount} USDC) to Privy wallet for manual execution`);
+        const gmxTransfer = await sendUsdcTransfer(walletAddress, gmxAmount, `${paymentId}-gmx`);
+        console.log(`[Webhook] GMX USDC transfer result:`, gmxTransfer);
+        if (gmxTransfer.success) {
+          console.log(`[Webhook] GMX USDC transferred to user: ${gmxTransfer.txHash}`);
+          gmxResult = {
+            success: true,
+            txHash: gmxTransfer.txHash,
+            error: 'USDC sent to wallet - manual execution required until Privy dependency fixed'
+          };
+        } else {
+          console.error(`[Webhook] GMX USDC transfer failed: ${gmxTransfer.error}`);
+          gmxResult = { success: false, error: gmxTransfer.error };
+        }
       }
     } else {
       // REGULAR CONNECTED WALLET FLOW (MetaMask/WalletConnect):
