@@ -5,8 +5,8 @@ export const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID || 'cmjr7fmh401r3l
 
 // Privy configuration for TiltVault
 export const privyConfig: PrivyClientConfig = {
-    // Login methods - email is primary for "Robinhood-like" experience
-    loginMethods: ['email', 'google', 'apple'],
+    // Login methods - email and Google (Apple not enabled in dashboard)
+    loginMethods: ['email', 'google'],
 
     // Appearance customization
     appearance: {
@@ -18,8 +18,9 @@ export const privyConfig: PrivyClientConfig = {
 
     // Embedded wallet configuration
     embeddedWallets: {
-        createOnLogin: 'users-without-wallets', // Auto-create wallet on signup
-        noPromptOnSignature: true, // Don't show confirmation modals (we use custom UI)
+        ethereum: {
+            createOnLogin: 'users-without-wallets', // Auto-create wallet on signup
+        },
     },
 
     // Legal notices
