@@ -1746,9 +1746,9 @@ async function executeGmxFromHubWallet(
       if (!currentAccount) {
         console.error('[GMX Hub] ❌ CRITICAL: SDK account is not set! Attempting to set again...');
         try {
-          sdk.setAccount(account.address as `0x${string}`);
-          // Also set directly on SDK instance and Orders module
+          // CRITICAL: sdk.setAccount is getter-only, set directly on instance
           (sdk as any).account = account.address;
+          // Also set directly on SDK instance and Orders module
           if ((sdk as any).orders && (sdk as any).orders.account !== undefined) {
             (sdk as any).orders.account = account.address;
             console.log('[GMX Hub] ✅ Account also set on Orders module');
@@ -1767,7 +1767,6 @@ async function executeGmxFromHubWallet(
         if (currentAccount.toLowerCase() !== account.address.toLowerCase()) {
           console.warn('[GMX Hub] ⚠️ Account mismatch! SDK account:', currentAccount, 'Expected:', account.address);
           // Fix the mismatch
-          sdk.setAccount(account.address as `0x${string}`);
           (sdk as any).account = account.address;
           if ((sdk as any).orders && (sdk as any).orders.account !== undefined) {
             (sdk as any).orders.account = account.address;
@@ -1778,8 +1777,9 @@ async function executeGmxFromHubWallet(
       }
       
       // CRITICAL: Final verification - ensure Orders module has account set
-      // The error "Account is not defined" occurs in Orders.createIncreaseOrder
-      // We MUST ensure the account is accessible to the Orders module
+      // The GMX SDK throws "Account is not defined" if the Orders module can't access the account
+      console.log('[GMX Hub] 📋 Final account verification before order execution...');
+      
       if ((sdk as any).orders) {
         // Try to get account from Orders module (check multiple possible property names)
         let ordersAccount = (sdk as any).orders.account || 
@@ -1787,18 +1787,18 @@ async function executeGmxFromHubWallet(
                            (sdk as any).orders.sdk?.account ||
                            currentAccount;
         
-        console.log('[GMX Hub] Orders module account check:', {
+        console.log('[GMX Hub] 📊 Orders module account check:', {
           'orders.account': (sdk as any).orders.account,
           'orders._account': (sdk as any).orders._account,
-          'orders.sdk.account': (sdk as any).orders.sdk?.account,
+          'orders.sdk?.account': (sdk as any).orders.sdk?.account,
           'currentAccount': currentAccount,
-          'final': ordersAccount
+          'expectedAccount': account.address,
+          'ordersAccount': ordersAccount
         });
         
         // CRITICAL: If Orders module doesn't have account, set it in multiple ways
         if (!ordersAccount || ordersAccount.toLowerCase() !== account.address.toLowerCase()) {
           console.warn('[GMX Hub] ⚠️ Orders module account not set correctly - fixing now...');
-          
           try {
             // Method 1: Set directly on Orders instance
             (sdk as any).orders.account = account.address;
@@ -1814,16 +1814,10 @@ async function executeGmxFromHubWallet(
               (sdk as any).orders.setAccount(account.address);
             }
             
-            // Method 4: Try to access the Orders class prototype (unlikely to work but worth trying)
-            try {
-              const OrdersProto = Object.getPrototypeOf((sdk as any).orders);
-              if (OrdersProto && OrdersProto.constructor) {
-                // Can't set on prototype, but log for debugging
-                console.log('[GMX Hub] Orders prototype found, but cannot set account on prototype');
-              }
-            } catch (protoError) {
-              // Ignore - prototype access might fail
-            }
+            // Method 4: Ensure SDK instance also has account
+            (sdk as any).account = account.address;
+            
+            console.log('[GMX Hub] 🔧 Multiple account setting methods applied');
             
             // Verify it's set now
             ordersAccount = (sdk as any).orders.account || 
@@ -1834,27 +1828,33 @@ async function executeGmxFromHubWallet(
               console.log('[GMX Hub] ✅✅✅ Orders module account fixed and verified:', ordersAccount);
             } else {
               // Last resort: try to access the SDK's internal account getter
-              console.error('[GMX Hub] ❌ CRITICAL: Could not verify Orders module account!');
-              console.error('[GMX Hub] SDK account:', (sdk as any).account);
-              console.error('[GMX Hub] Orders account after fix:', ordersAccount);
-              console.error('[GMX Hub] Expected:', account.address);
-              
-              // Don't fail yet - the SDK might use sdk.account internally
-              console.warn('[GMX Hub] ⚠️ Proceeding anyway - SDK might use sdk.account internally');
+              console.error('[GMX Hub] ❌ CRITICAL: Could not set Orders module account!');
+              console.error('[GMX Hub] Final state:', {
+                'sdk.account': (sdk as any).account,
+                'orders.account': (sdk as any).orders.account,
+                'orders._account': (sdk as any).orders._account,
+                'expected': account.address
+              });
+              return {
+                success: false,
+                error: `Failed to set GMX SDK account on Orders module. This will cause "Account is not defined" error.`
+              };
             }
-          } catch (ordersFixError) {
-            console.error('[GMX Hub] ❌ Failed to fix Orders module account:', ordersFixError);
-            // Don't return error - let it try and see what happens
-            console.warn('[GMX Hub] ⚠️ Proceeding with order execution despite account fix failure');
+          } catch (accountSetError) {
+            console.error('[GMX Hub] ❌ Error setting Orders module account:', accountSetError);
+            return {
+              success: false,
+              error: `Error setting GMX SDK account: ${accountSetError instanceof Error ? accountSetError.message : String(accountSetError)}`
+            };
           }
         } else {
-          console.log('[GMX Hub] ✅✅✅ Orders module account verified:', ordersAccount);
+          console.log('[GMX Hub] ✅ Orders module account verified:', ordersAccount);
         }
       } else {
-        console.error('[GMX Hub] ❌ CRITICAL: SDK orders module not found!');
+        console.error('[GMX Hub] ❌ CRITICAL: Orders module not found on SDK!');
         return {
           success: false,
-          error: 'SDK orders module not accessible - cannot execute GMX order'
+          error: 'GMX SDK Orders module not available - cannot execute trade'
         };
       }
       
