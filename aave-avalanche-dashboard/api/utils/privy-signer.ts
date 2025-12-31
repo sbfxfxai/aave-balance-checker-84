@@ -1,25 +1,44 @@
 import { AbstractSigner, Provider, TransactionRequest, TransactionResponse, TypedDataDomain, TypedDataField } from 'ethers';
 
-// Try to import PrivyClient, but handle module errors gracefully
-let PrivyClient: any;
+// Dynamic import with error handling for PrivyClient
+let PrivyClient: any = null;
 let privyImportError: Error | null = null;
 
-try {
-  PrivyClient = require('@privy-io/server-auth').PrivyClient;
-} catch (error) {
-  privyImportError = error instanceof Error ? error : new Error(String(error));
-  console.error('[PrivySigner] Failed to import @privy-io/server-auth:', privyImportError.message);
+async function initPrivyClient() {
+  if (PrivyClient !== null || privyImportError !== null) {
+    return { PrivyClient, error: privyImportError };
+  }
+
+  try {
+    // Try dynamic import to avoid static import issues
+    const privyModule = await import('@privy-io/server-auth');
+    PrivyClient = privyModule.PrivyClient;
+    console.log('[PrivySigner] Successfully imported PrivyClient');
+    return { PrivyClient, error: null };
+  } catch (error) {
+    privyImportError = error instanceof Error ? error : new Error(String(error));
+    console.error('[PrivySigner] Failed to import @privy-io/server-auth:', privyImportError.message);
+    return { PrivyClient: null, error: privyImportError };
+  }
 }
 
 import { getPrivyClient } from './privy-client';
 
-// Export a function to check if Privy is available
-export function isPrivyAvailable(): boolean {
-    return !privyImportError;
+// Export async function to check if Privy is available
+export async function isPrivyAvailable(): Promise<boolean> {
+    if (privyImportError !== null) return false;
+    if (PrivyClient !== null) return true;
+    
+    const result = await initPrivyClient();
+    return result.PrivyClient !== null;
 }
 
-export function getPrivyImportError(): Error | null {
-    return privyImportError;
+export async function getPrivyImportError(): Promise<Error | null> {
+    if (privyImportError !== null) return privyImportError;
+    if (PrivyClient !== null) return null;
+    
+    const result = await initPrivyClient();
+    return result.error;
 }
 
 export class PrivySigner extends AbstractSigner {
@@ -29,15 +48,20 @@ export class PrivySigner extends AbstractSigner {
 
     constructor(walletId: string, address: string, provider?: Provider) {
         super(provider);
-        
-        // Check if Privy import failed
-        if (privyImportError) {
-            throw new Error(`PrivySigner cannot be initialized: ${privyImportError.message}`);
-        }
-        
-        this.privy = getPrivyClient();
         this.walletId = walletId;
         this.address = address;
+        // Privy client will be initialized lazily when needed
+    }
+
+    private async ensurePrivyClient(): Promise<any> {
+        if (!this.privy) {
+            const result = await initPrivyClient();
+            if (!result.PrivyClient) {
+                throw new Error(`PrivySigner cannot be initialized: ${result.error?.message}`);
+            }
+            this.privy = getPrivyClient();
+        }
+        return this.privy;
     }
 
     async getAddress(): Promise<string> {
@@ -55,6 +79,9 @@ export class PrivySigner extends AbstractSigner {
     async sendTransaction(tx: TransactionRequest): Promise<TransactionResponse> {
         console.log('[PrivySigner] Sending transaction via @privy-io/node:', tx);
 
+        // Ensure Privy client is initialized
+        const privy = await this.ensurePrivyClient();
+
         const txParams: any = {
             to: tx.to,
             value: tx.value ? tx.value.toString() : '0x0',
@@ -67,7 +94,7 @@ export class PrivySigner extends AbstractSigner {
         if (tx.maxPriorityFeePerGas) txParams.maxPriorityFeePerGas = tx.maxPriorityFeePerGas.toString();
 
         // Using walletApi.ethereum.sendTransaction for @privy-io/server-auth
-        const response = await this.privy.walletApi.ethereum.sendTransaction({
+        const response = await privy.walletApi.ethereum.sendTransaction({
             walletId: this.walletId,
             caip2: 'eip155:43114',
             transaction: txParams

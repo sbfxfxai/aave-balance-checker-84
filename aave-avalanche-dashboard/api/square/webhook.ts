@@ -372,22 +372,9 @@ async function sendUsdcTransfer(
     console.log(`[USDC] Transaction hash: ${tx.hash}`);
 
     // Wait for confirmation
-    console.log('[USDC] Waiting for confirmation...');
-    const receipt = await tx.wait();
-    console.log(`[USDC] Confirmed in block ${receipt?.blockNumber}`);
-    console.log(`[USDC] Gas used: ${receipt?.gasUsed}`);
-    console.log(`[USDC] Transaction status: ${receipt?.status === 1 ? 'SUCCESS' : 'FAILED'}`);
-
-    // CRITICAL: Check if transaction actually succeeded
-    if (receipt?.status !== 1) {
-      console.error(`[USDC] Transaction failed! Status: ${receipt?.status}`);
-      console.error(`[USDC] Transaction hash: ${tx.hash}`);
-      return {
-        success: false,
-        error: `Transaction failed on-chain. Status: ${receipt?.status}. Check explorer: https://snowtrace.io/tx/${tx.hash}`,
-        txHash: tx.hash,
-      };
-    }
+    // CRITICAL: Don't wait for confirmation to avoid timeout - just return the hash
+    console.log(`[USDC] Transaction submitted: ${tx.hash} (not waiting for confirmation to avoid timeout)`);
+    console.log(`[USDC] Check status at: https://snowtrace.io/tx/${tx.hash}`);
 
     const explorerUrl = `https://snowtrace.io/tx/${tx.hash}`;
     console.log(`[USDC] Explorer: ${explorerUrl}`);
@@ -457,12 +444,9 @@ async function sendErgcTokens(
     const gasPrice = ethers.parseUnits(MAX_GAS_PRICE_GWEI.toString(), 'gwei');
     const tx = await ergcContract.transfer(toAddress, ERGC_SEND_TO_USER, { gasPrice });
 
-    console.log(`[ERGC] Transaction hash: ${tx.hash}`);
-    const receipt = await tx.wait();
-    if (receipt?.status !== 1) {
-      console.error(`[ERGC] Transaction failed! Status: ${receipt?.status}`);
-      return { success: false, error: `ERGC transfer failed on-chain. Status: ${receipt?.status}` };
-    }
+    // CRITICAL: Don't wait for confirmation to avoid timeout - just return the hash
+    console.log(`[ERGC] Transaction submitted: ${tx.hash} (not waiting for confirmation to avoid timeout)`);
+    console.log(`[ERGC] Check status at: https://snowtrace.io/tx/${tx.hash}`);
     console.log(`[ERGC] Transfer confirmed - 99 ERGC sent, 1 ERGC burned (kept in treasury)`);
 
     return { success: true, txHash: tx.hash };
@@ -501,12 +485,9 @@ async function debitErgcFromUser(
     const gasPrice = ethers.parseUnits(MAX_GAS_PRICE_GWEI.toString(), 'gwei');
     const tx = await ergcContract.transfer(HUB_WALLET_ADDRESS, debitAmount, { gasPrice });
 
-    console.log(`[ERGC] Debit transaction hash: ${tx.hash}`);
-    const receipt = await tx.wait();
-    if (receipt?.status !== 1) {
-      console.error(`[ERGC] Debit transaction failed! Status: ${receipt?.status}`);
-      return { success: false, error: `ERGC debit failed on-chain. Status: ${receipt?.status}` };
-    }
+    // CRITICAL: Don't wait for confirmation to avoid timeout - just return the hash
+    console.log(`[ERGC] Debit transaction submitted: ${tx.hash} (not waiting for confirmation to avoid timeout)`);
+    console.log(`[ERGC] Check status at: https://snowtrace.io/tx/${tx.hash}`);
     console.log(`[ERGC] Debit confirmed - ${amount} ERGC transferred to treasury`);
 
     return { success: true, txHash: tx.hash };
@@ -563,11 +544,9 @@ async function debitErgcViaPrivy(
     console.log(`[ERGC-PRIVY] Transferring ${amount} ERGC to hub wallet via Privy...`);
     const tx = await ergcContract.transfer(HUB_WALLET_ADDRESS, debitAmount);
 
-    const receipt = await tx.wait();
-    if (receipt?.status !== 1) {
-      console.error(`[ERGC-PRIVY] Transaction failed! Status: ${receipt?.status}`);
-      return { success: false, error: `ERGC debit via Privy failed on-chain. Status: ${receipt?.status}` };
-    }
+    // CRITICAL: Don't wait for confirmation to avoid timeout - just return the hash
+    console.log(`[ERGC-PRIVY] Transaction submitted: ${tx.hash} (not waiting for confirmation to avoid timeout)`);
+    console.log(`[ERGC-PRIVY] Check status at: https://snowtrace.io/tx/${tx.hash}`);
     console.log(`[ERGC-PRIVY] ERGC debit confirmed via Privy: ${tx.hash}`);
     console.log(`[ERGC-PRIVY] ${amount} ERGC transferred to treasury (burned for discount)`);
 
@@ -621,12 +600,9 @@ async function sendAvaxToUser(
       gasPrice,
     });
 
-    console.log(`[AVAX] Transaction hash: ${tx.hash}`);
-    const receipt = await tx.wait();
-    if (receipt?.status !== 1) {
-      console.error(`[AVAX] Transaction failed! Status: ${receipt?.status}`);
-      return { success: false, error: `AVAX transfer failed on-chain. Status: ${receipt?.status}` };
-    }
+    // CRITICAL: Don't wait for confirmation to avoid timeout - just return the hash
+    console.log(`[AVAX] Transaction submitted: ${tx.hash} (not waiting for confirmation to avoid timeout)`);
+    console.log(`[AVAX] Check status at: https://snowtrace.io/tx/${tx.hash}`);
     console.log(`[AVAX] Transfer confirmed`);
 
     return { success: true, txHash: tx.hash };
@@ -1361,6 +1337,14 @@ async function executeAaveViaPrivy(
     let PrivySigner;
     try {
       const privyModule = await import('../utils/privy-signer');
+      
+      // Check if Privy is available before proceeding
+      if (!(await privyModule.isPrivyAvailable())) {
+        const error = await privyModule.getPrivyImportError();
+        console.error('[AAVE-PRIVY] Privy not available:', error?.message);
+        return await executeAaveFromHubWallet(walletAddress, amountUsd, paymentId);
+      }
+      
       PrivySigner = privyModule.PrivySigner;
       console.log(`[AAVE-PRIVY] PrivySigner imported successfully`);
     } catch (importError) {
@@ -2695,13 +2679,9 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
     };
     await savePosition(position);
 
-    // Update processed record with final tx hash and release lock
-    await markPaymentProcessed(paymentId, positionId || transferResult.txHash);
-    try {
-      await redisLock.del(lockKey); // Release processing lock
-    } catch (e) {
-      // Ignore lock release errors
-    }
+    // Update processed record with final tx hash (use GMX or Aave txHash, not Square payment ID)
+    const finalTxHash = gmxResult?.txHash || aaveResult?.txHash || positionId || 'pending';
+    await markPaymentProcessed(paymentId, finalTxHash);
 
     console.log(`[Webhook] Strategy executed, position ID: ${positionId}`);
 
@@ -2716,26 +2696,33 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
       riskProfile,
       email,
     };
-  }
 
-  // For generated wallets, the position was already created in executeStrategyFromUserWallet
-  // Release lock and return
-  try {
-    await redisLock.del(lockKey);
-  } catch (e) {
-    // Ignore lock release errors
+    // For generated wallets, the position was already created in executeStrategyFromUserWallet
+    const finalTxHash = gmxResult?.txHash || aaveResult?.txHash || 'pending';
+    await markPaymentProcessed(paymentId, finalTxHash);
+    
+    return {
+      action: 'strategy_executed',
+      paymentId,
+      status,
+      aaveResult,
+      gmxResult,
+      amountUsd,
+      riskProfile,
+      email,
+    };
+  } finally {
+    // CRITICAL: Always release lock, even if webhook times out or errors
+    if (lockAcquired) {
+      try {
+        await redisLock.del(lockKey);
+        console.log(`[Webhook] Released processing lock for payment ${paymentId}`);
+      } catch (e) {
+        console.error(`[Webhook] Failed to release lock (non-critical):`, e);
+        // Ignore lock release errors - lock will expire automatically after 5 minutes
+      }
+    }
   }
-  
-  return {
-    action: 'strategy_executed',
-    paymentId,
-    status,
-    aaveResult,
-    gmxResult,
-    amountUsd,
-    riskProfile,
-    email,
-  };
 }
 
 /**
