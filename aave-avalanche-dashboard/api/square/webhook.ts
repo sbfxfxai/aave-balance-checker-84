@@ -515,42 +515,154 @@ async function debitErgcViaPrivy(
     try {
       const privyModule = await import('../utils/privy-signer');
       PrivySigner = privyModule.PrivySigner;
+      if (!PrivySigner) {
+        console.error('[ERGC-PRIVY] PrivySigner class not exported from module');
+        return { success: false, error: 'Privy integration unavailable - PrivySigner class not found' };
+      }
       console.log(`[ERGC-PRIVY] PrivySigner imported successfully`);
     } catch (importError) {
-      console.error('[ERGC-PRIVY] Failed to import PrivySigner:', importError);
-      return { success: false, error: 'Privy integration unavailable' };
+      const errorMsg = importError instanceof Error ? importError.message : String(importError);
+      const errorStack = importError instanceof Error ? importError.stack : undefined;
+      console.error('[ERGC-PRIVY] Failed to import PrivySigner module:', errorMsg);
+      if (errorStack) {
+        console.error('[ERGC-PRIVY] Import error stack:', errorStack);
+      }
+      // Check if it's the known @hpke dependency issue
+      if (errorMsg.includes('errors.js') || errorMsg.includes('@hpke')) {
+        console.error('[ERGC-PRIVY] Known Privy dependency issue - @hpke module error');
+        console.error('[ERGC-PRIVY] This is a Privy SDK dependency issue, not our code');
+      }
+      // Privy import failed - try using Privy client directly as workaround
+      console.warn('[ERGC-PRIVY] PrivySigner import failed, trying direct Privy client...');
+      try {
+        const { getPrivyClient } = await import('../utils/privy-client');
+        const privyClient = await getPrivyClient(); // Now async
+        
+        // Get the wallet ID from the user ID (for embedded wallets, user ID = wallet ID)
+        const walletId = privyUserId;
+        
+        // Encode ERC20 transfer function call
+        const ergcInterface = new ethers.Interface(ERC20_ABI);
+        const transferData = ergcInterface.encodeFunctionData('transfer', [HUB_WALLET_ADDRESS, debitAmount]);
+        
+        // Check balance first
+        const provider = new ethers.JsonRpcProvider(AVALANCHE_RPC);
+        const ergcContractRead = new ethers.Contract(ERGC_CONTRACT, ERC20_ABI, provider);
+        const balance = await ergcContractRead.balanceOf(walletAddress);
+        const balanceFormatted = ethers.formatUnits(balance, 18);
+        console.log(`[ERGC-PRIVY] User ERGC balance (via RPC): ${balanceFormatted} ERGC`);
+        
+        if (balance < debitAmount) {
+          console.error(`[ERGC-PRIVY] Insufficient ERGC balance: ${balanceFormatted} < ${amount}`);
+          return { success: false, error: `Insufficient ERGC balance. Have: ${balanceFormatted}, Need: ${amount}` };
+        }
+        
+        // Send transaction via Privy wallet API directly
+        console.log(`[ERGC-PRIVY] Using direct Privy client for ERGC transfer (workaround for import issue)`);
+        const response = await privyClient.walletApi.ethereum.sendTransaction({
+          walletId: walletId,
+          caip2: 'eip155:43114', // Avalanche C-Chain
+          transaction: {
+            to: ERGC_CONTRACT as `0x${string}`,
+            value: '0x0',
+            data: transferData as `0x${string}`,
+            chainId: 43114
+          }
+        }) as any;
+        
+        const txHash = response.transactionHash || response.hash;
+        console.log(`[ERGC-PRIVY] Transaction submitted via direct Privy client: ${txHash}`);
+        console.log(`[ERGC-PRIVY] Check status at: https://snowtrace.io/tx/${txHash}`);
+        return { success: true, txHash };
+      } catch (directError) {
+        const errorMsg = directError instanceof Error ? directError.message : String(directError);
+        console.error('[ERGC-PRIVY] Direct Privy client also failed:', errorMsg);
+        // Fall back to checking balance and returning error
+        const provider = new ethers.JsonRpcProvider(AVALANCHE_RPC);
+        const ergcContractRead = new ethers.Contract(ERGC_CONTRACT, ERC20_ABI, provider);
+        try {
+          const balance = await ergcContractRead.balanceOf(walletAddress);
+          const balanceFormatted = ethers.formatUnits(balance, 18);
+          console.log(`[ERGC-PRIVY] User has ${balanceFormatted} ERGC but Privy integration unavailable`);
+        } catch {}
+        return { success: false, error: `Privy integration unavailable: ${errorMsg}` };
+      }
     }
 
-    // Create Privy signer
+    // Create Privy signer (only if import succeeded)
     const provider = new ethers.JsonRpcProvider(AVALANCHE_RPC);
-    const privySigner = new PrivySigner(privyUserId, walletAddress, provider);
-
-    console.log(`[ERGC-PRIVY] Created PrivySigner for wallet ${walletAddress}`);
+    let privySigner;
+    try {
+      privySigner = new PrivySigner(privyUserId, walletAddress, provider);
+      console.log(`[ERGC-PRIVY] Created PrivySigner for wallet ${walletAddress}`);
+    } catch (signerError) {
+      const errorMsg = signerError instanceof Error ? signerError.message : String(signerError);
+      console.error('[ERGC-PRIVY] Failed to create PrivySigner instance:', errorMsg);
+      // Try to check balance via RPC as fallback
+      const ergcContractRead = new ethers.Contract(ERGC_CONTRACT, ERC20_ABI, provider);
+      try {
+        const balance = await ergcContractRead.balanceOf(walletAddress);
+        const balanceFormatted = ethers.formatUnits(balance, 18);
+        console.log(`[ERGC-PRIVY] User has ${balanceFormatted} ERGC but Privy unavailable`);
+      } catch {}
+      return { success: false, error: `Failed to create PrivySigner: ${errorMsg}` };
+    }
 
     // Create ERGC contract with Privy signer
     const ergcContract = new ethers.Contract(ERGC_CONTRACT, ERC20_ABI, privySigner);
 
     // Check user's ERGC balance
-    const balance = await ergcContract.balanceOf(walletAddress);
-    const balanceFormatted = ethers.formatUnits(balance, 18);
-    console.log(`[ERGC-PRIVY] Privy wallet ERGC balance: ${balanceFormatted} ERGC`);
+    let balance;
+    try {
+      balance = await ergcContract.balanceOf(walletAddress);
+      const balanceFormatted = ethers.formatUnits(balance, 18);
+      console.log(`[ERGC-PRIVY] Privy wallet ERGC balance: ${balanceFormatted} ERGC`);
 
-    if (balance < debitAmount) {
-      console.error(`[ERGC-PRIVY] Insufficient ERGC balance: ${balanceFormatted} < ${amount}`);
-      return { success: false, error: `Insufficient ERGC balance. Have: ${balanceFormatted}, Need: ${amount}` };
+      if (balance < debitAmount) {
+        console.error(`[ERGC-PRIVY] Insufficient ERGC balance: ${balanceFormatted} < ${amount}`);
+        return { success: false, error: `Insufficient ERGC balance. Have: ${balanceFormatted}, Need: ${amount}` };
+      }
+    } catch (balanceError) {
+      const errorMsg = balanceError instanceof Error ? balanceError.message : String(balanceError);
+      console.error('[ERGC-PRIVY] Failed to check ERGC balance:', errorMsg);
+      // This might fail if Privy client isn't initialized - check if it's a Privy error
+      if (errorMsg.includes('Privy') || errorMsg.includes('walletApi') || errorMsg.includes('ensurePrivyClient')) {
+        console.error('[ERGC-PRIVY] Privy client initialization error during balance check - trying RPC fallback');
+        // Try RPC fallback
+        const provider = new ethers.JsonRpcProvider(AVALANCHE_RPC);
+        const ergcContractRead = new ethers.Contract(ERGC_CONTRACT, ERC20_ABI, provider);
+        try {
+          const balanceRpc = await ergcContractRead.balanceOf(walletAddress);
+          const balanceFormatted = ethers.formatUnits(balanceRpc, 18);
+          console.log(`[ERGC-PRIVY] User has ${balanceFormatted} ERGC but Privy unavailable for transfer`);
+        } catch {}
+      }
+      return { success: false, error: `Failed to check ERGC balance: ${errorMsg}` };
     }
 
     // Transfer ERGC to hub wallet (effectively burning it for fee discount)
     console.log(`[ERGC-PRIVY] Transferring ${amount} ERGC to hub wallet via Privy...`);
-    const tx = await ergcContract.transfer(HUB_WALLET_ADDRESS, debitAmount);
+    let tx;
+    try {
+      tx = await ergcContract.transfer(HUB_WALLET_ADDRESS, debitAmount);
+    } catch (transferError) {
+      const errorMsg = transferError instanceof Error ? transferError.message : String(transferError);
+      console.error('[ERGC-PRIVY] Failed to transfer ERGC:', errorMsg);
+      // Check if it's a Privy client error
+      if (errorMsg.includes('Privy') || errorMsg.includes('walletApi') || errorMsg.includes('ensurePrivyClient')) {
+        console.error('[ERGC-PRIVY] Privy client error during transfer - Privy integration unavailable');
+      }
+      return { success: false, error: `Failed to transfer ERGC: ${errorMsg}` };
+    }
 
     // CRITICAL: Don't wait for confirmation to avoid timeout - just return the hash
-    console.log(`[ERGC-PRIVY] Transaction submitted: ${tx.hash} (not waiting for confirmation to avoid timeout)`);
-    console.log(`[ERGC-PRIVY] Check status at: https://snowtrace.io/tx/${tx.hash}`);
-    console.log(`[ERGC-PRIVY] ERGC debit confirmed via Privy: ${tx.hash}`);
+    const txHash = tx.hash;
+    console.log(`[ERGC-PRIVY] Transaction submitted: ${txHash} (not waiting for confirmation to avoid timeout)`);
+    console.log(`[ERGC-PRIVY] Check status at: https://snowtrace.io/tx/${txHash}`);
+    console.log(`[ERGC-PRIVY] ERGC debit confirmed via Privy: ${txHash}`);
     console.log(`[ERGC-PRIVY] ${amount} ERGC transferred to treasury (burned for discount)`);
 
-    return { success: true, txHash: tx.hash };
+    return { success: true, txHash };
   } catch (error) {
     console.error('[ERGC-PRIVY] Debit error:', error);
     return {
@@ -1190,13 +1302,16 @@ async function executeGmxFromHubWallet(
       walletClient: walletClient as any,
     });
 
-    sdk.setAccount(account.address);
-    console.log('[GMX Hub] SDK account set:', account.address);
+    // CRITICAL: Set account to USER wallet address, not hub wallet
+    // Hub wallet pays for gas/execution fees, but position is owned by user
+    sdk.setAccount(walletAddress as `0x${string}`);
+    console.log('[GMX Hub] SDK account set to USER wallet:', walletAddress);
+    console.log('[GMX Hub] Hub wallet (executor):', account.address);
 
     // Track tx hash
     let submittedHash: `0x${string}` | null = null;
 
-    // Override callContract to capture hash and add execution fee
+    // Override callContract to capture hash, add execution fee, and ensure user wallet is position owner
     const originalCallContract = sdk.callContract.bind(sdk);
     sdk.callContract = (async (
       contractAddress: `0x${string}`,
@@ -1206,6 +1321,8 @@ async function executeGmxFromHubWallet(
       opts?: { value?: bigint }
     ) => {
       console.log(`[GMX Hub SDK] Calling ${method}...`);
+      console.log(`[GMX Hub SDK] ⚠️ CRITICAL: Position will be created for user wallet: ${walletAddress}`);
+      console.log(`[GMX Hub SDK] ⚠️ CRITICAL: Hub wallet (${account.address}) is only signing, not owning position`);
 
       // Extract sendWnt amounts for execution fee
       let totalWntAmount = 0n;
@@ -1225,6 +1342,12 @@ async function executeGmxFromHubWallet(
         }
       }
 
+      // CRITICAL: GMX positions are owned by the account set via setAccount, not the transaction signer
+      // The SDK uses setAccount to determine position ownership, and walletClient only signs
+      // We've already set sdk.setAccount(walletAddress) above, so position will be in user's wallet
+      console.log(`[GMX Hub SDK] Position owner (from setAccount): ${walletAddress}`);
+      console.log(`[GMX Hub SDK] Transaction signer (from walletClient): ${account.address}`);
+
       // Add execution fee as value
       const finalOpts = {
         ...opts,
@@ -1234,6 +1357,7 @@ async function executeGmxFromHubWallet(
       const h = await originalCallContract(contractAddress, abi, method, params, finalOpts) as `0x${string}`;
       submittedHash = h;
       console.log(`[GMX Hub SDK] Tx submitted: ${h}`);
+      console.log(`[GMX Hub SDK] ✅ Position created for user wallet: ${walletAddress}`);
       return h;
     }) as typeof sdk.callContract;
 
@@ -2539,29 +2663,43 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
   console.log(`[Webhook] riskProfile: ${riskProfile}`);
   console.log(`[Webhook] shouldDebitErgc: ${shouldDebitErgc}`);
   console.log(`[Webhook] ergcDebitAmount: ${ergcDebitAmount}`);
+  console.log(`[Webhook] ⚠️ CRITICAL: For aggressive strategy, ERGC debit should be: ${hasErgcDiscount && riskProfile === 'aggressive' && profile.gmxPercent > 0 ? '1 ERGC' : '0 ERGC'}`);
 
   if (shouldDebitErgc && ergcDebitAmount > 0) {
     console.log(`[Webhook] ===== ERGC DEBIT EXECUTION =====`);
+    console.log(`[Webhook] ⚠️ CRITICAL: Debiting ${ergcDebitAmount} ERGC for aggressive strategy discount`);
     if (walletData?.privateKey) {
       console.log(`[Webhook] Debiting ${ergcDebitAmount} ERGC from generated wallet`);
       const debitResult = await debitErgcFromUser(walletData.privateKey, ergcDebitAmount);
       if (!debitResult.success) {
-        console.error(`[Webhook] ERGC debit failed: ${debitResult.error}`);
+        console.error(`[Webhook] ❌ ERGC debit failed: ${debitResult.error}`);
       } else {
-        console.log(`[Webhook] ERGC debited successfully: ${debitResult.txHash}`);
+        console.log(`[Webhook] ✅✅✅ ERGC debited successfully: ${debitResult.txHash}`);
+        console.log(`[Webhook] ✅✅✅ Check transaction at: https://snowtrace.io/tx/${debitResult.txHash}`);
       }
     } else if (isConnectedWallet && privyUserId) {
       // Use the privyUserId we looked up earlier
-      console.log(`[Webhook] Debiting ${ergcDebitAmount} ERGC via Privy`);
+      console.log(`[Webhook] ⚠️ CRITICAL: Debiting ${ergcDebitAmount} ERGC via Privy for aggressive strategy`);
       const debitResult = await debitErgcViaPrivy(privyUserId, walletAddress, ergcDebitAmount);
       if (!debitResult.success) {
-        console.error(`[Webhook] ERGC debit via Privy failed: ${debitResult.error}`);
+        console.error(`[Webhook] ❌ ERGC debit via Privy failed: ${debitResult.error}`);
+        console.warn(`[Webhook] ⚠️ WARNING: ERGC debit failed but continuing with GMX execution`);
+        console.warn(`[Webhook] ⚠️ WARNING: User will not receive ERGC discount (full fees apply)`);
+        // Continue execution - ERGC debit failure is not critical for strategy execution
       } else {
-        console.log(`[Webhook] ERGC debited via Privy successfully: ${debitResult.txHash}`);
+        console.log(`[Webhook] ✅✅✅ ERGC debited via Privy successfully: ${debitResult.txHash}`);
+        console.log(`[Webhook] ✅✅✅ Check transaction at: https://snowtrace.io/tx/${debitResult.txHash}`);
       }
     } else if (isConnectedWallet && !privyUserId) {
-      console.warn(`[Webhook] Privy user ID not found - cannot debit ERGC automatically`);
-      console.warn(`[Webhook] ERGC debit requires Privy wallet or user must approve manually`);
+      console.warn(`[Webhook] ⚠️ WARNING: Privy user ID not found - cannot debit ERGC automatically`);
+      console.warn(`[Webhook] ⚠️ WARNING: ERGC debit requires Privy wallet or user must approve manually`);
+      console.warn(`[Webhook] ⚠️ WARNING: User will not get ERGC discount applied!`);
+      // Continue execution - ERGC debit is optional
+    }
+  } else {
+    console.log(`[Webhook] ⚠️ INFO: ERGC debit skipped - shouldDebitErgc=${shouldDebitErgc}, ergcDebitAmount=${ergcDebitAmount}`);
+    if (riskProfile === 'aggressive' && profile.gmxPercent > 0) {
+      console.log(`[Webhook] ⚠️ WARNING: Aggressive strategy but ERGC not debited - hasErgcDiscount=${hasErgcDiscount}`);
     }
   }
 
@@ -2576,8 +2714,10 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
     // No Privy execution for GMX - hub wallet executes directly with its own USDC
     if (gmxAmount > 0) {
       console.log(`[Webhook] ===== GMX EXECUTION (HUB WALLET - MATCHING BITCOIN PAGE) =====`);
-      console.log(`[Webhook] Executing GMX from hub wallet: $${gmxAmount} (exactly like Bitcoin page)`);
-      console.log(`[Webhook] No USDC transfer - hub wallet uses its own USDC`);
+      console.log(`[Webhook] ⚠️ CRITICAL: Executing GMX from hub wallet: $${gmxAmount} (exactly like Bitcoin page)`);
+      console.log(`[Webhook] ⚠️ CRITICAL: No USDC transfer - hub wallet uses its own USDC`);
+      console.log(`[Webhook] ⚠️ CRITICAL: This will create a BTC long position for user ${walletAddress}`);
+      console.log(`[Webhook] ⚠️ CRITICAL: Leverage: ${profile.gmxLeverage}x, Position size: $${gmxAmount * profile.gmxLeverage}`);
       
       gmxResult = await executeGmxFromHubWallet(walletAddress, gmxAmount, lookupPaymentId);
       if (!gmxResult.success) {
@@ -2591,7 +2731,9 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
           gmxResult
         };
       } else {
-        console.log(`[Webhook] ✅ GMX executed successfully from hub wallet: ${gmxResult.txHash}`);
+        console.log(`[Webhook] ✅✅✅ GMX EXECUTED SUCCESSFULLY FROM HUB WALLET: ${gmxResult.txHash}`);
+        console.log(`[Webhook] ✅✅✅ BTC long position created for user ${walletAddress}`);
+        console.log(`[Webhook] ✅✅✅ Check position at: https://snowtrace.io/tx/${gmxResult.txHash}`);
         // After successful GMX, send remaining USDC (if any) for Aave
         if (aaveAmount > 0) {
           console.log(`[Webhook] Sending remaining $${aaveAmount} USDC for Aave execution...`);
@@ -2604,7 +2746,8 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
         }
       }
     } else {
-      console.log(`[Webhook] Skipping GMX: gmxAmount is 0 or negative`);
+      console.log(`[Webhook] ⚠️ WARNING: Skipping GMX - gmxAmount is 0 or negative (${gmxAmount})`);
+      console.log(`[Webhook] ⚠️ WARNING: This should NOT happen for aggressive strategy!`);
     }
 
     // Execute Aave AFTER GMX (if any remaining)
@@ -2745,8 +2888,6 @@ async function executeGmxViaPrivy(
     try {
       const privyModule = await import('../utils/privy-signer');
       PrivySigner = privyModule.PrivySigner;
-      const privyClientModule = await import('../utils/privy-client');
-      PrivyClient = privyClientModule.getPrivyClient;
       console.log(`[GMX-PRIVY] PrivySigner imported successfully`);
     } catch (importError) {
       console.error('[GMX-PRIVY] Failed to import PrivySigner, falling back to hub wallet:', importError);

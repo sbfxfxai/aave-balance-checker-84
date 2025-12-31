@@ -55,11 +55,21 @@ export class PrivySigner extends AbstractSigner {
 
     private async ensurePrivyClient(): Promise<any> {
         if (!this.privy) {
-            const result = await initPrivyClient();
-            if (!result.PrivyClient) {
-                throw new Error(`PrivySigner cannot be initialized: ${result.error?.message}`);
+            try {
+                const result = await initPrivyClient();
+                if (!result.PrivyClient) {
+                    const errorMsg = result.error?.message || 'Unknown Privy client initialization error';
+                    console.error('[PrivySigner] PrivyClient initialization failed:', errorMsg);
+                    throw new Error(`PrivySigner cannot be initialized: ${errorMsg}`);
+                }
+                // Import and call async getPrivyClient
+                const { getPrivyClient } = await import('./privy-client');
+                this.privy = await getPrivyClient();
+            } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                console.error('[PrivySigner] Failed to ensure PrivyClient:', errorMsg);
+                throw new Error(`PrivySigner cannot be initialized: ${errorMsg}`);
             }
-            this.privy = getPrivyClient();
         }
         return this.privy;
     }
