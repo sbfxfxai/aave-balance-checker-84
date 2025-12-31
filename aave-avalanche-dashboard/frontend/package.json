@@ -9,7 +9,9 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-    "vercel-build": "npm run build"
+    "vercel-build": "npm run build",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
     "@gmx-io/sdk": "1.4.0",
@@ -89,6 +91,7 @@
     "@types/react": "^18.3.27",
     "@types/react-dom": "^18.3.7",
     "@vercel/node": "^3.0.0",
+    "@playwright/test": "^1.49.0",
     "eslint": "^9.32.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
