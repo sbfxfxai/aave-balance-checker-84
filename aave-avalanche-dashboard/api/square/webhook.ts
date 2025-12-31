@@ -2463,6 +2463,26 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
     console.log(`[Webhook] Wallet address: ${walletAddress}`);
     console.log(`[Webhook] Lookup key: wallet_owner:${walletAddress.toLowerCase()}`);
     console.log(`[Webhook] Privy user ID: ${privyUserId ? 'FOUND' : 'NOT FOUND'}`);
+    
+    // DEBUG: Check if Redis is working and list existing keys
+    try {
+      const testKey = `test:${Date.now()}`;
+      await redis.set(testKey, 'test_value');
+      const testValue = await redis.get(testKey);
+      console.log(`[Webhook] Redis test: ${testValue === 'test_value' ? 'WORKING' : 'BROKEN'}`);
+      await redis.del(testKey);
+      
+      if (!privyUserId) {
+        const keys = await redis.keys(`wallet_owner:*`);
+        console.log(`[Webhook] Existing wallet_owner keys: ${keys.length} found`);
+        if (keys.length > 0 && keys.length <= 5) {
+          console.log(`[Webhook] Sample keys: ${keys.slice(0, 3).join(', ')}`);
+        }
+      }
+    } catch (redisError) {
+      console.error(`[Webhook] Redis debug failed:`, redisError);
+    }
+    
     if (privyUserId) {
       console.log(`[Webhook] ✅ Will use Privy execution for all operations (GMX, Aave, ERGC)`);
     } else {
