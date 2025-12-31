@@ -2696,10 +2696,10 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
       riskProfile,
       email,
     };
-
+  } else {
     // For generated wallets, the position was already created in executeStrategyFromUserWallet
-    const finalTxHash = gmxResult?.txHash || aaveResult?.txHash || 'pending';
-    await markPaymentProcessed(paymentId, finalTxHash);
+    const finalTxHashGen = gmxResult?.txHash || aaveResult?.txHash || 'pending';
+    await markPaymentProcessed(paymentId, finalTxHashGen);
     
     return {
       action: 'strategy_executed',
@@ -2711,6 +2711,7 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
       riskProfile,
       email,
     };
+  }
   } finally {
     // CRITICAL: Always release lock, even if webhook times out or errors
     if (lockAcquired) {
