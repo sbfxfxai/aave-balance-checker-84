@@ -3985,9 +3985,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         service: 'square-webhook-node',
         status: 'ready',
         signatureKeyConfigured: !!SQUARE_WEBHOOK_SIGNATURE_KEY,
+        signatureKeyLength: SQUARE_WEBHOOK_SIGNATURE_KEY ? SQUARE_WEBHOOK_SIGNATURE_KEY.length : 0,
+        signatureKeyPrefix: SQUARE_WEBHOOK_SIGNATURE_KEY ? SQUARE_WEBHOOK_SIGNATURE_KEY.substring(0, 10) + '...' : 'none',
         hubWalletConfigured: !!HUB_WALLET_PRIVATE_KEY,
         hubWalletAddress: HUB_WALLET_ADDRESS,
-        redisStatus
+        redisStatus,
+        timestamp: new Date().toISOString(),
+        version: '1.0.0'
+      });
+    }
+
+    // Test signature verification endpoint
+    if (req.url === '/test-signature' && req.method === 'GET') {
+      console.log('[Health Check] Testing signature verification...');
+      
+      if (!SQUARE_WEBHOOK_SIGNATURE_KEY) {
+        return res.status(500).json({
+          error: 'Webhook signature key not configured',
+          testResult: 'FAILED'
+        });
+      }
+
+      // Test signature verification
+      const testPayload = JSON.stringify({
+        test: true,
+        timestamp: Date.now()
+      });
+      
+      const hmac = crypto.createHmac('sha256', SQUARE_WEBHOOK_SIGNATURE_KEY);
+      hmac.update(testPayload);
+      const testSignature = 'sha256=' + hmac.digest('base64');
+      
+      const isValid = verifySignature(testPayload, testSignature);
+      
+      return res.status(200).json({
+        testResult: isValid ? 'PASSED' : 'FAILED',
+        testPayload: testPayload.substring(0, 50) + '...',
+        testSignature: testSignature.substring(0, 30) + '...',
+        signatureKeyConfigured: !!SQUARE_WEBHOOK_SIGNATURE_KEY,
+        timestamp: new Date().toISOString()
       });
     }
 
