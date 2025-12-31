@@ -427,7 +427,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+      <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto p-4 sm:p-6" data-testid="deposit-modal">
         <DialogHeader>
           <DialogTitle className="text-lg sm:text-xl">Complete Your Deposit</DialogTitle>
           <DialogDescription className="text-sm">
@@ -650,6 +650,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
                 onClick={handleDeposit}
                 disabled={isProcessing || !amount || !isConnected || !connectedAddress || !isConfigured || cooldownTime > 0}
                 className="flex-1"
+                data-testid="continue-to-payment-button"
               >
                 Continue to Payment
               </Button>

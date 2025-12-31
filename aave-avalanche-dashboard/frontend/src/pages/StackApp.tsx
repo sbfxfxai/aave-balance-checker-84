@@ -184,6 +184,7 @@ const StackApp = () => {
                   size="lg"
                   className="h-24 flex-col gap-2"
                   onClick={() => handleDepositTypeSelect('usd')}
+                  data-testid="deposit-usd-button"
                 >
                   <DollarSign className="h-8 w-8" />
                   <span className="text-lg font-semibold">Deposit USD</span>
@@ -217,6 +218,7 @@ const StackApp = () => {
                         value={profile.id}
                         id={profile.id}
                         className="mt-1"
+                        data-testid={`risk-profile-${profile.id}`}
                       />
                       <Label
                         htmlFor={profile.id}
