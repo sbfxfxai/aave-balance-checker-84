@@ -230,8 +230,8 @@ interface WebhookEvent {
  */
 function verifySignature(payload: string, signature: string): boolean {
   if (!SQUARE_WEBHOOK_SIGNATURE_KEY) {
-    console.log('[Webhook] No signature key configured, skipping verification');
-    return true;
+    console.log('[Webhook] No signature key configured - cannot verify');
+    return false;
   }
 
   if (!signature) {
@@ -3939,14 +3939,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
     const signature = req.headers['x-square-signature'] as string || '';
 
-    // Verify signature - Square uses URL + body for signature
-    // For now, log but don't reject to debug
-    if (SQUARE_WEBHOOK_SIGNATURE_KEY && signature) {
+    // Verify signature - CRITICAL: Reject invalid signatures
+    if (SQUARE_WEBHOOK_SIGNATURE_KEY) {
+      if (!signature) {
+        console.log('[Webhook] No signature provided - REJECTING');
+        return res.status(401).json({ error: 'No signature provided' });
+      }
+      
       const isValid = verifySignature(rawBody, signature);
       console.log(`[Webhook] Signature verification: ${isValid ? 'VALID' : 'INVALID'}`);
       console.log(`[Webhook] Signature received: ${signature.substring(0, 20)}...`);
-      // Don't reject - Square signature format may differ, process anyway
-      // TODO: Fix signature verification once working
+      
+      if (!isValid) {
+        console.log('[Webhook] Invalid signature - REJECTING request');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+    } else {
+      console.log('[Webhook] WARNING: No signature key configured - accepting all requests');
     }
 
     // Parse event
