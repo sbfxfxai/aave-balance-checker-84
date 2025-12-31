@@ -254,10 +254,10 @@ export const DepositModal: React.FC<DepositModalProps> = ({
     const depositAmount = parseFloat(amount);
     
     // Validate minimum and maximum limits
-    if (depositAmount < 10) {
+    if (depositAmount < 1) {
       toast({
         title: 'Minimum deposit required',
-        description: 'Minimum deposit amount is $10',
+        description: 'Minimum deposit amount is $1',
         variant: 'destructive',
       });
       return;
