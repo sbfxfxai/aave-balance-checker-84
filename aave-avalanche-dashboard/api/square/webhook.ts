@@ -7,6 +7,11 @@ import { createPublicClient, createWalletClient, http, parseUnits, formatUnits, 
 import { avalanche } from 'viem/chains';
 import { GmxSdk } from '@gmx-io/sdk';
 
+// Import monitoring systems
+import { logger, LogCategory } from '../utils/logger';
+import { errorTracker } from '../utils/errorTracker';
+import { alertingSystem } from '../utils/alerting';
+
 // Helper functions
 function generatePositionId(): string {
   return `pos_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -3925,13 +3930,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         signatureKeyConfigured: !!SQUARE_WEBHOOK_SIGNATURE_KEY,
         hubWalletConfigured: !!HUB_WALLET_PRIVATE_KEY,
         hubWalletAddress: HUB_WALLET_ADDRESS,
-        rpcUrl: AVALANCHE_RPC.includes('api.avax') ? 'public' : 'custom',
-        redisStatus,
+        redisStatus
       });
     }
 
-    // POST - handle webhook
     if (req.method !== 'POST') {
+      logger.warn('Invalid method for webhook', LogCategory.WEBHOOK, {
+        method: req.method,
+        expected: 'POST'
+      });
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
@@ -3942,26 +3949,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Verify signature - CRITICAL: Reject invalid signatures
     if (SQUARE_WEBHOOK_SIGNATURE_KEY) {
       if (!signature) {
-        console.log('[Webhook] No signature provided - REJECTING');
+        logger.error('No signature provided - rejecting webhook', LogCategory.WEBHOOK, {
+          hasSignature: false
+        });
+        errorTracker.trackError('No signature provided', req, {
+          category: 'payment',
+          severity: 'high'
+        });
         return res.status(401).json({ error: 'No signature provided' });
       }
       
       const isValid = verifySignature(rawBody, signature);
-      console.log(`[Webhook] Signature verification: ${isValid ? 'VALID' : 'INVALID'}`);
-      console.log(`[Webhook] Signature received: ${signature.substring(0, 20)}...`);
+      logger.info(`Signature verification: ${isValid ? 'VALID' : 'INVALID'}`, LogCategory.WEBHOOK, {
+        isValid,
+        signaturePrefix: signature.substring(0, 20)
+      });
       
       if (!isValid) {
-        console.log('[Webhook] Invalid signature - REJECTING request');
+        logger.error('Invalid signature - rejecting webhook', LogCategory.WEBHOOK, {
+          signaturePrefix: signature.substring(0, 20)
+        });
+        errorTracker.trackError('Invalid webhook signature', req, {
+          category: 'payment',
+          severity: 'critical'
+        });
+        await alertingSystem.triggerAlert(
+          'payment_failure' as any,
+          'Invalid Webhook Signature',
+          'Webhook received with invalid signature - possible security breach',
+          { signaturePrefix: signature.substring(0, 20) }
+        );
         return res.status(401).json({ error: 'Invalid signature' });
       }
     } else {
-      console.log('[Webhook] WARNING: No signature key configured - accepting all requests');
+      logger.warn('No signature key configured - accepting all requests', LogCategory.WEBHOOK);
     }
 
     // Parse event
     const event: WebhookEvent = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
     const eventType = event.type || 'unknown';
-    console.log(`[Webhook] Received event: ${eventType}`);
+    logger.info(`Received webhook event: ${eventType}`, LogCategory.WEBHOOK, {
+      eventType,
+      eventId: event.id
+    });
 
     // Handle payment events that confirm money has cleared
     // payment.sent: Payment has been sent/cleared
