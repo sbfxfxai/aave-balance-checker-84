@@ -159,13 +159,13 @@ export default function UserDashboard() {
     const tokensJson = (await tokensRes.json()) as GmxTokensResponse;
     const marketsJson = (await marketsRes.json()) as GmxMarketsResponse;
 
-    const btc = tokensJson.tokens.find((t: GmxToken) => t.symbol === 'BTC');
-    const usdc = tokensJson.tokens.find((t: GmxToken) => t.symbol === 'USDC');
+    const btc = tokensJson.tokens?.find((t: GmxToken) => t.symbol === 'BTC');
+    const usdc = tokensJson.tokens?.find((t: GmxToken) => t.symbol === 'USDC');
     if (!btc || !usdc) {
       throw new Error('Unable to resolve BTC/USDC tokens from GMX API');
     }
 
-    const btcUsdcMarket = marketsJson.markets.find(
+    const btcUsdcMarket = marketsJson.markets?.find(
       (m: GmxMarket) => m.isListed &&
         m.indexToken.toLowerCase() === btc.address.toLowerCase() &&
         m.shortToken.toLowerCase() === usdc.address.toLowerCase()
@@ -290,7 +290,7 @@ export default function UserDashboard() {
           await supplyUSDC(aaveAmount.toFixed(2));
           updateStep('aave', { status: 'completed' });
           toast({ title: 'AAVE Supply Complete', description: `Supplied $${aaveAmount.toFixed(2)} USDC` });
-          if ('refetch' in aaveData) await aaveData.refetch();
+          if ('refetch' in aaveData && typeof aaveData.refetch === 'function') await aaveData.refetch();
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           updateStep('aave', { status: 'failed', error: msg });

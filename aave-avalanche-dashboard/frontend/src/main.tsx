@@ -5,8 +5,8 @@ import { Buffer } from "buffer";
 
 // Polyfill Buffer for browser (required by Privy and Web3 libraries)
 if (typeof window !== "undefined") {
-  (window as any).Buffer = Buffer;
-  (globalThis as any).Buffer = Buffer;
+  (window as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
+  (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
 }
 
 // Suppress harmless WalletConnect warnings about session_request events
@@ -20,6 +20,11 @@ if (typeof window !== 'undefined') {
     }
     originalError.apply(console, args);
   };
+}
+
+// Hide the initial loading shell once React app mounts
+if (typeof document !== 'undefined') {
+  document.body.classList.add('tv-app-loaded');
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

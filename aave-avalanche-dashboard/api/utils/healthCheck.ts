@@ -10,6 +10,7 @@ interface HealthCheck {
   message?: string;
   details?: Record<string, any>;
   lastChecked: string;
+  error?: string;
 }
 
 interface HealthCheckResult {
@@ -220,14 +221,15 @@ class HealthMonitor {
       try {
         return await checkFunction();
       } catch (error) {
-        return {
+        const healthCheck: HealthCheck = {
           name,
           status: 'unhealthy',
           responseTime: 0,
           message: 'Health check failed',
-          lastChecked: new Date.now().toISOString(),
+          lastChecked: new Date().toISOString(),
           error: error instanceof Error ? error.message : 'Unknown error'
         };
+        return healthCheck;
       }
     });
 
@@ -262,7 +264,7 @@ class HealthMonitor {
     try {
       return await checkFunction();
     } catch (error) {
-      return {
+      const healthCheck: HealthCheck = {
         name,
         status: 'unhealthy',
         responseTime: 0,
@@ -270,6 +272,7 @@ class HealthMonitor {
         lastChecked: new Date().toISOString(),
         error: error instanceof Error ? error.message : 'Unknown error'
       };
+      return healthCheck;
     }
   }
 

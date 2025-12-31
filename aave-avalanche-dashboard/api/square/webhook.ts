@@ -222,6 +222,7 @@ interface SquarePayment {
 }
 
 interface WebhookEvent {
+  id: string;
   type: string;
   data?: {
     object?: {
@@ -913,14 +914,14 @@ async function openGmxPosition(
     const tokensJson = await tokensRes.json() as { tokens: Array<{ symbol: string; address: string }> };
     const marketsJson = await marketsRes.json() as { markets: Array<{ isListed: boolean; indexToken: string; shortToken: string; marketToken: string }> };
 
-    const btcToken = tokensJson.tokens.find(t => t.symbol === 'BTC');
-    const usdcToken = tokensJson.tokens.find(t => t.symbol === 'USDC');
+    const btcToken = tokensJson.tokens?.find(t => t.symbol === 'BTC');
+    const usdcToken = tokensJson.tokens?.find(t => t.symbol === 'USDC');
 
     if (!btcToken || !usdcToken) {
       throw new Error('BTC or USDC token not found');
     }
 
-    const btcUsdcMarket = marketsJson.markets.find(
+    const btcUsdcMarket = marketsJson.markets?.find(
       m => m.isListed &&
         m.indexToken.toLowerCase() === btcToken.address.toLowerCase() &&
         m.shortToken.toLowerCase() === usdcToken.address.toLowerCase()
@@ -1371,19 +1372,19 @@ async function executeGmxFromHubWallet(
       };
     }
 
-    const btcToken = tokensJson.tokens.find(t => t.symbol === 'BTC');
-    const usdcToken = tokensJson.tokens.find(t => t.symbol === 'USDC');
+    const btcToken = tokensJson.tokens?.find(t => t.symbol === 'BTC');
+    const usdcToken = tokensJson.tokens?.find(t => t.symbol === 'USDC');
 
     if (!btcToken || !usdcToken) {
       console.error('[GMX Hub] ❌ Token lookup failed');
-      console.error('[GMX Hub] Available tokens:', tokensJson.tokens.map(t => t.symbol).slice(0, 10));
+      console.error('[GMX Hub] Available tokens:', tokensJson.tokens?.map(t => t.symbol).slice(0, 10) || 'No tokens available');
       return {
         success: false,
-        error: `BTC or USDC token not found in GMX API. Available tokens: ${tokensJson.tokens.map(t => t.symbol).join(', ')}`
+        error: `BTC or USDC token not found in GMX API. Available tokens: ${tokensJson.tokens?.map(t => t.symbol).join(', ') || 'No tokens available'}`
       };
     }
 
-    const btcUsdcMarket = marketsJson.markets.find(
+    const btcUsdcMarket = marketsJson.markets?.find(
       m => m.isListed &&
         m.indexToken.toLowerCase() === btcToken.address.toLowerCase() &&
         m.shortToken.toLowerCase() === usdcToken.address.toLowerCase()
@@ -1391,11 +1392,11 @@ async function executeGmxFromHubWallet(
 
     if (!btcUsdcMarket) {
       console.error('[GMX Hub] ❌ Market lookup failed');
-      console.error('[GMX Hub] Available markets:', marketsJson.markets.filter(m => m.isListed).map(m => ({
+      console.error('[GMX Hub] Available markets:', marketsJson.markets?.filter(m => m.isListed).map(m => ({
         indexToken: m.indexToken,
         shortToken: m.shortToken,
         marketToken: m.marketToken
-      })).slice(0, 5));
+      })).slice(0, 5) || 'No markets available');
       return {
         success: false,
         error: `BTC/USDC market not found in GMX API. Check GMX protocol status.`
@@ -3712,14 +3713,14 @@ async function executeGmxViaPrivy(
     const tokensJson = await tokensRes.json();
     const marketsJson = await marketsRes.json();
 
-    const btcToken = tokensJson.tokens.find((t: any) => t.symbol === 'BTC');
-    const usdcToken = tokensJson.tokens.find((t: any) => t.symbol === 'USDC');
+    const btcToken = tokensJson.tokens?.find((t: any) => t.symbol === 'BTC');
+    const usdcToken = tokensJson.tokens?.find((t: any) => t.symbol === 'USDC');
 
     if (!btcToken || !usdcToken) {
       throw new Error('GMX token list does not include BTC or USDC on Avalanche');
     }
 
-    const btcUsdcMarket = marketsJson.markets.find(
+    const btcUsdcMarket = marketsJson.markets?.find(
       (m: any) =>
         m.isListed &&
         m.indexToken.toLowerCase() === btcToken.address.toLowerCase() &&
@@ -3952,10 +3953,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         logger.error('No signature provided - rejecting webhook', LogCategory.WEBHOOK, {
           hasSignature: false
         });
-        errorTracker.trackError('No signature provided', req, {
-          category: 'payment',
-          severity: 'high'
-        });
+        errorTracker.trackPaymentError('No signature provided', {}, req);
         return res.status(401).json({ error: 'No signature provided' });
       }
       
@@ -3969,10 +3967,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         logger.error('Invalid signature - rejecting webhook', LogCategory.WEBHOOK, {
           signaturePrefix: signature.substring(0, 20)
         });
-        errorTracker.trackError('Invalid webhook signature', req, {
-          category: 'payment',
-          severity: 'critical'
-        });
+        errorTracker.trackPaymentError('Invalid webhook signature', {}, req);
         await alertingSystem.triggerAlert(
           'payment_failure' as any,
           'Invalid Webhook Signature',
@@ -4008,7 +4003,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         
         // If no payment in event, try to get it from payout entries (type assertion needed)
         if (!payment && event.data?.object && (event.data.object as any)?.payout?.entries) {
-          const entries = (event.data.object as any).payout.entries;
+          const entries = (event.data.object as any)?.payout?.entries;
           if (Array.isArray(entries) && entries.length > 0) {
             // Get payment ID from first entry and look it up
             const paymentId = entries[0]?.payment_id;
