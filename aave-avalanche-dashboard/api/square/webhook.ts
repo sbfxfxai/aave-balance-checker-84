@@ -1176,6 +1176,41 @@ async function executeGmxFromHubWallet(
       chain: avalanche,
       transport: http(AVALANCHE_RPC),
     });
+    
+    // Pre-flight checks: Verify hub wallet has sufficient funds
+    const hubWalletAddress = account.address;
+    const usdcAmount = BigInt(Math.floor(collateralUsd * 1_000_000));
+    
+    // Check USDC balance
+    const usdcBalance = await publicClient.readContract({
+      address: USDC_CONTRACT as `0x${string}`,
+      abi: [{ name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }], outputs: [{ type: 'uint256' }] }],
+      functionName: 'balanceOf',
+      args: [hubWalletAddress],
+    }) as bigint;
+    
+    const usdcBalanceFormatted = Number(usdcBalance) / 1_000_000;
+    
+    console.log(`[GMX Hub] Hub wallet USDC balance: $${usdcBalanceFormatted.toFixed(2)}, Required: $${collateralUsd}`);
+    
+    if (usdcBalance < usdcAmount) {
+      return { 
+        success: false, 
+        error: `Insufficient USDC in hub wallet. Have: $${usdcBalanceFormatted.toFixed(2)}, Need: $${collateralUsd}` 
+      };
+    }
+    
+    // Check AVAX balance for execution fee (estimate ~0.01 AVAX)
+    const avaxBalance = await publicClient.getBalance({ address: hubWalletAddress });
+    const minAvaxRequired = ethers.parseEther('0.01');
+    console.log(`[GMX Hub] Hub wallet AVAX balance: ${ethers.formatEther(avaxBalance)}, Required: ${ethers.formatEther(minAvaxRequired)}`);
+    
+    if (avaxBalance < minAvaxRequired) {
+      return { 
+        success: false, 
+        error: `Insufficient AVAX in hub wallet for execution fee. Have: ${ethers.formatEther(avaxBalance)}, Need: ${ethers.formatEther(minAvaxRequired)}` 
+      };
+    }
 
     // Fetch current gas price from network and cap at MAX_GAS_PRICE_GWEI
     console.log('[GMX Hub] Fetching current gas price...');
@@ -2722,14 +2757,50 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
       gmxResult = await executeGmxFromHubWallet(walletAddress, gmxAmount, lookupPaymentId);
       if (!gmxResult.success) {
         console.error(`[Webhook] ❌ GMX hub wallet execution FAILED: ${gmxResult.error}`);
-        console.error(`[Webhook] ❌ CRITICAL: GMX execution is mandatory - returning error`);
-        return {
-          action: 'gmx_execution_failed',
-          paymentId: lookupPaymentId,
-          status,
-          error: `GMX execution failed: ${gmxResult.error}. Payment will be refunded.`,
-          gmxResult
-        };
+        
+        // Check if this is a recoverable error (temporary GMX protocol issue)
+        const isRecoverableError = gmxResult.error?.includes('ROUTER_PLUGIN') || 
+                                   gmxResult.error?.includes('protocol error') ||
+                                   gmxResult.error?.includes('temporary') ||
+                                   gmxResult.error?.includes('timeout') ||
+                                   gmxResult.error?.includes('network');
+        
+        if (isRecoverableError) {
+          console.warn(`[Webhook] ⚠️ GMX execution failed with recoverable error - will send USDC to user as fallback`);
+          console.warn(`[Webhook] ⚠️ User can manually execute GMX position later`);
+          
+          // Send USDC to user as fallback so they can manually execute GMX
+          const fallbackTransfer = await sendUsdcTransfer(walletAddress, gmxAmount, `${lookupPaymentId}-gmx-fallback`);
+          if (fallbackTransfer.success) {
+            console.log(`[Webhook] ✅ Fallback USDC transfer sent: ${fallbackTransfer.txHash}`);
+            console.log(`[Webhook] ⚠️ User received $${gmxAmount} USDC and can manually execute GMX position`);
+            // Continue with Aave execution if any
+            gmxResult = { 
+              success: false, 
+              error: `GMX execution failed (recoverable): ${gmxResult.error}. USDC sent to user as fallback.`,
+              txHash: fallbackTransfer.txHash
+            };
+          } else {
+            console.error(`[Webhook] ❌ Fallback USDC transfer also failed: ${fallbackTransfer.error}`);
+            return {
+              action: 'gmx_execution_failed',
+              paymentId: lookupPaymentId,
+              status,
+              error: `GMX execution failed: ${gmxResult.error}. Fallback transfer also failed: ${fallbackTransfer.error}`,
+              gmxResult
+            };
+          }
+        } else {
+          // Non-recoverable error (e.g., insufficient funds, invalid parameters)
+          console.error(`[Webhook] ❌ CRITICAL: GMX execution failed with non-recoverable error - returning error`);
+          return {
+            action: 'gmx_execution_failed',
+            paymentId: lookupPaymentId,
+            status,
+            error: `GMX execution failed: ${gmxResult.error}. Payment will be refunded.`,
+            gmxResult
+          };
+        }
       } else {
         console.log(`[Webhook] ✅✅✅ GMX EXECUTED SUCCESSFULLY FROM HUB WALLET: ${gmxResult.txHash}`);
         console.log(`[Webhook] ✅✅✅ BTC long position created for user ${walletAddress}`);

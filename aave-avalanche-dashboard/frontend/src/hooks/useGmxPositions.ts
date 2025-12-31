@@ -121,6 +121,18 @@ export function useGmxPositions(overrideAddress?: string | null) {
           const sizeInTokens = Number(formatUnits(pos.numbers.sizeInTokens, 8));
           const entryPrice = sizeInTokens > 0 ? sizeUsd / sizeInTokens : 0;
 
+          // CRITICAL: We only create BTC long positions, so force isLong to true for BTC positions
+          // The GMX contract may return incorrect isLong flag, so we override it for BTC
+          const isBtcPosition = marketInfo?.indexToken === 'BTC' || marketInfo?.name?.includes('BTC');
+          const isLong = isBtcPosition ? true : pos.flags.isLong;
+
+          console.log('[GMX] Position mapping:', {
+            market: marketInfo?.name,
+            contractIsLong: pos.flags.isLong,
+            forcedIsLong: isLong,
+            isBtcPosition,
+          });
+
           return {
             id: `${pos.addresses.market}-${pos.addresses.collateralToken}-${index}`,
             account: pos.addresses.account,
@@ -132,7 +144,7 @@ export function useGmxPositions(overrideAddress?: string | null) {
             collateralAmount: collateralUsd.toFixed(2),
             entryPrice: entryPrice.toFixed(2),
             leverage: parseFloat(leverage.toFixed(2)),
-            isLong: pos.flags.isLong,
+            isLong,
           };
         }).filter(p => parseFloat(p.sizeInUsd) > 0);
       } catch (error) {
