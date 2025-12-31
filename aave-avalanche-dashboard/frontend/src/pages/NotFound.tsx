@@ -17,6 +17,9 @@ const NotFound = () => {
         <Link to="/" className="text-primary underline hover:text-primary/90">
           Return to Home
         </Link>
+        <p className="mt-8 text-xs sm:text-sm text-muted-foreground">
+          Support: <a href="mailto:support@tiltvault.com" className="text-emerald-500 hover:underline">support@tiltvault.com</a>
+        </p>
       </div>
     </div>
   );

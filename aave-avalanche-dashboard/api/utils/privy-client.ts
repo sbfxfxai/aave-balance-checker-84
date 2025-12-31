@@ -10,7 +10,7 @@ export function getPrivyClient(): PrivyClient {
         if (!PRIVY_APP_ID || !PRIVY_APP_SECRET) {
             throw new Error('Privy App ID or Secret not configured');
         }
-        privyClient = new PrivyClient(PRIVY_APP_ID, PRIVY_APP_SECRET);
+        privyClient = new PrivyClient(PRIVY_APP_ID!, PRIVY_APP_SECRET!);
     }
     return privyClient;
 }

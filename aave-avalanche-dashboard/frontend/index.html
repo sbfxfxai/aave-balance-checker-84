@@ -23,16 +23,29 @@
     <meta name="description" content="Traditional banks give you 0.5%. TiltVault gives you 5-8% APY through battle-tested DeFi protocols—without the complexity. Secured by Aave's $70B+ protocol." />
     <meta name="author" content="TiltVault" />
 
-    <!-- Content Security Policy is set in vercel.json headers -->
+    <!-- Favicon and App Icons -->
+    <link rel="icon" type="image/png" href="/tiltvault-logo.png" />
+    <link rel="shortcut icon" type="image/png" href="/tiltvault-logo.png" />
+    <link rel="apple-touch-icon" href="/tiltvault-logo.png" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+
+    <!-- Content Security Policy: vercel.json for production, meta tag for local dev -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://web.squarecdn.com https://sandbox.web.squarecdn.com https://connect.squareup.com https://connect.squareupsandbox.com; script-src-elem 'self' 'unsafe-inline' https://web.squarecdn.com https://sandbox.web.squarecdn.com; style-src 'self' 'unsafe-inline' https://web.squarecdn.com https://sandbox.web.squarecdn.com https://fonts.googleapis.com; style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://web.squarecdn.com https://sandbox.web.squarecdn.com; font-src 'self' data: https://square-fonts-production-f.squarecdn.com https://*.squarecdn.com https://d1g145x70srn7h.cloudfront.net https://fonts.gstatic.com; connect-src 'self' https://web.squarecdn.com https://sandbox.web.squarecdn.com https://connect.squareup.com https://connect.squareupsandbox.com https://pci-connect.squareup.com https://pci-connect.squareupsandbox.com https://api.squareup.com https://api.squareupsandbox.com https://api.avax.network https://*.avax.network https://avalanche-api.gmxinfra.io https://gmx.squids.live wss://relay.walletconnect.org wss://*.walletconnect.org https://pulse.walletconnect.org https://api.web3modal.org https://*.ingest.sentry.io https://api.coingecko.com https://auth.privy.io https://api.privy.io https://mainnet.rpc.privy.systems https://*.rpc.privy.systems https://*.privy.systems wss://*.privy.systems https://*.privy.io; frame-src 'self' https://web.squarecdn.com https://sandbox.web.squarecdn.com https://connect.squareup.com https://connect.squareupsandbox.com https://api.squareup.com https://api.squareupsandbox.com https://acs.entersektehs.com https://verify.walletconnect.org https://auth.privy.io https://*.privy.io https://*.privy.systems; img-src 'self' data: https:;" />
 
     <meta property="og:title" content="TiltVault - Banking that works as hard as you do" />
     <meta property="og:description" content="Traditional banks give you 0.5%. TiltVault gives you 5-8% APY through battle-tested DeFi protocols—without the complexity." />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+    <meta property="og:url" content="https://www.tiltvault.com" />
+    <meta property="og:image" content="https://www.tiltvault.com/tiltvault-logo.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="TiltVault Logo" />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@TiltVault" />
-    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+    <meta name="twitter:title" content="TiltVault - Banking that works as hard as you do" />
+    <meta name="twitter:description" content="Traditional banks give you 0.5%. TiltVault gives you 5-8% APY through battle-tested DeFi protocols—without the complexity." />
+    <meta name="twitter:image" content="https://www.tiltvault.com/tiltvault-logo.png" />
       </head>
 
   <body>
@@ -41,7 +54,7 @@
       <div class="tv-initial-shell">
         <header class="tv-initial-header">
           <div class="tv-initial-header-inner">
-            <div class="tv-initial-logo"></div>
+            <img src="/tiltvault-logo.png" alt="TiltVault" class="tv-initial-logo" />
             <div>
               <div class="tv-initial-title">TiltVault</div>
               <div class="tv-initial-subtitle">Smart Savings</div>

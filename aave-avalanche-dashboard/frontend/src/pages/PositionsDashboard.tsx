@@ -34,7 +34,7 @@ interface Position {
   id: string;
   paymentId: string;
   userEmail: string;
-  strategyType: 'conservative' | 'balanced' | 'aggressive';
+  strategyType: 'conservative' | 'aggressive';
   usdcAmount: number;
   status: 'pending' | 'executing' | 'active' | 'closed' | 'failed';
   aaveSupplyAmount?: number;
@@ -51,7 +51,6 @@ interface Position {
 
 const STRATEGY_CONFIG = {
   conservative: { name: 'Conservative', icon: Shield, color: 'text-blue-500', bgColor: 'bg-blue-500/10' },
-  balanced: { name: 'Balanced', icon: TrendingUp, color: 'text-purple-500', bgColor: 'bg-purple-500/10' },
   aggressive: { name: 'Aggressive', icon: Zap, color: 'text-orange-500', bgColor: 'bg-orange-500/10' },
 };
 

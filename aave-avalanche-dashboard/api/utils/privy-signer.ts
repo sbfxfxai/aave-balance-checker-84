@@ -1,4 +1,4 @@
-import { AbstractSigner, Provider, TransactionRequest, TransactionResponse, TypedDataDomain, TypedDataField, hashMessage } from 'ethers';
+import { AbstractSigner, Provider, TransactionRequest, TransactionResponse, TypedDataDomain, TypedDataField } from 'ethers';
 import { PrivyClient } from '@privy-io/server-auth';
 import { getPrivyClient } from './privy-client';
 
@@ -23,41 +23,39 @@ export class PrivySigner extends AbstractSigner {
     }
 
     async signTransaction(tx: TransactionRequest): Promise<string> {
-        // For MVP, we throw error as GMX SDK usually uses sendTransaction
         throw new Error('PrivySigner.signTransaction not fully implemented - prefer sendTransaction');
     }
 
     async sendTransaction(tx: TransactionRequest): Promise<TransactionResponse> {
-        console.log('[PrivySigner] Sending transaction:', tx);
+        console.log('[PrivySigner] Sending transaction via @privy-io/node:', tx);
 
-        // 1. Prepare transaction params for Privy
         const txParams: any = {
             to: tx.to,
             value: tx.value ? tx.value.toString() : '0x0',
             data: tx.data,
-            chainId: 43114 // Avalanche C-Chain
+            chainId: 43114
         };
 
         if (tx.gasLimit) txParams.gasLimit = tx.gasLimit.toString();
         if (tx.maxFeePerGas) txParams.maxFeePerGas = tx.maxFeePerGas.toString();
         if (tx.maxPriorityFeePerGas) txParams.maxPriorityFeePerGas = tx.maxPriorityFeePerGas.toString();
 
-        // 2. Execute via Privy
-        // @ts-ignore - bypassing strict type check for MVP
+        // Using walletApi.ethereum.sendTransaction for @privy-io/server-auth
         const response = await this.privy.walletApi.ethereum.sendTransaction({
             walletId: this.walletId,
             caip2: 'eip155:43114',
             transaction: txParams
         }) as any;
 
-        console.log('[PrivySigner] Transaction sent:', response);
+        console.log('[PrivySigner] Transaction response:', response);
 
-        // 3. Return a mock TransactionResponse that satisfies Ethers
+        const hash = response.transactionHash || response.hash;
+
         return {
-            hash: response.transactionHash || response.hash,
+            hash: hash,
             wait: async () => {
                 if (this.provider) {
-                    return this.provider.getTransactionReceipt(response.transactionHash || response.hash);
+                    return this.provider.getTransactionReceipt(hash);
                 }
                 return null;
             }
@@ -65,23 +63,22 @@ export class PrivySigner extends AbstractSigner {
     }
 
     async signMessage(message: string | Uint8Array): Promise<string> {
+        const msg = typeof message === 'string' ? message : Buffer.from(message).toString('utf-8');
         const response = await this.privy.walletApi.ethereum.signMessage({
             walletId: this.walletId,
-            message: typeof message === 'string' ? message : Buffer.from(message).toString('utf-8')
+            message: msg
         });
         return response.signature;
     }
 
     async signTypedData(domain: TypedDataDomain, types: Record<string, TypedDataField[]>, value: Record<string, any>): Promise<string> {
-        // Flatten structure based on lint feedback, using any cast to be safe
-        const input: any = {
+        // Privy API may expect domain in a different format - using type assertion to match EIP-712 structure
+        const response = await this.privy.walletApi.ethereum.signTypedData({
             walletId: this.walletId,
-            domain,
+            domain: domain as any,
             types,
             message: value
-        };
-
-        const response = await this.privy.walletApi.ethereum.signTypedData(input);
+        } as any);
         return response.signature;
     }
 }

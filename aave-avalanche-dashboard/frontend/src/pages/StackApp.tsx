@@ -27,15 +27,6 @@ const getRiskProfiles = (aaveAPY: number) => [
     color: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
   },
   {
-    id: 'balanced',
-    name: 'Balanced',
-    description: '50% Savings, 50% Bitcoin 2.5x',
-    allocation: '50% USDC / 50% Lev BTC',
-    apy: 'Varies',
-    leverage: '2.5x',
-    color: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
-  },
-  {
     id: 'aggressive',
     name: 'Aggressive',
     description: '100% Bitcoin 2.5x',
@@ -47,7 +38,7 @@ const getRiskProfiles = (aaveAPY: number) => [
 ] as const;
 
 type DepositType = 'usd' | null;
-type RiskProfileId = 'conservative' | 'balanced' | 'aggressive' | null;
+type RiskProfileId = 'conservative' | 'aggressive' | null;
 
 const StackApp = () => {
   const [selectedDepositType, setSelectedDepositType] = useState<DepositType>(null);
@@ -122,9 +113,9 @@ const StackApp = () => {
         <div className="container mx-auto px-4 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 sm:gap-3">
-              <img 
-                src="/tiltvault-logo.png" 
-                alt="TiltVault" 
+              <img
+                src="/tiltvault-logo.png"
+                alt="TiltVault"
                 className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg"
               />
               <div>
@@ -219,11 +210,10 @@ const StackApp = () => {
                       />
                       <Label
                         htmlFor={profile.id}
-                        className={`flex-1 cursor-pointer p-4 rounded-lg border-2 transition-all ${
-                          selectedRiskProfile === profile.id
+                        className={`flex-1 cursor-pointer p-4 rounded-lg border-2 transition-all ${selectedRiskProfile === profile.id
                             ? `${profile.color} border-current`
                             : 'border-border hover:border-primary/50'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
@@ -250,51 +240,17 @@ const StackApp = () => {
 
           {/* Continue Button */}
           {selectedDepositType && selectedRiskProfile && (
-            <div className="flex justify-center">
+            <div className="flex justify-center mt-8">
               <Button
                 size="lg"
-                className="px-8 py-6 text-lg"
+                className="px-12 py-8 text-xl font-bold shadow-xl hover:scale-105 transition-transform"
                 onClick={handleContinue}
               >
                 Continue to Deposit
-                <ArrowRight className="ml-2 h-5 w-5" />
+                <ArrowRight className="ml-2 h-6 w-6" />
               </Button>
             </div>
           )}
-
-          {/* Info Section */}
-          <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">US-Compliant</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-xs text-muted-foreground">
-                  Fully accessible to US users with no KYC required for deposits under $10k
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Automated</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-xs text-muted-foreground">
-                  Set your risk tolerance once. We handle all conversions, allocations, and rebalancing automatically.
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Risk-Managed</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-xs text-muted-foreground">
-                  Automatic liquidation prevention and position monitoring to protect your capital
-                </p>
-              </CardContent>
-            </Card>
-          </div>
         </div>
       </main>
 
@@ -316,6 +272,9 @@ const StackApp = () => {
           <p className="text-center text-xs text-muted-foreground mt-2">
             This product involves risk. Automated leverage trading can result in total loss of capital.
             Not investment advice.
+          </p>
+          <p className="text-center text-xs sm:text-sm text-muted-foreground mt-2">
+            Support: <a href="mailto:support@tiltvault.com" className="text-emerald-500 hover:underline">support@tiltvault.com</a>
           </p>
         </div>
       </footer>

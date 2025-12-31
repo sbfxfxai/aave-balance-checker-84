@@ -14,7 +14,12 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      buffer: "buffer",
     },
+  },
+  define: {
+    global: "globalThis",
+    "process.env": {},
   },
   build: {
     target: "es2020",
@@ -56,7 +61,12 @@ export default defineConfig(({ mode }) => ({
     chunkSizeWarningLimit: 600,
   },
   optimizeDeps: {
-    exclude: ["@noble/curves"]
+    exclude: ["@noble/curves"],
+    esbuildOptions: {
+      define: {
+        global: "globalThis",
+      },
+    },
   },
   ssr: {
     noExternal: []

@@ -22,10 +22,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { walletAddress, collateralDeltaUsd, isDeposit, userEmail } = req.body;
+    const { walletAddress, collateralDeltaUsd, isDeposit, userEmail, paymentId } = req.body;
 
-    if (!walletAddress || collateralDeltaUsd === undefined || isDeposit === undefined || !userEmail) {
-      return res.status(400).json({ success: false, error: 'Missing required parameters (walletAddress, collateralDeltaUsd, isDeposit, userEmail)' });
+    if (!walletAddress || collateralDeltaUsd === undefined || isDeposit === undefined || !userEmail || !paymentId) {
+      return res.status(400).json({ success: false, error: 'Missing required parameters (walletAddress, collateralDeltaUsd, isDeposit, userEmail, paymentId)' });
     }
 
     // SECURITY: Retrieve encrypted key and decrypt with user authentication
@@ -34,9 +34,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(404).json({ success: false, error: 'Wallet key not found or expired' });
     }
 
-    // Decrypt with user authentication (verifies email matches)
-    const walletData = decryptWalletKeyWithAuth(encryptedData, userEmail, encryptedData.paymentId);
+    // Decrypt with user authentication (verifies email and paymentId match)
+    const walletData = decryptWalletKeyWithAuth(encryptedData, userEmail, paymentId);
     const { privateKey } = walletData;
+
+    if (!privateKey) {
+      return res.status(400).json({ success: false, error: 'Private key not available - wallet may be connected (not generated)' });
+    }
 
     // Execute collateral edit
     const result = await editGmxCollateral(collateralDeltaUsd, isDeposit, privateKey);

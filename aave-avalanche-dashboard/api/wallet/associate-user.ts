@@ -1,4 +1,4 @@
-import { getRedis } from '../square/webhook';
+import { getRedis } from '../utils/redis';
 import { verifyMessage } from 'ethers';
 
 // POST /api/wallet/associate-user
@@ -36,13 +36,18 @@ export default async function handler(req: any, res: any) {
             // TODO: Enforce signature in production?
         }
 
-        const redis = getRedis();
+        try {
+            const redis = getRedis();
 
-        // Store mapping: wallet_owner:{walletAddress} -> privyUserId
-        await redis.set(`wallet_owner:${walletAddress}`, privyUserId);
+            // Store mapping: wallet_owner:{walletAddress} -> privyUserId
+            await redis.set(`wallet_owner:${walletAddress.toLowerCase()}`, privyUserId);
 
-        // Also store reverse mapping just in case
-        await redis.set(`user_wallet:${privyUserId}`, walletAddress);
+            // Also store reverse mapping just in case
+            await redis.set(`user_wallet:${privyUserId}`, walletAddress.toLowerCase());
+        } catch (redisError) {
+            console.error('[AssociateUser] Redis error:', redisError);
+            return res.status(500).json({ error: 'Failed to store wallet association', details: redisError instanceof Error ? redisError.message : String(redisError) });
+        }
 
         console.log(`[AssociateUser] Linked ${walletAddress} to ${privyUserId}`);
 

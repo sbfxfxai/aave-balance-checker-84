@@ -88,6 +88,13 @@ export function useGmxPositions(overrideAddress?: string | null) {
     queryFn: async (): Promise<GmxPositionData[]> => {
       if (!address || !publicClient) return [];
       
+      // Validate address is Ethereum format (0x + 40 hex chars)
+      // Filter out Solana addresses (base58 encoded, no 0x prefix)
+      if (!address.startsWith('0x') || address.length !== 42) {
+        console.warn('[GMX] Invalid Ethereum address format:', address);
+        return [];
+      }
+      
       try {
         console.log('[GMX] Fetching positions for:', address);
         

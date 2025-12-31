@@ -25,7 +25,7 @@ export interface UserPosition {
   paymentId: string;
   userEmail: string;
   walletAddress?: string; // Optional for backward compatibility
-  strategyType: 'conservative' | 'balanced' | 'aggressive';
+  strategyType: 'conservative' | 'aggressive';
   usdcAmount: number;
   status: 'pending' | 'executing' | 'active' | 'closed' | 'failed';
   

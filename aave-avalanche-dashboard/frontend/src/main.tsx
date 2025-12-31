@@ -1,6 +1,13 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import { Buffer } from "buffer";
+
+// Polyfill Buffer for browser (required by Privy and Web3 libraries)
+if (typeof window !== "undefined") {
+  (window as any).Buffer = Buffer;
+  (globalThis as any).Buffer = Buffer;
+}
 
 // Suppress harmless WalletConnect warnings about session_request events
 if (typeof window !== 'undefined') {

@@ -1,17 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException  # type: ignore[import-untyped]
-from app.wallet.auth import validate_session
+from fastapi import APIRouter, HTTPException  # type: ignore[import-untyped]
 
 router = APIRouter()
 
-@router.post("/broadcast")
-async def broadcast_transaction(tx_data: dict, session: dict = Depends(validate_session)):
-    if not session:
-        raise HTTPException(status_code=401, detail="Invalid session")
-    
-    # In production, this would send the transaction via WalletConnect
-    # For now, we just return the transaction data
-    return {
-        "status": "success",
-        "message": "Transaction would be broadcasted via WalletConnect",
-        "tx_data": tx_data
-    }
+# Note: validate_session import removed - authentication is handled via Privy/Web3 wallet signatures
+# If session validation is needed, implement it using Privy server-auth or wallet signature verification

@@ -44,6 +44,9 @@ export default function StackAdmin() {
             <p className="text-center text-sm text-muted-foreground">
               Stack Admin • USDC on Avalanche
             </p>
+            <p className="text-center text-xs sm:text-sm text-muted-foreground mt-2">
+              Support: <a href="mailto:support@tiltvault.com" className="text-emerald-500 hover:underline">support@tiltvault.com</a>
+            </p>
           </div>
         </footer>
       </div>

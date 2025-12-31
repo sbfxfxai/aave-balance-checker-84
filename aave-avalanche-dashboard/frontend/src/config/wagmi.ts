@@ -43,7 +43,7 @@ export const config = createConfig({
         name: 'TiltVault',
         description: 'DeFi dashboard for Avalanche C-Chain with GMX integration',
         url: typeof window !== 'undefined' ? window.location.origin : 'https://www.tiltvault.com',
-        icons: ['https://www.tiltvault.com/favicon.ico'],
+        icons: ['https://www.tiltvault.com/tiltvault-logo.png'],
       },
     }),
   ],

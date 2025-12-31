@@ -5,15 +5,16 @@ export const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID || 'cmjr7fmh401r3l
 
 // Privy configuration for TiltVault
 export const privyConfig: PrivyClientConfig = {
-    // Login methods - email and Google (Apple not enabled in dashboard)
-    loginMethods: ['email', 'google'],
+    // Login methods - email only
+    loginMethods: ['email'],
 
     // Appearance customization
     appearance: {
         theme: 'dark',
         accentColor: '#10b981', // Emerald green to match TiltVault
-        logo: '/logo.png',
+        logo: '/tiltvault-logo.png',
         walletList: [], // Hide wallet options since we use smart wallets
+        walletChainType: 'ethereum-only', // Disable Solana to avoid connector warnings
     },
 
     // Embedded wallet configuration

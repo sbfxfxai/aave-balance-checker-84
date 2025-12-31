@@ -1,6 +1,8 @@
 import { useMemo, useState, useCallback, useEffect, useRef, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAccount, usePublicClient, useWalletClient, useBalance, useSwitchChain } from 'wagmi';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { ethers } from 'ethers';
 import { avalanche } from 'wagmi/chains';
 import { CONTRACTS as GMX_SDK_CONTRACTS } from '@gmx-io/sdk/configs/contracts';
 import { erc20Abi, maxUint256, formatUnits, parseUnits, WalletClient, Abi } from 'viem';
@@ -165,11 +167,44 @@ PositionDetails.displayName = 'PositionDetails';
 
 export default function GmxIntegration() {
   const { toast } = useToast();
-  const { address, isConnected, chainId } = useAccount();
+  const { address: wagmiAddress, isConnected: isWagmiConnected, chainId } = useAccount();
+  const { authenticated, ready } = usePrivy();
+  const { wallets } = useWallets();
   const publicClient = usePublicClient({ chainId: avalanche.id });
   const { data: walletClient } = useWalletClient({ chainId: avalanche.id });
   const { switchToAvalanche, isSwitching } = useNetworkGuard();
   const { avaxValue, usdcBalance, usdcEBalance, usdcValue, needsMigration, refetchBalances } = useWalletBalances();
+
+  // Get the active wallet address (Privy or wagmi)
+  // Filter out Solana addresses (only use Ethereum addresses)
+  const address = useMemo(() => {
+    // Helper to check if address is Ethereum format
+    const isEthereumAddress = (addr: string | undefined | null): `0x${string}` | undefined => {
+      return (!!addr && addr.startsWith('0x') && addr.length === 42) ? (addr as `0x${string}`) : undefined;
+    };
+
+    // If user is authenticated with Privy, use Privy wallet (Ethereum only)
+    if (authenticated && ready) {
+      // Find Privy wallet with Ethereum address
+      const privyWallet = wallets.find(w =>
+        w.walletClientType === 'privy' && isEthereumAddress(w.address)
+      );
+      if (privyWallet) return privyWallet.address as `0x${string}`;
+
+      // Try to find any Ethereum wallet from Privy
+      const ethereumWallet = wallets.find(w => isEthereumAddress(w.address));
+      if (ethereumWallet) return ethereumWallet.address as `0x${string}`;
+    }
+
+    // Fall back to wagmi wallet (always Ethereum)
+    return wagmiAddress;
+  }, [authenticated, ready, wallets, wagmiAddress]);
+
+  // Determine if connected (Privy or wagmi)
+  const isConnected = (authenticated && ready && !!address) || isWagmiConnected;
+
+  // Check if using Privy wallet
+  const isPrivyWallet = authenticated && ready && wallets.some(w => w.address === address && w.walletClientType === 'privy');
 
   // Market data caching
   const [marketData, setMarketData] = useState<GmxMarketData | null>(null);
@@ -307,8 +342,79 @@ export default function GmxIntegration() {
 
   // Lazy load GMX SDK
   const loadGmxSdk = useCallback(async (): Promise<GmxSdk> => {
+    // Check if using Privy wallet
+    const isPrivyWallet = authenticated && ready && wallets.some(w => w.address === address && w.walletClientType === 'privy');
     const { GmxSdk } = await import('@gmx-io/sdk');
     const rpcUrl = import.meta.env.VITE_AVALANCHE_RPC_URL || 'https://api.avax.network/ext/bc/C/rpc';
+    
+    // For Privy wallets, we need to use ethers.js provider
+    if (isPrivyWallet) {
+      const privyWallet = wallets.find(w => w.address === address && w.walletClientType === 'privy');
+      if (!privyWallet) {
+        throw new Error('Privy wallet not found');
+      }
+      
+      const privyProvider = await privyWallet.getEthereumProvider();
+      if (!privyProvider) {
+        throw new Error('Privy provider not available');
+      }
+      
+      // Create a wallet client adapter for Privy using ethers
+      const ethersProvider = new ethers.BrowserProvider(privyProvider);
+      const signer = await ethersProvider.getSigner();
+      
+      // Create a viem-compatible wallet client wrapper
+      const privyWalletClient = {
+        account: { address: address as `0x${string}` },
+        chain: avalanche,
+        transport: {
+          request: async ({ method, params }: { method: string; params?: unknown[] }) => {
+            if (method === 'eth_sendTransaction' && params && params[0]) {
+              const tx = await signer.sendTransaction(params[0] as ethers.TransactionRequest);
+              return tx.hash;
+            }
+            if (method === 'eth_signTypedData_v4' && params) {
+              const [account, data] = params as [string, string];
+              const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+              return await signer.signTypedData(parsed.domain, parsed.types, parsed.message);
+            }
+            // For other methods, use the provider directly
+            return await privyProvider.request({ method, params } as any);
+          },
+        },
+        writeContract: async ({ address: contractAddress, abi, functionName, args, value }: any) => {
+          const contract = new ethers.Contract(contractAddress, abi, signer);
+          const tx = await contract[functionName](...args, { value });
+          return tx.hash;
+        },
+        sendTransaction: async (transaction: any) => {
+          // GMX SDK calls sendTransaction with a transaction object
+          // Convert viem transaction format to ethers format
+          const ethersTx: ethers.TransactionRequest = {
+            to: transaction.to,
+            value: transaction.value ? BigInt(transaction.value) : undefined,
+            data: transaction.data,
+            gasLimit: transaction.gas ? BigInt(transaction.gas) : undefined,
+            maxFeePerGas: transaction.maxFeePerGas ? BigInt(transaction.maxFeePerGas) : undefined,
+            maxPriorityFeePerGas: transaction.maxPriorityFeePerGas ? BigInt(transaction.maxPriorityFeePerGas) : undefined,
+            gasPrice: transaction.gasPrice ? BigInt(transaction.gasPrice) : undefined,
+          };
+          const tx = await signer.sendTransaction(ethersTx);
+          return tx.hash;
+        },
+      } as unknown as WalletClient;
+      
+      const sdk = new GmxSdk({
+        chainId: GMX_AVALANCHE_CHAIN_ID,
+        rpcUrl,
+        oracleUrl: GMX_AVALANCHE_API,
+        subsquidUrl: GMX_AVALANCHE_SUBSQUID_URL,
+        walletClient: privyWalletClient,
+      });
+      
+      console.log('[GMX SDK] SDK initialized with Privy wallet');
+      return sdk;
+    }
     
     if (!walletClient) {
       throw new Error('Wallet client not available');
@@ -332,7 +438,7 @@ export default function GmxIntegration() {
     console.log('[GMX SDK] Note: If approval fails, SDK may need update or manual approval handling');
 
     return sdk;
-  }, [walletClient]);
+  }, [walletClient, authenticated, ready, wallets, address]);
 
   // Estimate transaction costs
   const estimateTransactionCosts = useCallback(async () => {
@@ -377,7 +483,9 @@ export default function GmxIntegration() {
         return;
       }
 
-      if (chainId !== avalanche.id) {
+      // Network guard: Skip for Privy smart wallets (always on Avalanche)
+      const activeChainId = isPrivyWallet ? avalanche.id : chainId;
+      if (!isPrivyWallet && activeChainId !== undefined && activeChainId !== avalanche.id) {
         toast({
           title: 'Wrong network',
           description: 'Please switch to Avalanche C-Chain.',
@@ -456,8 +564,10 @@ export default function GmxIntegration() {
         return;
       }
 
-      console.log('[GMX] Checking network...', { chainId, expected: avalanche.id });
-      if (chainId !== avalanche.id) {
+      // Network guard: Skip for Privy smart wallets (always on Avalanche)
+      const activeChainId = isPrivyWallet ? avalanche.id : chainId;
+      console.log('[GMX] Checking network...', { chainId, activeChainId, expected: avalanche.id, isPrivyWallet });
+      if (!isPrivyWallet && activeChainId !== undefined && activeChainId !== avalanche.id) {
         console.log('[GMX] Wrong network');
         toast({
           title: 'Wrong network',
@@ -524,12 +634,23 @@ export default function GmxIntegration() {
 
       console.log('[GMX] Checking wallet clients...', { 
         hasWalletClient: !!walletClient, 
-        hasPublicClient: !!publicClient 
+        hasPublicClient: !!publicClient,
+        isPrivyWallet
       });
-      if (!walletClient || !publicClient) {
+      // For Privy wallets, we don't need wagmi's walletClient (we use Privy provider directly)
+      if (!isPrivyWallet && (!walletClient || !publicClient)) {
         console.log('[GMX] Wallet clients not ready');
         toast({
           title: 'Wallet client not ready',
+          description: 'Please reconnect your wallet and try again.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (!publicClient) {
+        console.log('[GMX] Public client not ready');
+        toast({
+          title: 'Public client not ready',
           description: 'Please reconnect your wallet and try again.',
           variant: 'destructive',
         });
@@ -598,9 +719,18 @@ export default function GmxIntegration() {
         payAmount: payAmount.toString(),
       });
 
-      if (!walletClient || !publicClient) {
+      // For Privy wallets, we don't need wagmi's walletClient (we use Privy provider directly)
+      if (!isPrivyWallet && !walletClient) {
         toast({
           title: 'Wallet client not ready',
+          description: 'Please reconnect your wallet and try again.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (!publicClient) {
+        toast({
+          title: 'Public client not ready',
           description: 'Please reconnect your wallet and try again.',
           variant: 'destructive',
         });
@@ -630,21 +760,52 @@ export default function GmxIntegration() {
         console.log('[GMX] Approving USDC to Router...');
         toast({ title: 'Approval needed', description: 'Please approve USDC for GMX Router...' });
         
-        const approveTxHash = await (walletClient as WalletClient).writeContract({
-          address: payTokenAddress,
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [router, maxUint256],
-          chain: avalanche,
-          account: address as `0x${string}`,
-        });
+        let approveTxHash: `0x${string}`;
         
-        console.log('[GMX] Router approval submitted:', approveTxHash);
-        const receipt = await publicClient.waitForTransactionReceipt({ hash: approveTxHash });
-        if (receipt.status !== 'success') {
-          throw new Error('Router approval failed');
+        if (isPrivyWallet) {
+          // Use Privy wallet for approval
+          const privyWallet = wallets.find(w => w.address === address && w.walletClientType === 'privy');
+          if (!privyWallet) {
+            throw new Error('Privy wallet not found');
+          }
+          
+          const privyProvider = await privyWallet.getEthereumProvider();
+          if (!privyProvider) {
+            throw new Error('Privy provider not available');
+          }
+          
+          const ethersProvider = new ethers.BrowserProvider(privyProvider);
+          const signer = await ethersProvider.getSigner();
+          const usdcContract = new ethers.Contract(payTokenAddress, erc20Abi, signer);
+          
+          const tx = await usdcContract.approve(router, maxUint256);
+          approveTxHash = tx.hash as `0x${string}`;
+          console.log('[GMX] Router approval submitted via Privy:', approveTxHash);
+          
+          await tx.wait();
+          console.log('[GMX] Router approval confirmed');
+        } else {
+          // Use wagmi wallet client
+          if (!walletClient) {
+            throw new Error('Wallet client not available');
+          }
+          
+          approveTxHash = await (walletClient as WalletClient).writeContract({
+            address: payTokenAddress,
+            abi: erc20Abi,
+            functionName: 'approve',
+            args: [router, maxUint256],
+            chain: avalanche,
+            account: address as `0x${string}`,
+          });
+          
+          console.log('[GMX] Router approval submitted:', approveTxHash);
+          const receipt = await publicClient.waitForTransactionReceipt({ hash: approveTxHash });
+          if (receipt.status !== 'success') {
+            throw new Error('Router approval failed');
+          }
+          console.log('[GMX] Router approval confirmed');
         }
-        console.log('[GMX] Router approval confirmed');
       } else {
         console.log('[GMX] Router already has sufficient allowance');
       }
@@ -781,6 +942,47 @@ export default function GmxIntegration() {
           }
 
           console.log('[GMX] About to call originalCallContract...');
+          
+          // For Privy wallets, intercept and route through Privy provider
+          if (isPrivyWallet && method === 'multicall') {
+            try {
+              const privyWallet = wallets.find(w => w.address === address && w.walletClientType === 'privy');
+              if (!privyWallet) {
+                throw new Error('Privy wallet not found');
+              }
+              
+              const privyProvider = await privyWallet.getEthereumProvider();
+              if (!privyProvider) {
+                throw new Error('Privy provider not available');
+              }
+              
+              const ethersProvider = new ethers.BrowserProvider(privyProvider);
+              const signer = await ethersProvider.getSigner();
+              const contract = new ethers.Contract(contractAddress, abi as ethers.InterfaceAbi, signer);
+              
+              // Build the multicall transaction
+              const dataItems = params[0] as string[];
+              const txValue = (opts as { value?: bigint } | undefined)?.value || 0n;
+              
+              console.log('[GMX] Sending multicall via Privy:', {
+                contractAddress,
+                dataItems: dataItems.length,
+                value: txValue.toString(),
+              });
+              
+              // Call multicall with the data items
+              const tx = await contract.multicall(dataItems, { value: txValue });
+              const hash = tx.hash as `0x${string}`;
+              
+              console.log('[GMX] Transaction submitted via Privy:', hash);
+              submittedHash = hash;
+              return hash;
+            } catch (privyError) {
+              console.error('[GMX] Privy transaction failed, falling back to original:', privyError);
+              // Fall through to original call
+            }
+          }
+          
           try {
             const h = (await originalCallContract(contractAddress, abi, method, params, opts)) as `0x${string}`;
             console.log('[GMX] Transaction submitted:', h);
@@ -1185,6 +1387,21 @@ export default function GmxIntegration() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Footer */}
+      <footer className="border-t border-border/50 mt-16">
+        <div className="container mx-auto px-4 py-6">
+          <p className="text-center text-sm text-muted-foreground">
+            Powered by GMX • Avalanche C-Chain
+          </p>
+          <p className="text-center text-xs text-muted-foreground mt-2">
+            Leveraged trading involves significant risk. You can lose your entire position.
+          </p>
+          <p className="text-center text-xs sm:text-sm text-muted-foreground mt-2">
+            Support: <a href="mailto:support@tiltvault.com" className="text-emerald-500 hover:underline">support@tiltvault.com</a>
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }

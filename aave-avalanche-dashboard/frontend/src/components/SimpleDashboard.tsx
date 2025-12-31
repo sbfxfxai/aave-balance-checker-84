@@ -2,12 +2,17 @@ import { useAccount, useDisconnect, useReadContract } from 'wagmi';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Wallet, LogOut, ArrowDownUp, Plus, Minus, TrendingUp, TrendingDown, RefreshCw, Loader2 } from 'lucide-react';
+import {
+  TrendingUp, Zap, Home, Bitcoin, Landmark, RefreshCw, LayoutDashboard, Wallet,
+  ArrowUpRight, ArrowDownLeft, PlusCircle, MinusCircle, History, ExternalLink,
+  Settings, Info, ArrowDownUp, Loader2, LogOut, Plus, Minus, TrendingDown
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useAavePositions } from '@/hooks/useAavePositions';
 import { useWalletBalances } from '@/hooks/useWalletBalances';
 import { GmxPositionCard } from '@/components/GmxPositionCard';
 import { ActionModal } from '@/components/ActionModal';
+import { useConnect } from 'wagmi';
 import { useState, useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -22,32 +27,49 @@ type TiltVaultWindow = Window & {
 
 export function SimpleDashboard() {
   const { address: wagmiAddress, isConnected: isWagmiConnected } = useAccount();
-  const { authenticated, user, ready, logout } = usePrivy();
+  const { authenticated, user, ready, logout, login } = usePrivy();
   const { wallets } = useWallets();
   const { disconnect: wagmiDisconnect } = useDisconnect();
+  const { connect, connectors } = useConnect();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const [activeAction, setActiveAction] = useState<'swap' | 'supply' | 'withdraw' | 'borrow' | 'repay' | null>(null);
+  const [activeAction, setActiveAction] = useState<'swap' | 'supply' | 'withdraw' | 'borrow' | 'repay' | 'send' | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Get the most relevant wallet address - prioritize Privy for authenticated users
+  // Filter out Solana addresses (only use Ethereum addresses)
   const walletAddress = useMemo(() => {
-    // If user is authenticated with Privy, use Privy wallet
+    // Helper to check if address is Ethereum format
+    const isEthereumAddress = (addr: string | undefined | null): boolean => {
+      return !!addr && addr.startsWith('0x') && addr.length === 42;
+    };
+
+    // If user is authenticated with Privy, use Privy wallet (Ethereum only)
     if (authenticated && ready) {
-      const privyWallet = wallets.find(w => w.walletClientType === 'privy');
+      // Find Privy wallet with Ethereum address
+      const privyWallet = wallets.find(w =>
+        w.walletClientType === 'privy' && isEthereumAddress(w.address)
+      );
       if (privyWallet) return privyWallet.address;
-      return user?.wallet?.address;
+
+      // Check user wallet address
+      const userWalletAddr = user?.wallet?.address;
+      if (isEthereumAddress(userWalletAddr)) return userWalletAddr;
+
+      // Try to find any Ethereum wallet from Privy
+      const ethereumWallet = wallets.find(w => isEthereumAddress(w.address));
+      if (ethereumWallet) return ethereumWallet.address;
     }
-    
-    // Fall back to wagmi wallet
+
+    // Fall back to wagmi wallet (always Ethereum)
     return wagmiAddress || (window as TiltVaultWindow).tiltvaultWallet?.address;
   }, [authenticated, ready, wallets, user, wagmiAddress]);
 
   // Check if user has any wallet connected (Privy or wagmi)
   const hasWallet = Boolean(walletAddress && (authenticated || isWagmiConnected));
 
-  const { avaxBalance, usdcBalance, usdcEBalance, needsMigration, isLoading: balanceLoading } = useWalletBalances();
+  const { avaxBalance, usdcBalance, usdcEBalance, ergcBalance, needsMigration, isLoading: balanceLoading } = useWalletBalances();
   const positions = useAavePositions();
 
   // Direct test read of WAVAX reserve data to debug
@@ -109,14 +131,77 @@ export function SimpleDashboard() {
     );
   }
 
-  // If no wallet is connected, show the onboarding flow
+  // If no wallet is connected, show the onboarding flow with Privy and WalletConnect
   if (!hasWallet) {
     return (
-      <div className="max-w-md mx-auto text-center p-8">
-        <Card className="p-6">
-          <p className="text-muted-foreground">Please sign up with email or connect a wallet to continue</p>
-          <Button className="mt-4" onClick={() => window.location.reload()}>Reload App</Button>
-        </Card>
+      <div className="max-w-2xl mx-auto p-8">
+        <div className="space-y-6">
+          {/* Hero Section */}
+          <div className="text-center space-y-4">
+            <h1 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+              Banking that works as hard as you do
+            </h1>
+            <p className="text-muted-foreground text-lg">
+              Earn <span className="font-semibold text-emerald-500">5-8% APY</span> on savings. Optional managed Bitcoin exposure. Built on Aave—$70B+ secured.
+            </p>
+          </div>
+
+          {/* Login Options */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Privy Email Login */}
+            <Card className="p-6">
+              <div className="flex flex-col items-center text-center space-y-4">
+                <div className="p-3 rounded-full bg-gradient-primary">
+                  <Wallet className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold mb-2">Email Wallet</h2>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Sign up with email to get a secure smart wallet
+                  </p>
+                  <Button
+                    onClick={() => login()}
+                    className="w-full"
+                    size="lg"
+                  >
+                    Sign Up with Email
+                  </Button>
+                </div>
+              </div>
+            </Card>
+
+            {/* WalletConnect */}
+            <Card className="p-6">
+              <div className="flex flex-col items-center text-center space-y-4">
+                <div className="p-3 rounded-full bg-gradient-primary">
+                  <Wallet className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold mb-2">Wallet Connect</h2>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Connect your existing MetaMask or other wallet
+                  </p>
+                  <Button
+                    onClick={() => {
+                      const walletConnectConnector = connectors.find(c => c.id === 'walletConnect');
+                      if (walletConnectConnector) {
+                        connect({ connector: walletConnectConnector });
+                      } else {
+                        toast.error('WalletConnect not available');
+                      }
+                    }}
+                    className="w-full"
+                    size="lg"
+                    variant="outline"
+                  >
+                    <Wallet className="mr-2 h-4 w-4" />
+                    Connect Wallet
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </div>
       </div>
     );
   }
@@ -150,7 +235,7 @@ export function SimpleDashboard() {
       {/* Balances */}
       <Card className="p-6">
         <h3 className="text-lg font-semibold mb-4">Available Cash</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
             <p className="font-medium text-blue-500">AVAX</p>
             <p className="text-2xl font-bold">{balanceLoading ? '...' : (avaxBalance ? parseFloat(avaxBalance).toFixed(4) : '0.0000')}</p>
@@ -166,6 +251,13 @@ export function SimpleDashboard() {
               </p>
             )}
           </div>
+          {parseFloat(ergcBalance || '0') > 0 && (
+            <div className="p-4 rounded-lg bg-purple-500/5 border border-purple-500/20">
+              <p className="font-medium text-purple-500">ERGC</p>
+              <p className="text-2xl font-bold">{balanceLoading ? '...' : parseFloat(ergcBalance).toFixed(2)}</p>
+              <p className="text-sm text-gray-600">EnergyCoin tokens</p>
+            </div>
+          )}
         </div>
       </Card>
 
@@ -247,6 +339,14 @@ export function SimpleDashboard() {
           >
             <TrendingUp className="h-4 w-4" />
             Repay Loan
+          </Button>
+
+          <Button
+            onClick={() => setActiveAction('send')}
+            className="flex items-center gap-2 h-12 bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <ArrowDownUp className="h-4 w-4" />
+            Send Funds
           </Button>
         </div>
       </Card>
