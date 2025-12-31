@@ -5,6 +5,8 @@
 
 import { logger } from './logger';
 import { errorTracker } from './errorTracker';
+import { emailService } from './notifications/emailService';
+import { slackService } from './notifications/slackService';
 
 export enum AlertSeverity {
   LOW = 'low',
@@ -148,12 +150,12 @@ class AlertingSystem {
 
   private async sendAlert(alert: Alert): Promise<void> {
     if (!this.isEnabled) {
-      logger.warn('Alerting disabled', 'ALERTING', { alert });
+      logger.warn('Alerting disabled', 'API', { alert });
       return;
     }
 
     try {
-      // Send to webhook
+      // Send to webhook (if configured)
       if (this.webhookUrl) {
         await fetch(this.webhookUrl, {
           method: 'POST',
@@ -162,17 +164,30 @@ class AlertingSystem {
         });
       }
 
-      // Send email (you can integrate with SendGrid, AWS SES, etc.)
+      // Send email notifications
       if (this.emailRecipients.length > 0) {
-        // Example: await emailService.sendAlert(alert, this.emailRecipients);
-        logger.info('Alert email sent', 'ALERTING', { 
-          alertId: alert.id,
-          recipients: this.emailRecipients 
+        await emailService.sendAlert({
+          title: alert.title,
+          message: alert.message,
+          severity: alert.severity,
+          timestamp: alert.timestamp,
+          context: alert.context
+        }, this.emailRecipients);
+      }
+
+      // Send Slack notification
+      if (this.webhookUrl && this.webhookUrl.includes('hooks.slack.com')) {
+        await slackService.sendAlert({
+          title: alert.title,
+          message: alert.message,
+          severity: alert.severity,
+          timestamp: alert.timestamp,
+          context: alert.context
         });
       }
 
       // Log the alert
-      logger.error(`ALERT: ${alert.title}`, 'ALERTING', {
+      logger.error(`ALERT: ${alert.title}`, 'API', {
         alertId: alert.id,
         type: alert.type,
         severity: alert.severity,
@@ -180,7 +195,7 @@ class AlertingSystem {
       });
 
     } catch (error) {
-      logger.error('Failed to send alert', 'ALERTING', { 
+      logger.error('Failed to send alert', 'API', { 
         alertId: alert.id,
         error: error instanceof Error ? error.message : 'Unknown error'
       });

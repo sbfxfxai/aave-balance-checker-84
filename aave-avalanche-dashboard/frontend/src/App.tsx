@@ -11,6 +11,7 @@ import { PrivyAuthProvider } from "@/components/PrivyAuthProvider";
 const DashboardWithWeb3 = lazy(() => import("./pages/DashboardWithWeb3"));
 const StackApp = lazy(() => import("./pages/StackApp"));
 const GmxIntegration = lazy(() => import("./pages/GmxIntegration"));
+const MonitoringDashboard = lazy(() => import("./pages/MonitoringDashboard"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const Web3Providers = lazy(() =>
@@ -87,6 +88,16 @@ const App = () => (
                   <Web3Providers>
                     <AuthGuard>
                       <GmxIntegration />
+                    </AuthGuard>
+                  </Web3Providers>
+                }
+              />
+              <Route
+                path="/monitoring"
+                element={
+                  <Web3Providers>
+                    <AuthGuard>
+                      <MonitoringDashboard />
                     </AuthGuard>
                   </Web3Providers>
                 }
