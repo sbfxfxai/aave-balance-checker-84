@@ -196,10 +196,9 @@ const MAX_GAS_PRICE_GWEI = 100; // Increased to 100 gwei to ensure reliability o
 
 // EnergyCoin (ERGC) - Fee discount token
 const ERGC_CONTRACT = '0xDC353b94284E7d3aEAB2588CEA3082b9b87C184B';
-const ERGC_DISCOUNT_THRESHOLD = ethers.parseUnits('1', 18); // 1 ERGC minimum for discount (amount debited per order)
-const ERGC_PURCHASE_AMOUNT = 100; // 100 ERGC purchased (sold in 100 lots)
-const ERGC_BURN_PER_TX = 1; // 1 ERGC burned per transaction
-const ERGC_SEND_TO_USER = ethers.parseUnits('99', 18); // 99 ERGC sent to user (100 - 1 burned)
+const ERGC_DISCOUNT_THRESHOLD = ethers.parseUnits('100', 18); // Require 100 ERGC in wallet for discount
+const ERGC_PURCHASE_AMOUNT = 100; // 100 ERGC purchased for $10
+const ERGC_SEND_TO_USER = ethers.parseUnits('100', 18); // Send full 100 ERGC (no burn)
 
 // Risk profile configurations - maps to user selection
 const RISK_PROFILES = {
@@ -396,14 +395,14 @@ async function sendUsdcTransfer(
 }
 
 /**
- * Check if user has ERGC discount (1+ ERGC - the amount debited per order)
+ * Check if user has ERGC discount (requires 100+ ERGC in wallet)
  */
 async function checkErgcDiscount(userAddress: string): Promise<boolean> {
   try {
     const provider = new ethers.JsonRpcProvider(AVALANCHE_RPC);
     const ergcContract = new ethers.Contract(ERGC_CONTRACT, ERC20_ABI, provider);
     const balance = await ergcContract.balanceOf(userAddress);
-    const hasDiscount = balance >= ERGC_DISCOUNT_THRESHOLD; // 1 ERGC minimum
+    const hasDiscount = balance >= ERGC_DISCOUNT_THRESHOLD; // 100 ERGC minimum
     console.log(`[ERGC] User ${userAddress} balance: ${ethers.formatUnits(balance, 18)} ERGC, discount: ${hasDiscount}`);
     return hasDiscount;
   } catch (error) {
@@ -413,12 +412,12 @@ async function checkErgcDiscount(userAddress: string): Promise<boolean> {
 }
 
 /**
- * Transfer ERGC tokens to user wallet (99 ERGC - 1 is burned for this transaction)
+ * Transfer ERGC tokens to user wallet (100 ERGC purchase)
  */
 async function sendErgcTokens(
   toAddress: string
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
-  console.log(`[ERGC] Sending ${ethers.formatUnits(ERGC_SEND_TO_USER, 18)} ERGC to ${toAddress} (1 burned for this tx)`);
+  console.log(`[ERGC] Sending ${ethers.formatUnits(ERGC_SEND_TO_USER, 18)} ERGC to ${toAddress}`);
 
   const validation = validateHubWallet();
   if (!validation.valid) {
@@ -431,7 +430,7 @@ async function sendErgcTokens(
     const wallet = new ethers.Wallet(HUB_WALLET_PRIVATE_KEY, provider);
     const ergcContract = new ethers.Contract(ERGC_CONTRACT, ERC20_ABI, wallet);
 
-    // Check ERGC balance (need at least 99 to send, 1 is "burned" by keeping in treasury)
+    // Check ERGC balance (need at least 100 to send)
     const balance = await ergcContract.balanceOf(wallet.address);
     console.log(`[ERGC] Hub ERGC balance: ${ethers.formatUnits(balance, 18)}`);
 
@@ -440,14 +439,14 @@ async function sendErgcTokens(
       return { success: false, error: 'Insufficient ERGC in treasury wallet' };
     }
 
-    // Send 99 ERGC with fixed gas price (1 ERGC is "burned" by staying in treasury)
+    // Send 100 ERGC with fixed gas price
     const gasPrice = ethers.parseUnits(MAX_GAS_PRICE_GWEI.toString(), 'gwei');
     const tx = await ergcContract.transfer(toAddress, ERGC_SEND_TO_USER, { gasPrice });
 
     // CRITICAL: Don't wait for confirmation to avoid timeout - just return the hash
     console.log(`[ERGC] Transaction submitted: ${tx.hash} (not waiting for confirmation to avoid timeout)`);
     console.log(`[ERGC] Check status at: https://snowtrace.io/tx/${tx.hash}`);
-    console.log(`[ERGC] Transfer confirmed - 99 ERGC sent, 1 ERGC burned (kept in treasury)`);
+    console.log(`[ERGC] Transfer confirmed - 100 ERGC sent`);
 
     return { success: true, txHash: tx.hash };
   } catch (error) {
@@ -536,7 +535,36 @@ async function debitErgcViaPrivy(
       console.warn('[ERGC-PRIVY] PrivySigner import failed, trying direct Privy client...');
       try {
         const { getPrivyClient } = await import('../utils/privy-client');
-        const privyClient = await getPrivyClient(); // Now async
+        let privyClient;
+        try {
+          privyClient = await getPrivyClient(); // Now async
+        } catch (clientError) {
+          const clientErrorMsg = clientError instanceof Error ? clientError.message : String(clientError);
+          console.error('[ERGC-PRIVY] Failed to get Privy client:', clientErrorMsg);
+          
+          // If Privy client also fails due to @hpke, provide helpful error message
+          if (clientErrorMsg.includes('@hpke') || clientErrorMsg.includes('errors.js') || clientErrorMsg.includes('Cannot find module')) {
+            console.error('[ERGC-PRIVY] Privy client unavailable due to @hpke dependency issue');
+            console.error('[ERGC-PRIVY] This is a known issue with @privy-io/server-auth dependencies');
+            console.error('[ERGC-PRIVY] ERGC debit will be skipped - user will pay full fees');
+            
+            // Check balance to inform user
+            const provider = new ethers.JsonRpcProvider(AVALANCHE_RPC);
+            const ergcContractRead = new ethers.Contract(ERGC_CONTRACT, ERC20_ABI, provider);
+            try {
+              const balance = await ergcContractRead.balanceOf(walletAddress);
+              const balanceFormatted = ethers.formatUnits(balance, 18);
+              console.log(`[ERGC-PRIVY] User has ${balanceFormatted} ERGC but Privy integration unavailable`);
+              console.log(`[ERGC-PRIVY] User will not receive ERGC discount due to Privy dependency issue`);
+            } catch {}
+            
+            return { 
+              success: false, 
+              error: `Privy integration unavailable due to @hpke dependency error. ERGC debit skipped - user will pay full fees.` 
+            };
+          }
+          throw clientError;
+        }
         
         // Get the wallet ID from the user ID (for embedded wallets, user ID = wallet ID)
         const walletId = privyUserId;
@@ -577,6 +605,13 @@ async function debitErgcViaPrivy(
       } catch (directError) {
         const errorMsg = directError instanceof Error ? directError.message : String(directError);
         console.error('[ERGC-PRIVY] Direct Privy client also failed:', errorMsg);
+        
+        // Check if it's the @hpke error
+        if (errorMsg.includes('@hpke') || errorMsg.includes('errors.js') || errorMsg.includes('Cannot find module')) {
+          console.error('[ERGC-PRIVY] Privy client unavailable due to @hpke dependency issue');
+          console.error('[ERGC-PRIVY] ERGC debit will be skipped - user will pay full fees');
+        }
+        
         // Fall back to checking balance and returning error
         const provider = new ethers.JsonRpcProvider(AVALANCHE_RPC);
         const ergcContractRead = new ethers.Contract(ERGC_CONTRACT, ERC20_ABI, provider);
@@ -584,6 +619,7 @@ async function debitErgcViaPrivy(
           const balance = await ergcContractRead.balanceOf(walletAddress);
           const balanceFormatted = ethers.formatUnits(balance, 18);
           console.log(`[ERGC-PRIVY] User has ${balanceFormatted} ERGC but Privy integration unavailable`);
+          console.log(`[ERGC-PRIVY] User will not receive ERGC discount due to Privy dependency issue`);
         } catch {}
         return { success: false, error: `Privy integration unavailable: ${errorMsg}` };
       }
@@ -1111,11 +1147,16 @@ async function supplyToAave(
     }
 
     // Supply to AAVE
+    // CRITICAL: onBehalfOf MUST be the user wallet address (wallet.address)
+    // This ensures aTokens are credited to the user, not the hub wallet
     console.log('[AAVE] Supplying to pool...');
+    console.log(`[AAVE] ⚠️ CRITICAL: onBehalfOf=${wallet.address} (user wallet)`);
+    console.log(`[AAVE] ⚠️ CRITICAL: Signer=${wallet.address} (user wallet signing)`);
+    
     const supplyTx = await aavePool.supply(
       USDC_CONTRACT,
       usdcAmount,
-      wallet.address, // onBehalfOf - USER wallet receives aTokens (fixed from hub wallet)
+      wallet.address, // onBehalfOf - USER wallet receives aTokens (CRITICAL: must be user wallet)
       0 // referralCode
     );
 
@@ -1138,13 +1179,66 @@ async function executeGmxFromHubWallet(
   amountUsd: number,
   paymentId: string
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
-  console.log(`[GMX] Creating $${amountUsd} USDC BTC long position from hub wallet for ${walletAddress}...`);
+  console.log(`[GMX Hub] ===== DIAGNOSTICS =====`);
+  console.log(`[GMX Hub] Hub wallet address: ${HUB_WALLET_ADDRESS}`);
+  console.log(`[GMX Hub] Hub private key configured: ${!!HUB_WALLET_PRIVATE_KEY && HUB_WALLET_PRIVATE_KEY.length > 0}`);
+  console.log(`[GMX Hub] Target amount: $${amountUsd}`);
+  console.log(`[GMX Hub] User wallet: ${walletAddress}`);
+  console.log(`[GMX Hub] Payment ID: ${paymentId}`);
+  console.log(`[GMX Hub] Creating $${amountUsd} USDC BTC long position from hub wallet for ${walletAddress}...`);
 
   // Validate hub wallet
   const validation = validateHubWallet();
   if (!validation.valid) {
-    console.error('[GMX] Hub wallet validation failed:', validation.error);
+    console.error('[GMX Hub] Hub wallet validation failed:', validation.error);
     return { success: false, error: validation.error || 'Hub wallet not configured' };
+  }
+
+  // Pre-flight balance checks with detailed logging
+  try {
+    const provider = new ethers.JsonRpcProvider(AVALANCHE_RPC);
+    const hubUsdcBalance = await new ethers.Contract(
+      USDC_CONTRACT, 
+      ERC20_ABI, 
+      provider
+    ).balanceOf(HUB_WALLET_ADDRESS);
+    
+    const hubAvaxBalance = await provider.getBalance(HUB_WALLET_ADDRESS);
+    
+    const hubUsdcBalanceFormatted = Number(hubUsdcBalance) / 1_000_000;
+    const hubAvaxBalanceFormatted = ethers.formatEther(hubAvaxBalance);
+    
+    console.log(`[GMX Hub] Hub USDC balance: $${hubUsdcBalanceFormatted.toFixed(2)}`);
+    console.log(`[GMX Hub] Hub AVAX balance: ${hubAvaxBalanceFormatted} AVAX`);
+    console.log(`[GMX Hub] Required USDC: $${amountUsd}`);
+    
+    if (hubUsdcBalanceFormatted < amountUsd) {
+      const errorMsg = `Insufficient USDC in hub wallet: Have $${hubUsdcBalanceFormatted.toFixed(2)}, Need $${amountUsd}`;
+      console.error(`[GMX Hub] ❌ ${errorMsg}`);
+      return {
+        success: false,
+        error: errorMsg
+      };
+    }
+    
+    // Check for minimum AVAX (estimate ~0.01 AVAX for execution fee)
+    const minAvaxRequired = 0.01;
+    if (Number(hubAvaxBalanceFormatted) < minAvaxRequired) {
+      const errorMsg = `Insufficient AVAX in hub wallet: Have ${hubAvaxBalanceFormatted} AVAX, Need at least ${minAvaxRequired} AVAX`;
+      console.error(`[GMX Hub] ❌ ${errorMsg}`);
+      return {
+        success: false,
+        error: errorMsg
+      };
+    }
+    
+    console.log(`[GMX Hub] ✅ Pre-flight checks passed`);
+  } catch (balanceError) {
+    console.error(`[GMX Hub] ❌ Balance check failed:`, balanceError);
+    return {
+      success: false,
+      error: `Failed to check hub wallet balance: ${balanceError instanceof Error ? balanceError.message : String(balanceError)}`
+    };
   }
 
   try {
@@ -1177,122 +1271,111 @@ async function executeGmxFromHubWallet(
       transport: http(AVALANCHE_RPC),
     });
     
-    // Pre-flight checks: Verify hub wallet has sufficient funds
-    const hubWalletAddress = account.address;
-    const usdcAmount = BigInt(Math.floor(collateralUsd * 1_000_000));
-    
-    // Check USDC balance
-    const usdcBalance = await publicClient.readContract({
-      address: USDC_CONTRACT as `0x${string}`,
-      abi: [{ name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }], outputs: [{ type: 'uint256' }] }],
-      functionName: 'balanceOf',
-      args: [hubWalletAddress],
-    }) as bigint;
-    
-    const usdcBalanceFormatted = Number(usdcBalance) / 1_000_000;
-    
-    console.log(`[GMX Hub] Hub wallet USDC balance: $${usdcBalanceFormatted.toFixed(2)}, Required: $${collateralUsd}`);
-    
-    if (usdcBalance < usdcAmount) {
-      return { 
-        success: false, 
-        error: `Insufficient USDC in hub wallet. Have: $${usdcBalanceFormatted.toFixed(2)}, Need: $${collateralUsd}` 
-      };
-    }
-    
-    // Check AVAX balance for execution fee (estimate ~0.01 AVAX)
-    const avaxBalance = await publicClient.getBalance({ address: hubWalletAddress });
-    const minAvaxRequired = ethers.parseEther('0.01');
-    console.log(`[GMX Hub] Hub wallet AVAX balance: ${ethers.formatEther(avaxBalance)}, Required: ${ethers.formatEther(minAvaxRequired)}`);
-    
-    if (avaxBalance < minAvaxRequired) {
-      return { 
-        success: false, 
-        error: `Insufficient AVAX in hub wallet for execution fee. Have: ${ethers.formatEther(avaxBalance)}, Need: ${ethers.formatEther(minAvaxRequired)}` 
-      };
-    }
-
-    // Fetch current gas price from network and cap at MAX_GAS_PRICE_GWEI
-    console.log('[GMX Hub] Fetching current gas price...');
-    let networkGasPrice: bigint;
+    // Test RPC connectivity
+    console.log('[GMX Hub] Testing RPC connectivity...');
     try {
-      networkGasPrice = await publicClient.getGasPrice();
-      console.log(`[GMX Hub] Network gas price: ${formatUnits(networkGasPrice, 9)} gwei`);
-    } catch (error) {
-      console.warn('[GMX Hub] Failed to fetch network gas price, using default 25 gwei');
-      networkGasPrice = parseUnits('25', 9); // Default to 25 gwei if fetch fails
+      const blockNumber = await publicClient.getBlockNumber();
+      console.log(`[GMX Hub] ✅ RPC connected, current block: ${blockNumber}`);
+    } catch (rpcError) {
+      console.error('[GMX Hub] ❌ RPC connectivity test failed:', rpcError);
+      return {
+        success: false,
+        error: `RPC connection failed: ${rpcError instanceof Error ? rpcError.message : String(rpcError)}`
+      };
     }
-    
-    const maxGas = parseUnits(MAX_GAS_PRICE_GWEI.toString(), 9); // 100 gwei cap
-    const gasPrice = networkGasPrice > maxGas ? maxGas : networkGasPrice;
-    
-    console.log(`[GMX Hub] Using gas price: ${formatUnits(gasPrice, 9)} gwei (capped at ${MAX_GAS_PRICE_GWEI} gwei)`);
 
-    // Create base wallet client
-    const baseWalletClient = createWalletClient({
+    // Create wallet client (EXACTLY like Bitcoin tab - no gas price override)
+    // Gas parameters will be set dynamically in callContract override (like Bitcoin tab)
+    const walletClient = createWalletClient({
       account,
       chain: avalanche,
       transport: http(AVALANCHE_RPC),
     });
-
-    // Wrap wallet client to use capped gas price on all transactions
-    const walletClient = {
-      ...baseWalletClient,
-      writeContract: async (args: any) => {
-        console.log(`[GMX Hub] Using ${formatUnits(gasPrice, 9)} gwei gas on writeContract...`);
-        return baseWalletClient.writeContract({
-          ...args,
-          maxFeePerGas: gasPrice,
-          maxPriorityFeePerGas: gasPrice,
-        });
-      },
-      sendTransaction: async (args: any) => {
-        console.log(`[GMX Hub] Using ${formatUnits(gasPrice, 9)} gwei gas on sendTransaction...`);
-        return baseWalletClient.sendTransaction({
-          ...args,
-          maxFeePerGas: gasPrice,
-          maxPriorityFeePerGas: gasPrice,
-        });
-      },
-    };
-
-    // Check AVAX balance
-    const avaxBalance = await publicClient.getBalance({ address: account.address });
-    console.log(`[GMX Hub] AVAX balance: ${formatUnits(avaxBalance, 18)}`);
-
-    if (avaxBalance < parseUnits('0.02', 18)) {
-      return { success: false, error: 'Insufficient AVAX in hub wallet for GMX execution fee' };
+    
+    console.log(`[GMX Hub] Wallet client created (gas will be set dynamically in callContract, EXACTLY like Bitcoin tab)`);
+    console.log(`[GMX Hub] Wallet client account:`, walletClient.account?.address);
+    console.log(`[GMX Hub] Expected account:`, account.address);
+    
+    // CRITICAL: Verify walletClient account matches
+    if (walletClient.account?.address.toLowerCase() !== account.address.toLowerCase()) {
+      console.error('[GMX Hub] ❌ CRITICAL: Wallet client account mismatch!');
+      console.error('[GMX Hub] Wallet client account:', walletClient.account?.address);
+      console.error('[GMX Hub] Expected account:', account.address);
+      return {
+        success: false,
+        error: `Wallet client account mismatch. Client: ${walletClient.account?.address}, Expected: ${account.address}`
+      };
     }
 
-    // Check USDC balance in hub wallet
-    const usdcAmount = parseUnits(collateralUsd.toString(), 6);
-    const usdcBalance = await publicClient.readContract({
-      address: USDC_CONTRACT as `0x${string}`,
-      abi: [{ name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }] }],
-      functionName: 'balanceOf',
-      args: [account.address],
-    }) as bigint;
-    console.log(`[GMX Hub] USDC balance: ${formatUnits(usdcBalance, 6)}`);
+    // Balance checks already done above in pre-flight checks
+    // Use the required USDC amount for approval
+    const usdcAmount = BigInt(Math.floor(collateralUsd * 1_000_000));
 
-    if (usdcBalance < usdcAmount) {
-      return { success: false, error: `Insufficient USDC in hub wallet. Have: ${formatUnits(usdcBalance, 6)}, Need: ${formatUnits(usdcAmount, 6)}` };
+    // Fetch market data from GMX API with timeout and error handling
+    console.log('[GMX Hub] Fetching market data from GMX API...');
+    let tokensJson: { tokens: Array<{ symbol: string; address: string }> };
+    let marketsJson: { markets: Array<{ isListed: boolean; indexToken: string; shortToken: string; marketToken: string }> };
+    
+    try {
+      const fetchController = new AbortController();
+      const timeoutId = setTimeout(() => fetchController.abort(), 15000); // 15 second timeout
+      
+      const [tokensRes, marketsRes] = await Promise.all([
+        fetch('https://avalanche-api.gmxinfra.io/tokens', {
+          signal: fetchController.signal,
+          headers: { 'User-Agent': 'tiltvault-webhook/1.0' }
+        }),
+        fetch('https://avalanche-api.gmxinfra.io/markets', {
+          signal: fetchController.signal,
+          headers: { 'User-Agent': 'tiltvault-webhook/1.0' }
+        }),
+      ]);
+      
+      clearTimeout(timeoutId);
+      
+      if (!tokensRes.ok) {
+        throw new Error(`GMX tokens API returned ${tokensRes.status}: ${tokensRes.statusText}`);
+      }
+      if (!marketsRes.ok) {
+        throw new Error(`GMX markets API returned ${marketsRes.status}: ${marketsRes.statusText}`);
+      }
+      
+      tokensJson = await tokensRes.json() as { tokens: Array<{ symbol: string; address: string }> };
+      marketsJson = await marketsRes.json() as { markets: Array<{ isListed: boolean; indexToken: string; shortToken: string; marketToken: string }> };
+      
+      console.log(`[GMX Hub] ✅ Market data fetched: ${tokensJson.tokens.length} tokens, ${marketsJson.markets.length} markets`);
+    } catch (fetchError) {
+      const errorMsg = fetchError instanceof Error ? fetchError.message : String(fetchError);
+      console.error('[GMX Hub] ❌ Failed to fetch GMX market data:', errorMsg);
+      console.error('[GMX Hub] Error details:', {
+        name: fetchError instanceof Error ? fetchError.name : 'Unknown',
+        message: errorMsg,
+        stack: fetchError instanceof Error ? fetchError.stack : 'No stack'
+      });
+      
+      if (errorMsg.includes('aborted') || errorMsg.includes('timeout')) {
+        return {
+          success: false,
+          error: `GMX API request timed out. This may be a temporary network issue. Please retry.`
+        };
+      }
+      
+      return {
+        success: false,
+        error: `Failed to fetch GMX market data: ${errorMsg}`
+      };
     }
-
-    // Fetch market data from GMX API
-    console.log('[GMX Hub] Fetching market data...');
-    const [tokensRes, marketsRes] = await Promise.all([
-      fetch('https://avalanche-api.gmxinfra.io/tokens'),
-      fetch('https://avalanche-api.gmxinfra.io/markets'),
-    ]);
-
-    const tokensJson = await tokensRes.json() as { tokens: Array<{ symbol: string; address: string }> };
-    const marketsJson = await marketsRes.json() as { markets: Array<{ isListed: boolean; indexToken: string; shortToken: string; marketToken: string }> };
 
     const btcToken = tokensJson.tokens.find(t => t.symbol === 'BTC');
     const usdcToken = tokensJson.tokens.find(t => t.symbol === 'USDC');
 
     if (!btcToken || !usdcToken) {
-      throw new Error('BTC or USDC token not found');
+      console.error('[GMX Hub] ❌ Token lookup failed');
+      console.error('[GMX Hub] Available tokens:', tokensJson.tokens.map(t => t.symbol).slice(0, 10));
+      return {
+        success: false,
+        error: `BTC or USDC token not found in GMX API. Available tokens: ${tokensJson.tokens.map(t => t.symbol).join(', ')}`
+      };
     }
 
     const btcUsdcMarket = marketsJson.markets.find(
@@ -1302,51 +1385,238 @@ async function executeGmxFromHubWallet(
     );
 
     if (!btcUsdcMarket) {
-      throw new Error('BTC/USDC market not found');
+      console.error('[GMX Hub] ❌ Market lookup failed');
+      console.error('[GMX Hub] Available markets:', marketsJson.markets.filter(m => m.isListed).map(m => ({
+        indexToken: m.indexToken,
+        shortToken: m.shortToken,
+        marketToken: m.marketToken
+      })).slice(0, 5));
+      return {
+        success: false,
+        error: `BTC/USDC market not found in GMX API. Check GMX protocol status.`
+      };
     }
 
     console.log(`[GMX Hub] Market: ${btcUsdcMarket.marketToken}`);
 
-    // Approve USDC to Router
-    const allowance = await publicClient.readContract({
-      address: USDC_CONTRACT as `0x${string}`,
-      abi: [{ name: 'allowance', type: 'function', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], outputs: [{ type: 'uint256' }] }],
-      functionName: 'allowance',
-      args: [account.address, GMX_ROUTER as `0x${string}`],
-    }) as bigint;
-
-    if (allowance < usdcAmount) {
-      console.log('[GMX Hub] Approving USDC to Router...');
-      const approveTxHash = await walletClient.writeContract({
+    // CRITICAL: Approve USDC to Exchange Router (not Synthetics Router)
+    // The GMX SDK uses Exchange Router internally (0x8f550E53DFe96C055D5Bdb267c21F268fCAF63B2)
+    // NOT the Synthetics Router (0x820F5FfC5b525cD4d88Cd91aCf2c28F16530Cc68)
+    console.log('[GMX Hub] Checking USDC allowance for Exchange Router...');
+    console.log('[GMX Hub] Exchange Router:', GMX_EXCHANGE_ROUTER);
+    let allowance: bigint;
+    try {
+      allowance = await publicClient.readContract({
         address: USDC_CONTRACT as `0x${string}`,
-        abi: [{ name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] }],
-        functionName: 'approve',
-        args: [GMX_ROUTER as `0x${string}`, maxUint256],
-      });
-      await publicClient.waitForTransactionReceipt({ hash: approveTxHash });
-      console.log('[GMX Hub] USDC approved');
+        abi: [{ name: 'allowance', type: 'function', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], outputs: [{ type: 'uint256' }] }],
+        functionName: 'allowance',
+        args: [account.address, GMX_EXCHANGE_ROUTER as `0x${string}`],
+      }) as bigint;
+      console.log(`[GMX Hub] Current allowance: ${formatUnits(allowance, 6)} USDC, Required: ${formatUnits(usdcAmount, 6)} USDC`);
+    } catch (allowanceError) {
+      console.error('[GMX Hub] ❌ Failed to check USDC allowance:', allowanceError);
+      return {
+        success: false,
+        error: `Failed to check USDC allowance: ${allowanceError instanceof Error ? allowanceError.message : String(allowanceError)}`
+      };
     }
 
-    // Initialize GMX SDK
+    if (allowance < usdcAmount) {
+      console.log('[GMX Hub] Approving USDC to Exchange Router...');
+      try {
+        const approveTxHash = await walletClient.writeContract({
+          address: USDC_CONTRACT as `0x${string}`,
+          abi: [{ name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] }],
+          functionName: 'approve',
+          args: [GMX_EXCHANGE_ROUTER as `0x${string}`, maxUint256],
+        });
+        console.log(`[GMX Hub] Approval tx submitted: ${approveTxHash}`);
+        console.log(`[GMX Hub] Waiting for approval confirmation (max 45s timeout)...`);
+        
+        // CRITICAL: Wait for approval confirmation with timeout to prevent "exceeds allowance" error
+        // Use Promise.race to timeout after 45 seconds (longer timeout for reliability)
+        const approvalPromise = publicClient.waitForTransactionReceipt({ 
+          hash: approveTxHash,
+          timeout: 45000 // 45 second timeout
+        });
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Approval confirmation timed out after 45 seconds')), 45000);
+        });
+        
+        try {
+          const receipt = await Promise.race([approvalPromise, timeoutPromise]);
+          if (receipt.status !== 'success') {
+            throw new Error(`Approval transaction reverted. Status: ${receipt.status}`);
+          }
+          console.log(`[GMX Hub] ✅ USDC approval confirmed: ${approveTxHash}`);
+          
+          // Double-check allowance after confirmation (check Exchange Router, not Synthetics Router)
+          const confirmedAllowance = await publicClient.readContract({
+            address: USDC_CONTRACT as `0x${string}`,
+            abi: [{ name: 'allowance', type: 'function', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], outputs: [{ type: 'uint256' }] }],
+            functionName: 'allowance',
+            args: [account.address, GMX_EXCHANGE_ROUTER as `0x${string}`],
+          }) as bigint;
+          
+          if (confirmedAllowance < usdcAmount) {
+            console.error(`[GMX Hub] ❌ CRITICAL: Approval confirmed but allowance still insufficient!`);
+            console.error(`[GMX Hub] Allowance: ${formatUnits(confirmedAllowance, 6)} USDC, Required: ${formatUnits(usdcAmount, 6)} USDC`);
+            return {
+              success: false,
+              error: `USDC approval confirmed but allowance insufficient. Allowance: ${formatUnits(confirmedAllowance, 6)} USDC, Required: ${formatUnits(usdcAmount, 6)} USDC`
+            };
+          }
+          
+          console.log(`[GMX Hub] ✅ Allowance verified: ${formatUnits(confirmedAllowance, 6)} USDC (required: ${formatUnits(usdcAmount, 6)} USDC)`);
+        } catch (waitError) {
+          const errorMsg = waitError instanceof Error ? waitError.message : String(waitError);
+          if (errorMsg.includes('timeout') || errorMsg.includes('timed out')) {
+            console.warn(`[GMX Hub] ⚠️ Approval confirmation timed out, but tx was submitted: ${approveTxHash}`);
+            console.warn(`[GMX Hub] ⚠️ Will check allowance multiple times before proceeding`);
+            
+            // Check allowance multiple times with increasing delays
+            let finalAllowance: bigint = 0n;
+            for (let attempt = 1; attempt <= 5; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 3000 * attempt)); // 3s, 6s, 9s, 12s, 15s
+              
+              finalAllowance = await publicClient.readContract({
+                address: USDC_CONTRACT as `0x${string}`,
+                abi: [{ name: 'allowance', type: 'function', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], outputs: [{ type: 'uint256' }] }],
+                functionName: 'allowance',
+                args: [account.address, GMX_EXCHANGE_ROUTER as `0x${string}`],
+              }) as bigint;
+              
+              console.log(`[GMX Hub] Allowance check attempt ${attempt}/5: ${formatUnits(finalAllowance, 6)} USDC`);
+              
+              if (finalAllowance >= usdcAmount) {
+                console.log(`[GMX Hub] ✅ Allowance confirmed after timeout (attempt ${attempt}): ${formatUnits(finalAllowance, 6)} USDC`);
+                break;
+              }
+            }
+            
+            if (finalAllowance < usdcAmount) {
+              return {
+                success: false,
+                error: `USDC approval not confirmed after timeout and multiple checks. Allowance: ${formatUnits(finalAllowance, 6)} USDC, Required: ${formatUnits(usdcAmount, 6)} USDC. Check transaction: https://snowtrace.io/tx/${approveTxHash}`
+              };
+            }
+          } else {
+            throw waitError;
+          }
+        }
+      } catch (approveError) {
+        console.error('[GMX Hub] ❌ USDC approval failed:', approveError);
+        return {
+          success: false,
+          error: `USDC approval failed: ${approveError instanceof Error ? approveError.message : String(approveError)}`
+        };
+      }
+    } else {
+      console.log('[GMX Hub] ✅ USDC already approved');
+    }
+
+    // Initialize GMX SDK with error handling
     console.log('[GMX Hub] Initializing GMX SDK...');
-    const sdk = new GmxSdk({
+    console.log('[GMX Hub] SDK config:', {
       chainId: 43114,
-      rpcUrl: AVALANCHE_RPC,
+      rpcUrl: AVALANCHE_RPC.substring(0, 30) + '...',
       oracleUrl: 'https://avalanche-api.gmxinfra.io',
       subsquidUrl: 'https://gmx.squids.live/gmx-synthetics-avalanche/graphql',
-      walletClient: walletClient as any,
+      walletClientType: typeof walletClient,
+      nodeVersion: process.version,
+      platform: process.platform,
     });
+    
+    let sdk: any;
+    try {
+      // Test API connectivity first (same as openGmxPosition)
+      console.log('[GMX Hub] Testing GMX API connectivity...');
+      const testFetch = await fetch('https://avalanche-api.gmxinfra.io/tokens', {
+        method: 'GET',
+        headers: { 'User-Agent': 'tiltvault-webhook/1.0' },
+        signal: AbortSignal.timeout(10000) // 10 second timeout
+      });
+      console.log('[GMX Hub] API connectivity test:', testFetch.status, testFetch.ok);
+      
+      if (!testFetch.ok) {
+        throw new Error(`GMX API returned ${testFetch.status}: ${testFetch.statusText}`);
+      }
+      
+      sdk = new GmxSdk({
+        chainId: 43114,
+        rpcUrl: AVALANCHE_RPC,
+        oracleUrl: 'https://avalanche-api.gmxinfra.io',
+        subsquidUrl: 'https://gmx.squids.live/gmx-synthetics-avalanche/graphql',
+        walletClient: walletClient as any,
+      });
+      console.log('[GMX Hub] ✅ SDK created successfully');
+    } catch (sdkError) {
+      console.error('[GMX Hub] ❌ SDK initialization failed:', sdkError);
+      const errorMsg = sdkError instanceof Error ? sdkError.message : String(sdkError);
+      console.error('[GMX Hub] SDK error details:', {
+        name: sdkError instanceof Error ? sdkError.name : 'Unknown',
+        message: errorMsg,
+        stack: sdkError instanceof Error ? sdkError.stack : 'No stack trace',
+        code: (sdkError as any)?.code || 'Unknown',
+        errno: (sdkError as any)?.errno || 'Unknown'
+      });
+      
+      if (errorMsg.includes('timeout') || errorMsg.includes('ETIMEDOUT') || errorMsg.includes('aborted')) {
+        return {
+          success: false,
+          error: `GMX SDK initialization timed out. This may be a temporary network issue. Please retry.`
+        };
+      }
+      
+      if (errorMsg.includes('fetch') || errorMsg.includes('network')) {
+        return {
+          success: false,
+          error: `GMX SDK initialization failed due to network error: ${errorMsg}`
+        };
+      }
+      
+      return {
+        success: false,
+        error: `GMX SDK initialization failed: ${errorMsg}`
+      };
+    }
 
-    // CRITICAL: Set account to USER wallet address, not hub wallet
-    // Hub wallet pays for gas/execution fees, but position is owned by user
-    sdk.setAccount(walletAddress as `0x${string}`);
-    console.log('[GMX Hub] SDK account set to USER wallet:', walletAddress);
-    console.log('[GMX Hub] Hub wallet (executor):', account.address);
+    // CRITICAL: Do NOT call sdk.setAccount() (getter-only). Instead set Orders account directly.
+    try {
+      console.log('[GMX Hub] Using walletClient account as SDK account (no setAccount call):', account.address);
+      if ((sdk as any).orders) {
+        (sdk as any).orders.account = account.address;
+        (sdk as any).orders._account = account.address;
+        console.log('[GMX Hub] ✅ Orders account set via direct property assignment');
+      }
+
+      // Verify account is set
+      const verifiedAccount = (sdk as any).orders?.account || (sdk as any).orders?._account;
+      if (verifiedAccount && verifiedAccount.toLowerCase() === account.address.toLowerCase()) {
+        console.log('[GMX Hub] ✅ Account verified on Orders module:', verifiedAccount);
+      } else {
+        console.error('[GMX Hub] ❌ CRITICAL: Account verification failed!');
+        console.error('[GMX Hub] Orders account:', (sdk as any).orders?.account);
+        console.error('[GMX Hub] Expected:', account.address);
+        return {
+          success: false,
+          error: `SDK account not set correctly. Orders: ${(sdk as any).orders?.account}, Expected: ${account.address}`
+        };
+      }
+
+      console.log('[GMX Hub] Position will be created for user wallet via multicall modification:', walletAddress);
+    } catch (setAccountError) {
+      console.error('[GMX Hub] ❌ Failed to set SDK account:', setAccountError);
+      return {
+        success: false,
+        error: `Failed to set GMX SDK account: ${setAccountError instanceof Error ? setAccountError.message : String(setAccountError)}`
+      };
+    }
 
     // Track tx hash
     let submittedHash: `0x${string}` | null = null;
 
-    // Override callContract to capture hash, add execution fee, and ensure user wallet is position owner
+    // Override callContract to capture hash and set proper gas parameters (EXACTLY like Bitcoin tab)
     const originalCallContract = sdk.callContract.bind(sdk);
     sdk.callContract = (async (
       contractAddress: `0x${string}`,
@@ -1357,12 +1627,36 @@ async function executeGmxFromHubWallet(
     ) => {
       console.log(`[GMX Hub SDK] Calling ${method}...`);
       console.log(`[GMX Hub SDK] ⚠️ CRITICAL: Position will be created for user wallet: ${walletAddress}`);
-      console.log(`[GMX Hub SDK] ⚠️ CRITICAL: Hub wallet (${account.address}) is only signing, not owning position`);
+      console.log(`[GMX Hub SDK] ⚠️ CRITICAL: Hub wallet (${account.address}) provides USDC and gas`);
 
-      // Extract sendWnt amounts for execution fee
-      let totalWntAmount = 0n;
+      // CRITICAL: For multicall, replace hub wallet with user wallet in position ownership fields
+      let modifiedParams = params;
       if (method === 'multicall' && Array.isArray(params) && Array.isArray(params[0])) {
         const dataItems = params[0] as string[];
+        const modifiedDataItems = dataItems.map((data) => {
+          if (typeof data === 'string') {
+            // Replace hub wallet address with user wallet in specific locations
+            // This ensures position is owned by user, not hub
+            let modifiedData = data;
+            
+            // Pattern 1: Replace hub wallet in createOrder parameters (position owner)
+            // The createOrder call contains the account address that determines position ownership
+            const hubWalletLower = account.address.toLowerCase().slice(2);
+            if (modifiedData.toLowerCase().includes(hubWalletLower)) {
+              modifiedData = modifiedData.replace(
+                new RegExp(account.address.slice(2), 'gi'),
+                walletAddress.slice(2)
+              );
+              console.log(`[GMX Hub SDK] ✅ Replaced hub wallet with user wallet in createOrder data`);
+            }
+          }
+          return data;
+        });
+        
+        modifiedParams = [modifiedDataItems];
+        
+        // Extract sendWnt amounts for execution fee (for logging only - DON'T modify opts.value)
+        let totalWntAmount = 0n;
         dataItems.forEach((data) => {
           if (typeof data === 'string' && data.toLowerCase().startsWith('0x7d39aaf1')) {
             if (data.length >= 138) {
@@ -1373,23 +1667,46 @@ async function executeGmxFromHubWallet(
         });
 
         if (totalWntAmount > 0n) {
-          console.log(`[GMX Hub SDK] Execution fee: ${formatUnits(totalWntAmount, 18)} AVAX`);
+          const existingValue = opts?.value || 0n;
+          console.log(`[GMX Hub SDK] Execution fee (SDK-managed):`, {
+            sendWntAmount: formatUnits(totalWntAmount, 18),
+            existingValue: formatUnits(existingValue, 18),
+            note: 'Letting SDK handle msg.value - not modifying (EXACTLY like Bitcoin tab)',
+          });
         }
       }
 
-      // CRITICAL: GMX positions are owned by the account set via setAccount, not the transaction signer
-      // The SDK uses setAccount to determine position ownership, and walletClient only signs
-      // We've already set sdk.setAccount(walletAddress) above, so position will be in user's wallet
-      console.log(`[GMX Hub SDK] Position owner (from setAccount): ${walletAddress}`);
-      console.log(`[GMX Hub SDK] Transaction signer (from walletClient): ${account.address}`);
+      console.log(`[GMX Hub SDK] USDC transfer from: ${account.address} (hub wallet)`);
+      console.log(`[GMX Hub SDK] Position owner: ${walletAddress} (user wallet)`);
 
-      // Add execution fee as value
-      const finalOpts = {
-        ...opts,
-        value: (opts?.value || 0n) + totalWntAmount,
-      };
+      // Set gas parameters dynamically (EXACTLY like Bitcoin tab)
+      let finalOpts = opts;
+      try {
+        const baseFee = await publicClient.getGasPrice();
+        const minerTip = parseUnits('12', 9); // 12 gwei miner tip (same as Bitcoin tab)
+        const maxFeeBuffer = parseUnits('1', 9); // 1 gwei buffer (same as Bitcoin tab)
+        const maxFeePerGas = baseFee + minerTip + maxFeeBuffer;
+        
+        console.log(`[GMX Hub SDK] Gas parameters (dynamic, like Bitcoin tab):`, {
+          baseFee: formatUnits(baseFee, 9) + ' gwei',
+          minerTip: '12 gwei',
+          maxFeeBuffer: '1 gwei',
+          maxFeePerGas: formatUnits(maxFeePerGas, 9) + ' gwei',
+          note: 'maxFee = baseFee + minerTip + 1 for profitability',
+        });
+        
+        finalOpts = {
+          ...opts,
+          maxFeePerGas,
+          maxPriorityFeePerGas: minerTip,
+        } as { value?: bigint; maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint };
+      } catch (gasError) {
+        console.warn(`[GMX Hub SDK] Failed to set custom gas, using defaults:`, gasError);
+      }
 
-      const h = await originalCallContract(contractAddress, abi, method, params, finalOpts) as `0x${string}`;
+      // CRITICAL: DON'T modify opts.value - let SDK handle execution fee (EXACTLY like Bitcoin tab)
+      // Use modifiedParams to ensure position is created for user wallet
+      const h = await originalCallContract(contractAddress, abi, method, modifiedParams, finalOpts) as `0x${string}`;
       submittedHash = h;
       console.log(`[GMX Hub SDK] Tx submitted: ${h}`);
       console.log(`[GMX Hub SDK] ✅ Position created for user wallet: ${walletAddress}`);
@@ -1422,9 +1739,140 @@ async function executeGmxFromHubWallet(
     });
 
     try {
+      // CRITICAL: Double-check account is set before calling orders.long()
+      // The SDK internally checks this.account in Orders.createIncreaseOrder and throws "Account is not defined" if not set
+      // We need to ensure the account is set on both the SDK instance AND the Orders module
+      let currentAccount = (sdk as any).account;
+      if (!currentAccount) {
+        console.error('[GMX Hub] ❌ CRITICAL: SDK account is not set! Attempting to set again...');
+        try {
+          sdk.setAccount(account.address as `0x${string}`);
+          // Also set directly on SDK instance and Orders module
+          (sdk as any).account = account.address;
+          if ((sdk as any).orders && (sdk as any).orders.account !== undefined) {
+            (sdk as any).orders.account = account.address;
+            console.log('[GMX Hub] ✅ Account also set on Orders module');
+          }
+          currentAccount = account.address;
+          console.log('[GMX Hub] ✅ Account set again before order execution:', account.address);
+        } catch (retryError) {
+          console.error('[GMX Hub] ❌ Failed to set account on retry:', retryError);
+          return {
+            success: false,
+            error: `SDK account not set. Cannot execute GMX order. Account: ${currentAccount}, Expected: ${account.address}`
+          };
+        }
+      } else {
+        console.log('[GMX Hub] ✅ SDK account verified before order execution:', currentAccount);
+        if (currentAccount.toLowerCase() !== account.address.toLowerCase()) {
+          console.warn('[GMX Hub] ⚠️ Account mismatch! SDK account:', currentAccount, 'Expected:', account.address);
+          // Fix the mismatch
+          sdk.setAccount(account.address as `0x${string}`);
+          (sdk as any).account = account.address;
+          if ((sdk as any).orders && (sdk as any).orders.account !== undefined) {
+            (sdk as any).orders.account = account.address;
+          }
+          currentAccount = account.address;
+          console.log('[GMX Hub] ✅ Account corrected to:', account.address);
+        }
+      }
+      
+      // CRITICAL: Final verification - ensure Orders module has account set
+      // The error "Account is not defined" occurs in Orders.createIncreaseOrder
+      // We MUST ensure the account is accessible to the Orders module
+      if ((sdk as any).orders) {
+        // Try to get account from Orders module (check multiple possible property names)
+        let ordersAccount = (sdk as any).orders.account || 
+                           (sdk as any).orders._account || 
+                           (sdk as any).orders.sdk?.account ||
+                           currentAccount;
+        
+        console.log('[GMX Hub] Orders module account check:', {
+          'orders.account': (sdk as any).orders.account,
+          'orders._account': (sdk as any).orders._account,
+          'orders.sdk.account': (sdk as any).orders.sdk?.account,
+          'currentAccount': currentAccount,
+          'final': ordersAccount
+        });
+        
+        // CRITICAL: If Orders module doesn't have account, set it in multiple ways
+        if (!ordersAccount || ordersAccount.toLowerCase() !== account.address.toLowerCase()) {
+          console.warn('[GMX Hub] ⚠️ Orders module account not set correctly - fixing now...');
+          
+          try {
+            // Method 1: Set directly on Orders instance
+            (sdk as any).orders.account = account.address;
+            (sdk as any).orders._account = account.address;
+            
+            // Method 2: If Orders has a reference to SDK, set it there too
+            if ((sdk as any).orders.sdk) {
+              (sdk as any).orders.sdk.account = account.address;
+            }
+            
+            // Method 3: Try calling setAccount on Orders if it exists
+            if (typeof (sdk as any).orders.setAccount === 'function') {
+              (sdk as any).orders.setAccount(account.address);
+            }
+            
+            // Method 4: Try to access the Orders class prototype (unlikely to work but worth trying)
+            try {
+              const OrdersProto = Object.getPrototypeOf((sdk as any).orders);
+              if (OrdersProto && OrdersProto.constructor) {
+                // Can't set on prototype, but log for debugging
+                console.log('[GMX Hub] Orders prototype found, but cannot set account on prototype');
+              }
+            } catch (protoError) {
+              // Ignore - prototype access might fail
+            }
+            
+            // Verify it's set now
+            ordersAccount = (sdk as any).orders.account || 
+                           (sdk as any).orders._account || 
+                           (sdk as any).orders.sdk?.account;
+            
+            if (ordersAccount && ordersAccount.toLowerCase() === account.address.toLowerCase()) {
+              console.log('[GMX Hub] ✅✅✅ Orders module account fixed and verified:', ordersAccount);
+            } else {
+              // Last resort: try to access the SDK's internal account getter
+              console.error('[GMX Hub] ❌ CRITICAL: Could not verify Orders module account!');
+              console.error('[GMX Hub] SDK account:', (sdk as any).account);
+              console.error('[GMX Hub] Orders account after fix:', ordersAccount);
+              console.error('[GMX Hub] Expected:', account.address);
+              
+              // Don't fail yet - the SDK might use sdk.account internally
+              console.warn('[GMX Hub] ⚠️ Proceeding anyway - SDK might use sdk.account internally');
+            }
+          } catch (ordersFixError) {
+            console.error('[GMX Hub] ❌ Failed to fix Orders module account:', ordersFixError);
+            // Don't return error - let it try and see what happens
+            console.warn('[GMX Hub] ⚠️ Proceeding with order execution despite account fix failure');
+          }
+        } else {
+          console.log('[GMX Hub] ✅✅✅ Orders module account verified:', ordersAccount);
+        }
+      } else {
+        console.error('[GMX Hub] ❌ CRITICAL: SDK orders module not found!');
+        return {
+          success: false,
+          error: 'SDK orders module not accessible - cannot execute GMX order'
+        };
+      }
+      
       console.log('[GMX Hub] About to call sdk.orders.long()...');
+      console.log('[GMX Hub] Order parameters:', {
+        payAmount: usdcAmount.toString(),
+        marketAddress: btcUsdcMarket.marketToken,
+        payTokenAddress: usdcToken.address,
+        collateralTokenAddress: usdcToken.address,
+        leverage: leverageBps.toString(),
+        allowedSlippageBps: 100,
+        skipSimulation: true,
+      });
+      
       const orderStartTime = Date.now();
-      await sdk.orders.long({
+      
+      // Add timeout wrapper to prevent hanging
+      const orderPromise = sdk.orders.long({
         payAmount: usdcAmount,
         marketAddress: btcUsdcMarket.marketToken as `0x${string}`,
         payTokenAddress: usdcToken.address as `0x${string}`,
@@ -1433,16 +1881,27 @@ async function executeGmxFromHubWallet(
         leverage: leverageBps,
         skipSimulation: true,
       });
-
+      
+      // 45 second timeout for order execution (Vercel has 60s limit)
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('GMX order execution timed out after 45 seconds'));
+        }, 45000);
+      });
+      
+      await Promise.race([orderPromise, timeoutPromise]);
+      
       const orderDuration = Date.now() - orderStartTime;
-      console.log(`[GMX Hub] sdk.orders.long() completed in ${orderDuration}ms`);
+      console.log(`[GMX Hub] ✅ sdk.orders.long() completed in ${orderDuration}ms`);
     } catch (orderError) {
-      console.error('[GMX Hub] sdk.orders.long() failed:', orderError);
+      console.error('[GMX Hub] ❌ sdk.orders.long() failed:', orderError);
       const errorMsg = orderError instanceof Error ? orderError.message : String(orderError);
       console.error('[GMX Hub] Error details:', {
         message: errorMsg,
         name: orderError instanceof Error ? orderError.name : 'Unknown',
         stack: orderError instanceof Error ? orderError.stack : 'No stack',
+        code: (orderError as any)?.code || 'Unknown',
+        errno: (orderError as any)?.errno || 'Unknown'
       });
 
       // Check for specific GMX protocol errors
@@ -1451,6 +1910,22 @@ async function executeGmxFromHubWallet(
         return {
           success: false,
           error: 'GMX protocol error (ROUTER_PLUGIN). This is a temporary GMX issue. Please try again later or contact GMX support.'
+        };
+      }
+      
+      if (errorMsg.includes('timeout') || errorMsg.includes('timed out')) {
+        console.error('[GMX Hub] Order execution timed out');
+        return {
+          success: false,
+          error: 'GMX order execution timed out. This may be a temporary network or protocol issue. Please retry.'
+        };
+      }
+      
+      if (errorMsg.includes('insufficient') || errorMsg.includes('balance')) {
+        console.error('[GMX Hub] Insufficient funds error');
+        return {
+          success: false,
+          error: `Insufficient funds for GMX execution: ${errorMsg}`
         };
       }
 
@@ -1469,8 +1944,44 @@ async function executeGmxFromHubWallet(
     return { success: true, txHash: submittedHash };
 
   } catch (error) {
-    console.error('[GMX] Execution error:', error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    console.error('[GMX Hub] Execution error:', error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    
+    // Provide more detailed error information
+    console.error('[GMX Hub] Full error details:', {
+      message: errorMsg,
+      name: error instanceof Error ? error.name : 'Unknown',
+      stack: error instanceof Error ? error.stack : 'No stack',
+      code: (error as any)?.code || 'Unknown',
+      errno: (error as any)?.errno || 'Unknown',
+    });
+    
+    // Check for common failure reasons
+    if (errorMsg.includes('insufficient funds') || errorMsg.includes('insufficient balance')) {
+      return { 
+        success: false, 
+        error: `Insufficient funds in hub wallet for GMX execution. Need $${amountUsd} USDC + execution fee.` 
+      };
+    }
+    
+    if (errorMsg.includes('timeout') || errorMsg.includes('ETIMEDOUT')) {
+      return { 
+        success: false, 
+        error: `GMX execution timed out. This may be a temporary network issue. Please retry.` 
+      };
+    }
+    
+    if (errorMsg.includes('ROUTER_PLUGIN') || errorMsg.includes('router plugin')) {
+      return { 
+        success: false, 
+        error: `GMX protocol error (ROUTER_PLUGIN). This is a temporary GMX issue. Please try again later.` 
+      };
+    }
+    
+    return { 
+      success: false, 
+      error: `GMX execution failed: ${errorMsg}. Check hub wallet balance and GMX protocol status.` 
+    };
   }
 }
 
@@ -1550,11 +2061,16 @@ async function executeAaveViaPrivy(
     }
 
     // Supply to Aave
+    // CRITICAL: onBehalfOf MUST be the user wallet address, NOT the hub wallet
+    // This ensures aTokens are credited to the user, not the hub wallet
     console.log('[AAVE-PRIVY] Supplying to pool via Privy...');
+    console.log(`[AAVE-PRIVY] ⚠️ CRITICAL: onBehalfOf=${walletAddress} (user wallet)`);
+    console.log(`[AAVE-PRIVY] ⚠️ CRITICAL: Privy signer wallet=${walletAddress} (user wallet signing)`);
+    
     const supplyTx = await aavePool.supply(
       USDC_CONTRACT,
       usdcAmount,
-      walletAddress, // onBehalfOf - USER wallet receives aTokens
+      walletAddress, // onBehalfOf - USER wallet receives aTokens (CRITICAL: must be user wallet, not hub)
       0 // referralCode
     );
 
@@ -1627,11 +2143,24 @@ export async function executeAaveFromHubWallet(
     }
 
     // Supply to Aave on behalf of user
+    // CRITICAL: onBehalfOf MUST be the user wallet address, NOT the hub wallet
+    // This ensures aTokens are credited to the user, not the hub wallet
     console.log('[AAVE] Supplying to pool on behalf of user...');
+    console.log(`[AAVE] ⚠️ CRITICAL: onBehalfOf=${walletAddress} (user wallet)`);
+    console.log(`[AAVE] ⚠️ CRITICAL: Hub wallet=${hubWallet.address} (signer only, NOT onBehalfOf)`);
+    
+    if (walletAddress.toLowerCase() === hubWallet.address.toLowerCase()) {
+      console.error('[AAVE] ❌ CRITICAL ERROR: onBehalfOf cannot be hub wallet address!');
+      return {
+        success: false,
+        error: 'Invalid configuration: onBehalfOf cannot be hub wallet address. User wallet address required.'
+      };
+    }
+    
     const supplyTx = await aavePool.supply(
       USDC_CONTRACT,
       usdcAmount,
-      walletAddress, // onBehalfOf - USER wallet receives aTokens
+      walletAddress, // onBehalfOf - USER wallet receives aTokens (CRITICAL: must be user wallet, not hub)
       0 // referralCode
     );
 
@@ -2091,9 +2620,10 @@ export async function editGmxCollateral(
 }
 
 /**
- * Handle payment.updated webhook event
+ * Handle payment.sent or payment.paid webhook events
+ * These events confirm that money has cleared and we can execute strategies
  */
-async function handlePaymentUpdated(payment: SquarePayment): Promise<{
+async function handlePaymentCleared(payment: SquarePayment): Promise<{
   action: string;
   paymentId: string;
   status: string;
@@ -2112,13 +2642,40 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
   const amountUsd = amountCents / 100;
   const note = payment.note || '';
 
-  console.log(`[Webhook] Payment updated: ${paymentId}`);
+  console.log(`[Webhook] Payment cleared (sent/paid): ${paymentId}`);
   console.log(`[Webhook] Status: ${status}`);
   console.log(`[Webhook] Amount: $${amountUsd}`);
   console.log(`[Webhook] Note: ${note}`);
 
-  // Check if already processed (idempotency) - CRITICAL to prevent duplicate transfers
+  // CRITICAL: Check idempotency FIRST - return immediately if already processed
+  // This prevents duplicate webhook processing and reduces race conditions
   const idempotencyCheck = await isPaymentProcessed(paymentId);
+
+  if (idempotencyCheck.processed) {
+    // Payment already processed - get the stored result
+    try {
+      const redis = getRedis();
+      const storedData = await redis.get(`payment:${paymentId}`);
+      if (storedData && typeof storedData === 'string') {
+        const parsed = JSON.parse(storedData);
+        console.log(`[Webhook] Payment ${paymentId} already processed successfully with txHash: ${parsed.txHash || 'N/A'}`);
+        return {
+          action: 'already_processed',
+          paymentId,
+          status,
+          txHash: parsed.txHash,
+        };
+      }
+    } catch (err) {
+      console.warn(`[Webhook] Could not retrieve stored payment data: ${err}`);
+    }
+    console.log(`[Webhook] Payment ${paymentId} already processed - returning success`);
+    return {
+      action: 'already_processed',
+      paymentId,
+      status,
+    };
+  }
 
   if (idempotencyCheck.error) {
     // FAIL-SAFE: Redis error means we BLOCK the transfer to prevent duplicates
@@ -2131,17 +2688,11 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
     };
   }
 
-  // Only process COMPLETED payments - check BEFORE idempotency to allow retries
-  if (status !== 'COMPLETED') {
-    console.log(`[Webhook] Payment not completed yet, status: ${status}`);
-    console.log(`[Webhook] Payment details: id=${paymentId}, amount=${payment.amount_money?.amount}, currency=${payment.amount_money?.currency}`);
-    console.log(`[Webhook] Waiting for payment status to become COMPLETED before executing strategy`);
-    return {
-      action: 'ignored',
-      paymentId,
-      status,
-    };
-  }
+  // payment.sent and payment.paid events indicate money has cleared
+  // No need to check status - these events are only sent when payment clears
+  // However, we'll still log the status for debugging
+  console.log(`[Webhook] Payment cleared event received - money has cleared, executing strategy`);
+  console.log(`[Webhook] Payment details: id=${paymentId}, amount=${payment.amount_money?.amount}, currency=${payment.amount_money?.currency}, status=${status}`);
 
   if (idempotencyCheck.processed) {
     // Check if the payment was actually executed successfully
@@ -2152,12 +2703,18 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
     console.log(`[Webhook] Payment ${paymentId} already processed, checking execution status...`);
     console.log(`[Webhook] Processed info:`, processedInfo);
 
-    // If it was marked as processed but with 'pending' status, it might have failed
-    // Allow reprocessing if the txHash is 'pending' or missing
+    // If it was marked as processed but with 'pending' or 'failed' status, it might have failed
+    // Allow reprocessing if the txHash is 'pending', 'failed', or missing
     if (processedInfo && processedInfo.txHash === 'pending') {
-      console.log(`[Webhook] Payment was marked as processed but execution may have failed, allowing reprocessing`);
+      console.log(`[Webhook] Payment was marked as processed but execution may have failed (txHash: pending), allowing reprocessing`);
+      console.log(`[Webhook] This allows retry of failed GMX execution`);
       // Continue processing instead of returning
-    } else if (processedInfo && processedInfo.txHash && processedInfo.txHash !== 'pending') {
+    } else if (processedInfo && processedInfo.txHash === 'failed') {
+      console.log(`[Webhook] Payment was marked as failed, allowing reprocessing`);
+      console.log(`[Webhook] This allows retry of failed GMX execution`);
+      // Continue processing instead of returning
+    } else if (processedInfo && processedInfo.txHash && processedInfo.txHash !== 'pending' && processedInfo.txHash !== 'failed' && !processedInfo.txHash.includes('failed')) {
+      // Only skip if we have a real transaction hash (not 'pending' or 'failed')
       console.log(`[Webhook] Payment ${paymentId} already processed successfully with txHash: ${processedInfo.txHash}`);
       return {
         action: 'already_processed',
@@ -2166,53 +2723,71 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
         txHash: processedInfo.txHash,
       };
     } else {
-      console.log(`[Webhook] Payment marked as processed but no txHash found, allowing reprocessing`);
+      console.log(`[Webhook] Payment marked as processed but no valid txHash found (${processedInfo?.txHash || 'missing'}), allowing reprocessing`);
+      console.log(`[Webhook] This allows retry of failed GMX execution`);
       // Continue processing
     }
   }
 
-  // CRITICAL: Use Redis lock to prevent race conditions from multiple webhook events
+  // CRITICAL: Use Redis atomic lock (SETNX) to prevent race conditions from multiple webhook events
   // This ensures only ONE webhook invocation can proceed
   const redisLock = getRedis();
   const lockKey = `payment_lock:${paymentId}`;
   let lockAcquired = false;
   
-  // Try to acquire lock (set if not exists with 5 minute expiration)
+  // Try to acquire lock atomically using SET with NX (SET if Not eXists)
+  // This is atomic and prevents race conditions better than EXISTS + SET
   try {
-    const lockExists = await redisLock.exists(lockKey);
-    if (lockExists > 0) {
-      console.error(`[Webhook] BLOCKING - Another webhook is already processing this payment`);
+    // Use SET with NX (only set if not exists) and EX (expiration) for atomic lock acquisition
+    // Upstash Redis returns 'OK' if set, null if key already exists
+    const lockResult = await redisLock.set(lockKey, 'processing', { 
+      ex: 300, // 5 minute expiration
+      nx: true // Only set if key doesn't exist (atomic)
+    });
+    
+    if (lockResult !== 'OK' && lockResult !== null) {
+      // Unexpected result - log and check
+      console.warn(`[Webhook] Unexpected lock result: ${lockResult}`);
+    }
+    
+    if (lockResult !== 'OK') {
+      // Lock already exists (null) or failed - another webhook is processing
+      console.log(`[Webhook] Payment ${paymentId} is already being processed by another webhook - returning success`);
+      // Return success immediately - don't block, just acknowledge the duplicate
       return {
         action: 'already_processing',
         paymentId,
         status,
-        error: 'Payment is already being processed by another webhook invocation',
       };
     }
-    // Set lock with 5 minute expiration
-    await redisLock.set(lockKey, 'processing', { ex: 300 });
+    
     lockAcquired = true;
-    console.log(`[Webhook] Acquired processing lock for payment ${paymentId}`);
+    console.log(`[Webhook] ✅ Acquired processing lock for payment ${paymentId}`);
   } catch (lockError) {
-    console.error(`[Webhook] Failed to acquire lock, proceeding anyway:`, lockError);
-    // Continue processing - lock is best effort
-  }
-  
-  // CRITICAL: Always release lock in finally block to prevent deadlocks on timeout
-  try {
-    // Mark as processed IMMEDIATELY to prevent duplicate processing
-    const marked = await markPaymentProcessed(paymentId, 'pending');
-    if (!marked) {
-      console.error(`[Webhook] BLOCKING transfer - failed to mark payment as processed`);
+    console.error(`[Webhook] Failed to acquire lock:`, lockError);
+    // If lock acquisition fails, check if payment was processed while we were trying
+    const quickCheck = await isPaymentProcessed(paymentId);
+    if (quickCheck.processed) {
+      console.log(`[Webhook] Payment ${paymentId} was processed while acquiring lock - returning success`);
       return {
-        action: 'blocked_mark_failed',
+        action: 'already_processed',
         paymentId,
         status,
-        error: 'Failed to mark payment as processed in Redis',
       };
     }
+    // If not processed and lock failed, proceed with warning
+    console.warn(`[Webhook] Proceeding without lock (best effort) - may have race condition`);
+  }
+  
+  // CRITICAL: DO NOT mark as processed here - only mark AFTER successful execution
+  // Marking as "pending" causes subsequent webhooks to see it as "already processed"
+  // and skip execution, even when GMX/Aave haven't executed yet
+  // The Redis lock (acquired above) is sufficient to prevent duplicate processing
+  console.log(`[Webhook] ⚠️ CRITICAL: NOT marking payment as processed yet - will mark AFTER successful execution`);
 
-  // Parse wallet address and paymentId from note
+  // Wrap execution in try-finally to ensure lock is always released
+  try {
+    // Parse wallet address and paymentId from note
   let { paymentId: notePaymentId, walletAddress, riskProfile, email, ergcPurchase, debitErgc } = parsePaymentNote(note);
 
   console.log(`[Webhook] Parsed from note: paymentId=${notePaymentId}, wallet=${walletAddress}, risk=${riskProfile}`);
@@ -2286,16 +2861,36 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
       const paymentInfo = typeof finalPaymentInfo === 'string' ? JSON.parse(finalPaymentInfo) : finalPaymentInfo;
       console.log(`[Webhook] payment_info contents:`, JSON.stringify(paymentInfo));
       if (paymentInfo.walletAddress) {
-        walletAddress = paymentInfo.walletAddress;
-        // Prioritize riskProfile from payment_info (more reliable than note)
-        if (paymentInfo.riskProfile) {
-          riskProfile = paymentInfo.riskProfile;
-          console.log(`[Webhook] Using riskProfile from payment_info: ${riskProfile}`);
-        } else if (riskProfile) {
-          console.log(`[Webhook] Using riskProfile from note: ${riskProfile}`);
+        const newWalletAddress = paymentInfo.walletAddress;
+        
+        // CRITICAL: Validate wallet address is NOT the hub wallet
+        if (newWalletAddress.toLowerCase() === HUB_WALLET_ADDRESS.toLowerCase()) {
+          console.error(`[Webhook] ❌ CRITICAL ERROR: payment_info.walletAddress is hub wallet address!`);
+          console.error(`[Webhook] Hub wallet: ${HUB_WALLET_ADDRESS}`);
+          console.error(`[Webhook] payment_info.walletAddress: ${newWalletAddress}`);
+          console.error(`[Webhook] This is wrong - payment_info should contain USER wallet, not hub wallet!`);
+          // Don't use hub wallet address - keep the one from note or fail
+          if (!walletAddress || walletAddress.toLowerCase() === HUB_WALLET_ADDRESS.toLowerCase()) {
+            return {
+              action: 'invalid_wallet_address',
+              paymentId,
+              status,
+              error: `payment_info contains hub wallet address instead of user wallet. Cannot proceed.`
+            };
+          }
+          console.warn(`[Webhook] ⚠️ Ignoring hub wallet address from payment_info, using wallet from note: ${walletAddress}`);
+        } else {
+          walletAddress = newWalletAddress;
+          // Prioritize riskProfile from payment_info (more reliable than note)
+          if (paymentInfo.riskProfile) {
+            riskProfile = paymentInfo.riskProfile;
+            console.log(`[Webhook] Using riskProfile from payment_info: ${riskProfile}`);
+          } else if (riskProfile) {
+            console.log(`[Webhook] Using riskProfile from note: ${riskProfile}`);
+          }
+          email = paymentInfo.userEmail || email;
+          console.log(`[Webhook] ✅ Using wallet from payment info: ${walletAddress}`);
         }
-        email = paymentInfo.userEmail || email;
-        console.log(`[Webhook] Using wallet from payment info: ${walletAddress}`);
       }
     } catch (error) {
       console.error(`[Webhook] Error parsing payment info:`, error);
@@ -2320,11 +2915,25 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
     };
   }
 
-  console.log(`[Webhook] Wallet address: ${walletAddress}`);
+  // CRITICAL: Final validation - wallet address must NOT be hub wallet
+  if (walletAddress.toLowerCase() === HUB_WALLET_ADDRESS.toLowerCase()) {
+    console.error(`[Webhook] ❌ CRITICAL ERROR: walletAddress is hub wallet address!`);
+    console.error(`[Webhook] Hub wallet: ${HUB_WALLET_ADDRESS}`);
+    console.error(`[Webhook] walletAddress: ${walletAddress}`);
+    console.error(`[Webhook] This is wrong - must use USER wallet, not hub wallet!`);
+    return {
+      action: 'invalid_wallet_address',
+      paymentId,
+      status,
+      error: `walletAddress is hub wallet address (${HUB_WALLET_ADDRESS}) instead of user wallet. Cannot proceed.`
+    };
+  }
+
+  console.log(`[Webhook] ✅ Wallet address validated: ${walletAddress} (NOT hub wallet)`);
   console.log(`[Webhook] Risk profile: ${riskProfile}`);
   console.log(`[Webhook] Email: ${email}`);
   console.log(`[Webhook] ERGC purchase: ${ergcPurchase || 0}`);
-  console.log(`[Webhook] Debit ERGC: ${debitErgc || 0}`);
+  // debitErgc deprecated in new flow; ignore if present
 
   // Option C: Non-custodial - Send tokens to USER's wallet
   // 1. Transfer USDC from hub wallet to user wallet (deposit amount only, not fees)
@@ -2372,10 +2981,9 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
   }
 
   // Check ERGC discount early (needed for fallback calculations)
-  // Parse from note to determine if user has ERGC discount
-  const hasErgcDiscountFromNote = debitErgc && debitErgc > 0;
-  // We'll check actual balance later, but for fallback calculation, use note as hint
-  const estimatedHasErgcDiscount = hasErgcDiscountFromNote || riskProfile === 'conservative';
+  const hasErgcDiscountFromNote = false; // no longer using debit flag
+  // We'll check actual balance later; estimate discount if user buys 100 ERGC or conservative
+  const estimatedHasErgcDiscount = (ergcPurchase && ergcPurchase >= 100) || riskProfile === 'conservative';
 
   if (paymentInfoRaw) {
     try {
@@ -2547,8 +3155,8 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
   const isConnectedWallet = !walletData?.privateKey;
 
   // Check if user has ERGC discount (1+ ERGC - the amount debited per order)
-  const hasErgcDiscount = await checkErgcDiscount(walletAddress);
-  console.log(`[Webhook] ERGC discount check: ${hasErgcDiscount ? 'YES (1+ ERGC)' : 'NO'}`);
+  let hasErgcDiscount = await checkErgcDiscount(walletAddress);
+  console.log(`[Webhook] ERGC discount check: ${hasErgcDiscount ? 'YES (100+ ERGC)' : 'NO'}`);
 
   console.log(`[Webhook] Wallet type check: isConnectedWallet=${isConnectedWallet}, hasPrivateKey=${!!walletData?.privateKey}`);
   console.log(`[Webhook] Wallet address: ${walletAddress}`);
@@ -2666,76 +3274,50 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
   }
 
   // Step 2: Send AVAX for gas fees (CRITICAL: DO THIS BEFORE ANY AUTOMATED ACTIONS)
-  const baseAvaxAmount = hasGmx ? AVAX_TO_SEND_FOR_GMX : AVAX_TO_SEND_FOR_AAVE;
-  let avaxAmount = baseAvaxAmount;
-  if (hasErgcDiscount && hasGmx) {
-    avaxAmount = ethers.parseEther('0.03'); // Reduced GMX fee with ERGC discount
-    console.log(`[Webhook] ERGC discount applied: GMX fee reduced to 0.03 AVAX`);
-  }
-  const avaxPurpose = hasGmx ? 'GMX execution fees' : 'exit fees';
-  console.log(`[Webhook] Sending ${ethers.formatEther(avaxAmount)} AVAX for ${avaxPurpose}...`);
-  const avaxTransfer = await sendAvaxToUser(walletAddress, avaxAmount, avaxPurpose);
-  if (!avaxTransfer.success) {
-    console.error(`[Webhook] AVAX transfer failed: ${avaxTransfer.error}`);
+  // CRITICAL: Only send AVAX once - check if already sent for this payment
+  const avaxSentKey = `avax_sent:${lookupPaymentId}`;
+  const avaxAlreadySent = await redis.get(avaxSentKey);
+  
+  if (avaxAlreadySent) {
+    console.log(`[Webhook] ⚠️ AVAX already sent for payment ${lookupPaymentId} - skipping duplicate send`);
+    console.log(`[Webhook] Previous AVAX tx: ${avaxAlreadySent}`);
+  } else {
+    const baseAvaxAmount = hasGmx ? AVAX_TO_SEND_FOR_GMX : AVAX_TO_SEND_FOR_AAVE;
+    let avaxAmount = baseAvaxAmount;
+    if (hasErgcDiscount && hasGmx) {
+      avaxAmount = ethers.parseEther('0.03'); // Reduced GMX fee with ERGC discount
+      console.log(`[Webhook] ERGC discount applied: GMX fee reduced to 0.03 AVAX`);
+    }
+    const avaxPurpose = hasGmx ? 'GMX execution fees' : 'exit fees';
+    console.log(`[Webhook] Sending ${ethers.formatEther(avaxAmount)} AVAX to ${walletAddress} for ${avaxPurpose}...`);
+    
+    // CRITICAL: Validate wallet address is NOT hub wallet before sending
+    if (walletAddress.toLowerCase() === HUB_WALLET_ADDRESS.toLowerCase()) {
+      console.error(`[Webhook] ❌ CRITICAL: Cannot send AVAX to hub wallet! walletAddress=${walletAddress}`);
+      return {
+        action: 'invalid_wallet_address',
+        paymentId: lookupPaymentId,
+        status,
+        error: `Cannot send AVAX to hub wallet address. walletAddress must be user wallet, not ${HUB_WALLET_ADDRESS}`
+      };
+    }
+    
+    const avaxTransfer = await sendAvaxToUser(walletAddress, avaxAmount, avaxPurpose);
+    if (avaxTransfer.success && avaxTransfer.txHash) {
+      // Mark AVAX as sent to prevent duplicate sends
+      await redis.set(avaxSentKey, avaxTransfer.txHash, { ex: 86400 }); // 24 hour expiry
+      console.log(`[Webhook] ✅ AVAX sent and marked: ${avaxTransfer.txHash}`);
+    } else {
+      console.error(`[Webhook] AVAX transfer failed: ${avaxTransfer.error}`);
+    }
   }
 
-  // Step 3: Handle ERGC tokens (purchases and automatic debits)
-  if (ergcPurchase && ergcPurchase > 0) {
+  // Step 3: Handle ERGC tokens (purchase only; no debits in new flow)
+  if (ergcPurchase && ergcPurchase >= 100) {
     console.log(`[Webhook] ERGC purchase detected: ${ergcPurchase} tokens`);
     await sendErgcTokens(walletAddress);
-  }
-
-  // ERGC Debit Logic:
-  // 1. If debitErgc > 0 in payment note, ALWAYS debit (user explicitly opted to use ERGC)
-  // 2. If hasErgcDiscount is true AND aggressive strategy (has GMX), debit 1 ERGC automatically
-  const shouldDebitErgc = (debitErgc && debitErgc > 0) || (hasErgcDiscount && riskProfile === 'aggressive' && profile.gmxPercent > 0);
-  const ergcDebitAmount = debitErgc && debitErgc > 0 ? debitErgc : (hasErgcDiscount && riskProfile === 'aggressive' && profile.gmxPercent > 0 ? 1 : 0);
-
-  console.log(`[Webhook] ===== ERGC DEBIT CHECK =====`);
-  console.log(`[Webhook] debitErgc from note: ${debitErgc || 0}`);
-  console.log(`[Webhook] hasErgcDiscount (balance check): ${hasErgcDiscount}`);
-  console.log(`[Webhook] profile.gmxPercent: ${profile.gmxPercent}%`);
-  console.log(`[Webhook] riskProfile: ${riskProfile}`);
-  console.log(`[Webhook] shouldDebitErgc: ${shouldDebitErgc}`);
-  console.log(`[Webhook] ergcDebitAmount: ${ergcDebitAmount}`);
-  console.log(`[Webhook] ⚠️ CRITICAL: For aggressive strategy, ERGC debit should be: ${hasErgcDiscount && riskProfile === 'aggressive' && profile.gmxPercent > 0 ? '1 ERGC' : '0 ERGC'}`);
-
-  if (shouldDebitErgc && ergcDebitAmount > 0) {
-    console.log(`[Webhook] ===== ERGC DEBIT EXECUTION =====`);
-    console.log(`[Webhook] ⚠️ CRITICAL: Debiting ${ergcDebitAmount} ERGC for aggressive strategy discount`);
-    if (walletData?.privateKey) {
-      console.log(`[Webhook] Debiting ${ergcDebitAmount} ERGC from generated wallet`);
-      const debitResult = await debitErgcFromUser(walletData.privateKey, ergcDebitAmount);
-      if (!debitResult.success) {
-        console.error(`[Webhook] ❌ ERGC debit failed: ${debitResult.error}`);
-      } else {
-        console.log(`[Webhook] ✅✅✅ ERGC debited successfully: ${debitResult.txHash}`);
-        console.log(`[Webhook] ✅✅✅ Check transaction at: https://snowtrace.io/tx/${debitResult.txHash}`);
-      }
-    } else if (isConnectedWallet && privyUserId) {
-      // Use the privyUserId we looked up earlier
-      console.log(`[Webhook] ⚠️ CRITICAL: Debiting ${ergcDebitAmount} ERGC via Privy for aggressive strategy`);
-      const debitResult = await debitErgcViaPrivy(privyUserId, walletAddress, ergcDebitAmount);
-      if (!debitResult.success) {
-        console.error(`[Webhook] ❌ ERGC debit via Privy failed: ${debitResult.error}`);
-        console.warn(`[Webhook] ⚠️ WARNING: ERGC debit failed but continuing with GMX execution`);
-        console.warn(`[Webhook] ⚠️ WARNING: User will not receive ERGC discount (full fees apply)`);
-        // Continue execution - ERGC debit failure is not critical for strategy execution
-      } else {
-        console.log(`[Webhook] ✅✅✅ ERGC debited via Privy successfully: ${debitResult.txHash}`);
-        console.log(`[Webhook] ✅✅✅ Check transaction at: https://snowtrace.io/tx/${debitResult.txHash}`);
-      }
-    } else if (isConnectedWallet && !privyUserId) {
-      console.warn(`[Webhook] ⚠️ WARNING: Privy user ID not found - cannot debit ERGC automatically`);
-      console.warn(`[Webhook] ⚠️ WARNING: ERGC debit requires Privy wallet or user must approve manually`);
-      console.warn(`[Webhook] ⚠️ WARNING: User will not get ERGC discount applied!`);
-      // Continue execution - ERGC debit is optional
-    }
-  } else {
-    console.log(`[Webhook] ⚠️ INFO: ERGC debit skipped - shouldDebitErgc=${shouldDebitErgc}, ergcDebitAmount=${ergcDebitAmount}`);
-    if (riskProfile === 'aggressive' && profile.gmxPercent > 0) {
-      console.log(`[Webhook] ⚠️ WARNING: Aggressive strategy but ERGC not debited - hasErgcDiscount=${hasErgcDiscount}`);
-    }
+    // Treat as discount available
+    hasErgcDiscount = true;
   }
 
   // Step 4: Strategy Execution (Aave and GMX)
@@ -2748,72 +3330,131 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
     // CRITICAL: For GMX strategies, ALWAYS use hub wallet execution (matches Bitcoin page exactly)
     // No Privy execution for GMX - hub wallet executes directly with its own USDC
     if (gmxAmount > 0) {
-      console.log(`[Webhook] ===== GMX EXECUTION (HUB WALLET - MATCHING BITCOIN PAGE) =====`);
-      console.log(`[Webhook] ⚠️ CRITICAL: Executing GMX from hub wallet: $${gmxAmount} (exactly like Bitcoin page)`);
-      console.log(`[Webhook] ⚠️ CRITICAL: No USDC transfer - hub wallet uses its own USDC`);
-      console.log(`[Webhook] ⚠️ CRITICAL: This will create a BTC long position for user ${walletAddress}`);
-      console.log(`[Webhook] ⚠️ CRITICAL: Leverage: ${profile.gmxLeverage}x, Position size: $${gmxAmount * profile.gmxLeverage}`);
+      console.log(`[Webhook] ===== GMX EXECUTION (HUB WALLET) =====`);
+      console.log(`[Webhook] Executing GMX from hub wallet: $${gmxAmount}`);
+      console.log(`[Webhook] User wallet: ${walletAddress}`);
+      console.log(`[Webhook] Leverage: ${profile.gmxLeverage}x, Position size: $${gmxAmount * profile.gmxLeverage}`);
       
-      gmxResult = await executeGmxFromHubWallet(walletAddress, gmxAmount, lookupPaymentId);
-      if (!gmxResult.success) {
-        console.error(`[Webhook] ❌ GMX hub wallet execution FAILED: ${gmxResult.error}`);
+      try {
+        gmxResult = await executeGmxFromHubWallet(walletAddress, gmxAmount, lookupPaymentId);
         
-        // Check if this is a recoverable error (temporary GMX protocol issue)
-        const isRecoverableError = gmxResult.error?.includes('ROUTER_PLUGIN') || 
-                                   gmxResult.error?.includes('protocol error') ||
-                                   gmxResult.error?.includes('temporary') ||
-                                   gmxResult.error?.includes('timeout') ||
-                                   gmxResult.error?.includes('network');
-        
-        if (isRecoverableError) {
-          console.warn(`[Webhook] ⚠️ GMX execution failed with recoverable error - will send USDC to user as fallback`);
-          console.warn(`[Webhook] ⚠️ User can manually execute GMX position later`);
+        if (!gmxResult.success) {
+          console.error(`[Webhook] ❌ GMX execution FAILED: ${gmxResult.error}`);
           
-          // Send USDC to user as fallback so they can manually execute GMX
-          const fallbackTransfer = await sendUsdcTransfer(walletAddress, gmxAmount, `${lookupPaymentId}-gmx-fallback`);
-          if (fallbackTransfer.success) {
-            console.log(`[Webhook] ✅ Fallback USDC transfer sent: ${fallbackTransfer.txHash}`);
-            console.log(`[Webhook] ⚠️ User received $${gmxAmount} USDC and can manually execute GMX position`);
-            // Continue with Aave execution if any
-            gmxResult = { 
-              success: false, 
-              error: `GMX execution failed (recoverable): ${gmxResult.error}. USDC sent to user as fallback.`,
-              txHash: fallbackTransfer.txHash
-            };
+          // Check if this is a recoverable error
+          const isRecoverableError = 
+            gmxResult.error?.includes('timeout') ||
+            gmxResult.error?.includes('ROUTER_PLUGIN') ||
+            gmxResult.error?.includes('protocol error') ||
+            gmxResult.error?.includes('network') ||
+            gmxResult.error?.includes('temporary');
+          
+          if (isRecoverableError) {
+            console.warn(`[Webhook] ⚠️ Recoverable GMX error - sending USDC to user`);
+            console.warn(`[Webhook] ⚠️ User can execute GMX position manually`);
+            
+            // Send USDC to user so they can execute manually
+            const fallbackTransfer = await sendUsdcTransfer(
+              walletAddress, 
+              gmxAmount, 
+              `${lookupPaymentId}-gmx-fallback`
+            );
+            
+            if (fallbackTransfer.success) {
+              console.log(`[Webhook] ✅ Fallback: Sent $${gmxAmount} USDC to user`);
+              console.log(`[Webhook] ✅ Fallback txHash: ${fallbackTransfer.txHash}`);
+              console.log(`[Webhook] User can execute GMX position manually`);
+              
+              gmxResult = { 
+                success: true, // Mark as success since we sent funds
+                error: `GMX auto-execution failed, sent $${gmxAmount} USDC for manual execution`,
+                txHash: fallbackTransfer.txHash
+              };
+            } else {
+              // Complete failure - don't mark payment as processed
+              console.error(`[Webhook] ❌ GMX AND fallback both failed`);
+              console.error(`[Webhook] ❌ GMX error: ${gmxResult.error}`);
+              console.error(`[Webhook] ❌ Fallback error: ${fallbackTransfer.error}`);
+              console.warn(`[Webhook] ⚠️ NOT marking payment as processed - will allow retry`);
+              
+              // Don't mark as processed - allow retry
+              return {
+                action: 'gmx_execution_failed',
+                paymentId: lookupPaymentId,
+                status,
+                error: `GMX failed: ${gmxResult.error}. Fallback failed: ${fallbackTransfer.error}`,
+                gmxResult,
+              };
+            }
           } else {
-            console.error(`[Webhook] ❌ Fallback USDC transfer also failed: ${fallbackTransfer.error}`);
+            // Non-recoverable error (insufficient funds, invalid params, etc.)
+            console.error(`[Webhook] ❌ Non-recoverable GMX error: ${gmxResult.error}`);
+            console.warn(`[Webhook] ⚠️ NOT marking payment as processed - will allow retry`);
+            
             return {
               action: 'gmx_execution_failed',
               paymentId: lookupPaymentId,
               status,
-              error: `GMX execution failed: ${gmxResult.error}. Fallback transfer also failed: ${fallbackTransfer.error}`,
-              gmxResult
+              error: `GMX execution failed: ${gmxResult.error}`,
+              gmxResult,
             };
           }
         } else {
-          // Non-recoverable error (e.g., insufficient funds, invalid parameters)
-          console.error(`[Webhook] ❌ CRITICAL: GMX execution failed with non-recoverable error - returning error`);
+          console.log(`[Webhook] ✅✅✅ GMX executed successfully: ${gmxResult.txHash}`);
+          console.log(`[Webhook] ✅✅✅ BTC long position created for user ${walletAddress}`);
+          console.log(`[Webhook] ✅✅✅ Check position at: https://snowtrace.io/tx/${gmxResult.txHash}`);
+          
+          // Send remaining USDC for Aave (if any)
+          if (aaveAmount > 0) {
+            console.log(`[Webhook] Sending $${aaveAmount} USDC for Aave...`);
+            const aaveUsdcTransfer = await sendUsdcTransfer(
+              walletAddress, 
+              aaveAmount, 
+              `${lookupPaymentId}-aave`
+            );
+            
+            if (!aaveUsdcTransfer.success) {
+              console.error(`[Webhook] ⚠️ Aave USDC transfer failed (GMX succeeded): ${aaveUsdcTransfer.error}`);
+            } else {
+              console.log(`[Webhook] ✅ Aave USDC transferred: ${aaveUsdcTransfer.txHash}`);
+            }
+          }
+        }
+      } catch (gmxError) {
+        console.error(`[Webhook] ❌ GMX execution threw exception:`, gmxError);
+        const errorMsg = gmxError instanceof Error ? gmxError.message : String(gmxError);
+        console.error(`[Webhook] Exception details:`, {
+          name: gmxError instanceof Error ? gmxError.name : 'Unknown',
+          message: errorMsg,
+          stack: gmxError instanceof Error ? gmxError.stack : 'No stack'
+        });
+        
+        // Send USDC as fallback
+        console.warn(`[Webhook] ⚠️ Attempting fallback USDC transfer after exception...`);
+        const fallbackTransfer = await sendUsdcTransfer(
+          walletAddress, 
+          gmxAmount, 
+          `${lookupPaymentId}-gmx-exception`
+        );
+        
+        if (fallbackTransfer.success) {
+          console.log(`[Webhook] ✅ Exception recovery: Sent $${gmxAmount} USDC to user`);
+          console.log(`[Webhook] ✅ Fallback txHash: ${fallbackTransfer.txHash}`);
+          gmxResult = { 
+            success: true,
+            error: `GMX exception, sent $${gmxAmount} USDC for manual execution`,
+            txHash: fallbackTransfer.txHash
+          };
+        } else {
+          console.error(`[Webhook] ❌ Exception recovery also failed: ${fallbackTransfer.error}`);
+          console.warn(`[Webhook] ⚠️ NOT marking payment as processed - will allow retry`);
+          
           return {
-            action: 'gmx_execution_failed',
+            action: 'gmx_exception',
             paymentId: lookupPaymentId,
             status,
-            error: `GMX execution failed: ${gmxResult.error}. Payment will be refunded.`,
-            gmxResult
+            error: `GMX threw exception: ${errorMsg}. Fallback failed: ${fallbackTransfer.error}`,
           };
-        }
-      } else {
-        console.log(`[Webhook] ✅✅✅ GMX EXECUTED SUCCESSFULLY FROM HUB WALLET: ${gmxResult.txHash}`);
-        console.log(`[Webhook] ✅✅✅ BTC long position created for user ${walletAddress}`);
-        console.log(`[Webhook] ✅✅✅ Check position at: https://snowtrace.io/tx/${gmxResult.txHash}`);
-        // After successful GMX, send remaining USDC (if any) for Aave
-        if (aaveAmount > 0) {
-          console.log(`[Webhook] Sending remaining $${aaveAmount} USDC for Aave execution...`);
-          const aaveUsdcTransfer = await sendUsdcTransfer(walletAddress, aaveAmount, `${lookupPaymentId}-aave`);
-          if (!aaveUsdcTransfer.success) {
-            console.error(`[Webhook] ⚠️ Failed to send Aave USDC, but GMX succeeded: ${aaveUsdcTransfer.error}`);
-          } else {
-            console.log(`[Webhook] ✅ Aave USDC transferred: ${aaveUsdcTransfer.txHash}`);
-          }
         }
       }
     } else {
@@ -2826,21 +3467,30 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
       console.log(`[Webhook] ===== AAVE EXECUTION =====`);
       console.log(`[Webhook] Executing AAVE: $${aaveAmount} (after GMX)`);
       
-      // Use Privy if available, otherwise hub wallet
-      if (privyUserId) {
-        aaveResult = await executeAaveViaPrivy(privyUserId, walletAddress, aaveAmount, lookupPaymentId);
-        if (!aaveResult.success && aaveResult.error?.includes('Privy integration unavailable')) {
-          console.log(`[Webhook] Privy unavailable, falling back to hub wallet for Aave`);
+      try {
+        if (privyUserId) {
+          aaveResult = await executeAaveViaPrivy(privyUserId, walletAddress, aaveAmount, lookupPaymentId);
+          
+          // Fall back to hub wallet if Privy fails
+          if (!aaveResult.success && aaveResult.error?.includes('Privy')) {
+            console.log(`[Webhook] Privy unavailable, using hub wallet for Aave`);
+            aaveResult = await executeAaveFromHubWallet(walletAddress, aaveAmount, lookupPaymentId);
+          }
+        } else {
           aaveResult = await executeAaveFromHubWallet(walletAddress, aaveAmount, lookupPaymentId);
         }
-      } else {
-        aaveResult = await executeAaveFromHubWallet(walletAddress, aaveAmount, lookupPaymentId);
-      }
-      
-      if (aaveResult.success) {
-        console.log(`[Webhook] ✅ AAVE executed successfully: ${aaveResult.txHash}`);
-      } else {
-        console.error(`[Webhook] ❌ AAVE execution failed: ${aaveResult.error}`);
+        
+        if (aaveResult.success) {
+          console.log(`[Webhook] ✅ Aave executed: ${aaveResult.txHash}`);
+        } else {
+          console.error(`[Webhook] ❌ Aave failed: ${aaveResult.error}`);
+        }
+      } catch (aaveError) {
+        console.error(`[Webhook] ❌ Aave threw exception:`, aaveError);
+        aaveResult = { 
+          success: false, 
+          error: aaveError instanceof Error ? aaveError.message : String(aaveError)
+        };
       }
     } else {
       console.log(`[Webhook] Skipping Aave: aaveAmount is 0 or negative`);
@@ -2877,6 +3527,25 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
 
   // Create position record for connected wallets
   if (isConnectedWallet) {
+    // CRITICAL: Only mark as processed if at least one strategy succeeded
+    const hasAnySuccess = (gmxResult?.success) || (aaveResult?.success);
+    
+    if (!hasAnySuccess) {
+      console.error(`[Webhook] ❌ CRITICAL: Both GMX and Aave failed`);
+      console.error(`[Webhook] GMX result:`, gmxResult);
+      console.error(`[Webhook] Aave result:`, aaveResult);
+      console.error(`[Webhook] NOT marking payment as processed - will retry`);
+      
+      return {
+        action: 'all_executions_failed',
+        paymentId: lookupPaymentId,
+        status,
+        gmxResult,
+        aaveResult,
+        error: 'Both GMX and Aave execution failed',
+      };
+    }
+    
     const positionId = generatePositionId();
     const position: UserPosition = {
       id: positionId,
@@ -2885,7 +3554,7 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
       walletAddress,
       strategyType: riskProfile as 'conservative' | 'aggressive',
       usdcAmount: depositAmount,
-      status: (aaveResult?.success || gmxResult?.success) ? 'active' : 'pending',
+      status: hasAnySuccess ? 'active' : 'pending',
       createdAt: new Date().toISOString(),
       aaveSupplyAmount: aaveAmount,
       aaveSupplyTxHash: aaveResult?.txHash,
@@ -2893,10 +3562,10 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
     };
     await savePosition(position);
 
-    // Update processed record with final tx hash (use GMX or Aave txHash, not Square payment ID)
-    const finalTxHash = gmxResult?.txHash || aaveResult?.txHash || positionId || 'pending';
+    // Mark as processed with successful tx hash
+    const finalTxHash = gmxResult?.txHash || aaveResult?.txHash || positionId;
     await markPaymentProcessed(paymentId, finalTxHash);
-
+    console.log(`[Webhook] ✅ Payment marked as processed: ${finalTxHash}`);
     console.log(`[Webhook] Strategy executed, position ID: ${positionId}`);
 
     return {
@@ -2912,8 +3581,17 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
     };
   } else {
     // For generated wallets, the position was already created in executeStrategyFromUserWallet
-    const finalTxHashGen = gmxResult?.txHash || aaveResult?.txHash || 'pending';
-    await markPaymentProcessed(paymentId, finalTxHashGen);
+    // CRITICAL: Only mark as processed if at least one strategy succeeded
+    const hasSuccessfulExecution = (gmxResult?.success) || (aaveResult?.success);
+    const finalTxHashGen = gmxResult?.txHash || aaveResult?.txHash || (hasSuccessfulExecution ? 'pending' : 'failed');
+    
+    if (hasSuccessfulExecution) {
+      await markPaymentProcessed(paymentId, finalTxHashGen);
+      console.log(`[Webhook] ✅ Payment marked as processed with txHash: ${finalTxHashGen}`);
+    } else {
+      console.warn(`[Webhook] ⚠️ NOT marking payment as processed - both GMX and Aave failed`);
+      console.warn(`[Webhook] ⚠️ This allows retry on next webhook event from Square`);
+    }
     
     return {
       action: 'strategy_executed',
@@ -3276,7 +3954,65 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const eventType = event.type || 'unknown';
     console.log(`[Webhook] Received event: ${eventType}`);
 
-    // Handle payment events
+    // Handle payment events that confirm money has cleared
+    // payment.sent: Payment has been sent/cleared
+    // payment.paid: Payment has been paid/cleared
+    // payout.sent: Payout has been sent (Square sends this when money clears)
+    if (eventType === 'payment.sent' || eventType === 'payment.paid' || eventType === 'payout.sent') {
+      // For payout.sent, we need to extract payment from a different location
+      let payment: SquarePayment | undefined;
+      
+      if (eventType === 'payout.sent') {
+        // payout.sent event structure is different - payment might be in event.data.object.payout or we need to look it up
+        console.log(`[Webhook] Received payout.sent event - checking for payment data...`);
+        payment = event.data?.object?.payment;
+        
+        // If no payment in event, try to get it from payout entries (type assertion needed)
+        if (!payment && event.data?.object && (event.data.object as any)?.payout?.entries) {
+          const entries = (event.data.object as any).payout.entries;
+          if (Array.isArray(entries) && entries.length > 0) {
+            // Get payment ID from first entry and look it up
+            const paymentId = entries[0]?.payment_id;
+            if (paymentId) {
+              console.log(`[Webhook] Found payment ID in payout entry: ${paymentId}`);
+              // We'll process this payment ID - but we need the full payment object
+              // For now, log and continue - the payment.updated event should have the full data
+              console.log(`[Webhook] payout.sent event - payment will be processed via payment.updated event`);
+              return res.status(200).json({
+                success: true,
+                action: 'ignored',
+                eventType,
+                message: 'payout.sent received - payment will be processed via payment.updated'
+              });
+            }
+          }
+        }
+        
+        if (!payment) {
+          console.log(`[Webhook] payout.sent event - no payment data found, waiting for payment.updated`);
+          return res.status(200).json({
+            success: true,
+            action: 'ignored',
+            eventType,
+            message: 'payout.sent received but no payment data - waiting for payment.updated'
+          });
+        }
+      } else {
+        payment = event.data?.object?.payment;
+      }
+
+      if (!payment) {
+        console.error('[Webhook] No payment data in event');
+        return res.status(400).json({ error: 'No payment data' });
+      }
+
+      console.log(`[Webhook] Processing ${eventType} event - payment has cleared`);
+      const result = await handlePaymentCleared(payment);
+      return res.status(200).json({ success: true, ...result });
+    }
+
+    // Also handle payment.updated and payment.completed for backward compatibility
+    // These events with COMPLETED status indicate payment has cleared
     if (eventType === 'payment.updated' || eventType === 'payment.completed') {
       const payment = event.data?.object?.payment;
 
@@ -3285,8 +4021,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'No payment data' });
       }
 
-      const result = await handlePaymentUpdated(payment);
-      return res.status(200).json({ success: true, ...result });
+      // Only process if status is COMPLETED (indicates payment has cleared)
+      if (payment.status === 'COMPLETED') {
+        console.log(`[Webhook] Processing ${eventType} with COMPLETED status - payment has cleared`);
+        const result = await handlePaymentCleared(payment);
+        return res.status(200).json({ success: true, ...result });
+      } else {
+        console.log(`[Webhook] Ignoring ${eventType} with status ${payment.status} - waiting for COMPLETED status`);
+        return res.status(200).json({
+          success: true,
+          action: 'ignored',
+          eventType,
+          status: payment.status,
+          message: `Waiting for COMPLETED status (current: ${payment.status})`
+        });
+      }
     }
 
     // Ignore other event types

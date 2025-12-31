@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@privy-io/server-auth": "^1.0.0",
+    "@hpke/common": "^1.8.1",
+    "@privy-io/server-auth": "^1.32.5",
     "@upstash/redis": "^1.35.8",
     "@vercel/kv": "^3.0.0",
     "@zerodev/sdk": "^5.5.7",

@@ -24,10 +24,9 @@ export const ERGC_DISCOUNT = {
   THRESHOLD: 100n * 10n ** 18n, // 100 ERGC required for discount
   STANDARD_FEE: 0.23, // 0.23 AVAX standard GMX fee
   DISCOUNTED_FEE: 0.1, // 0.1 AVAX with ERGC discount
-  PRICE_USD: 0.10, // $0.10 per ERGC
+  PRICE_USD: 0.10, // $0.10 per ERGC (100 = $10)
   PURCHASE_AMOUNT: 100, // 100 ERGC per purchase ($10)
-  BURN_PER_TX: 1, // 1 ERGC burned per transaction
-  SEND_TO_USER: 99, // 99 ERGC sent to user (100 - 1 burned)
+  SEND_TO_USER: 100, // send full 100 (no burn)
 } as const;
 
 export const ERC20_ABI = erc20Abi;

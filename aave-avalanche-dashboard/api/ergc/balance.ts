@@ -76,8 +76,8 @@ async function getErgcBalance(address: string): Promise<{
       address: address,
       balance: balance,
       balance_raw: balanceWei.toString(),
-      has_discount: balance >= 1, // Need at least 1 ERGC for discount
-      tokens_needed: balance < 1 ? Math.max(0, 1 - balance) : 0
+      has_discount: balance >= 100, // Need at least 100 ERGC for discount
+      tokens_needed: balance < 100 ? Math.max(0, 100 - balance) : 0
     };
 
   } catch (error) {

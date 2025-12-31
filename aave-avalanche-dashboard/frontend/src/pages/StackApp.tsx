@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DollarSign, ArrowRight, Shield, TrendingUp, Zap, Home, Bitcoin, Landmark } from 'lucide-react';
+import { DollarSign, ArrowRight, Shield, TrendingUp, Zap, Home, Bitcoin, Landmark, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -101,6 +101,12 @@ const StackApp = () => {
       return;
     }
 
+    // If aggressive strategy, redirect to Bitcoin page
+    if (selectedRiskProfile === 'aggressive') {
+      window.location.href = '/gmx';
+      return;
+    }
+
     setIsDepositModalOpen(true);
   };
 
@@ -154,6 +160,10 @@ const StackApp = () => {
             <p className="text-base sm:text-xl text-muted-foreground mb-2">
               Set your risk tolerance, we handle everything else
             </p>
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/20 rounded-full text-sm text-green-600 font-medium">
+              <Sparkles className="h-4 w-4" />
+              <span>$1000+ deposits: 3.7% USDC - 3.2% fee = 0.5% instant profit</span>
+            </div>
           </div>
 
           {/* Deposit Type Selection */}
