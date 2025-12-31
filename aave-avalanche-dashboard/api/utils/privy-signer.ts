@@ -1,14 +1,40 @@
 import { AbstractSigner, Provider, TransactionRequest, TransactionResponse, TypedDataDomain, TypedDataField } from 'ethers';
-import { PrivyClient } from '@privy-io/server-auth';
+
+// Try to import PrivyClient, but handle module errors gracefully
+let PrivyClient: any;
+let privyImportError: Error | null = null;
+
+try {
+  PrivyClient = require('@privy-io/server-auth').PrivyClient;
+} catch (error) {
+  privyImportError = error instanceof Error ? error : new Error(String(error));
+  console.error('[PrivySigner] Failed to import @privy-io/server-auth:', privyImportError.message);
+}
+
 import { getPrivyClient } from './privy-client';
 
+// Export a function to check if Privy is available
+export function isPrivyAvailable(): boolean {
+    return !privyImportError;
+}
+
+export function getPrivyImportError(): Error | null {
+    return privyImportError;
+}
+
 export class PrivySigner extends AbstractSigner {
-    private privy: PrivyClient;
+    private privy: any;
     private walletId: string;
     address: string;
 
     constructor(walletId: string, address: string, provider?: Provider) {
         super(provider);
+        
+        // Check if Privy import failed
+        if (privyImportError) {
+            throw new Error(`PrivySigner cannot be initialized: ${privyImportError.message}`);
+        }
+        
         this.privy = getPrivyClient();
         this.walletId = walletId;
         this.address = address;

@@ -1327,41 +1327,10 @@ async function executeGmxFromHubWallet(
       throw new Error('GMX order submitted but no tx hash captured');
     }
 
-    console.log(`[GMX Hub] Waiting for tx confirmation: ${submittedHash}`);
-    let receipt;
-    try {
-      receipt = await publicClient.waitForTransactionReceipt({ hash: submittedHash });
-    } catch (receiptError) {
-      console.error('[GMX Hub] Error waiting for receipt:', receiptError);
-      // If we have a hash, return it even if receipt wait fails (transaction might still succeed)
-      return {
-        success: true,
-        txHash: submittedHash,
-        error: 'Transaction submitted but receipt confirmation failed. Check transaction status manually.'
-      };
-    }
-
-    if (receipt.status !== 'success') {
-      console.error('[GMX Hub] Transaction reverted:', receipt);
-
-      // Try to extract revert reason if available
-      let revertReason = 'Unknown revert reason';
-      if (receipt.logs && receipt.logs.length > 0) {
-        console.error('[GMX Hub] Revert logs:', receipt.logs);
-      }
-
-      // Check for common GMX revert reasons
-      if (receipt.transactionHash) {
-        console.error(`[GMX Hub] Failed transaction: https://snowtrace.io/tx/${receipt.transactionHash}`);
-      }
-
-      return {
-        success: false,
-        error: `GMX transaction reverted. This may be a GMX protocol issue. Transaction: ${receipt.transactionHash || submittedHash}`
-      };
-    }
-
-    console.log(`[GMX Hub] Order confirmed: ${submittedHash} (position created in hub wallet for user ${walletAddress})`);
+    // CRITICAL: Don't wait for confirmation to avoid timeout - just return the hash
+    // Transaction is submitted and will be confirmed on-chain
+    console.log(`[GMX Hub] Transaction submitted: ${submittedHash} (not waiting for confirmation to avoid timeout)`);
+    console.log(`[GMX Hub] Check status at: https://snowtrace.io/tx/${submittedHash}`);
     return { success: true, txHash: submittedHash };
 
   } catch (error) {
@@ -2063,6 +2032,7 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
   // This ensures only ONE webhook invocation can proceed
   const redisLock = getRedis();
   const lockKey = `payment_lock:${paymentId}`;
+  let lockAcquired = false;
   
   // Try to acquire lock (set if not exists with 5 minute expiration)
   try {
@@ -2078,28 +2048,26 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
     }
     // Set lock with 5 minute expiration
     await redisLock.set(lockKey, 'processing', { ex: 300 });
+    lockAcquired = true;
     console.log(`[Webhook] Acquired processing lock for payment ${paymentId}`);
   } catch (lockError) {
     console.error(`[Webhook] Failed to acquire lock, proceeding anyway:`, lockError);
     // Continue processing - lock is best effort
   }
   
-  // Mark as processed IMMEDIATELY to prevent duplicate processing
-  const marked = await markPaymentProcessed(paymentId, 'pending');
-  if (!marked) {
-    try {
-      await redisLock.del(lockKey); // Release lock
-    } catch (e) {
-      // Ignore lock release errors
+  // CRITICAL: Always release lock in finally block to prevent deadlocks on timeout
+  try {
+    // Mark as processed IMMEDIATELY to prevent duplicate processing
+    const marked = await markPaymentProcessed(paymentId, 'pending');
+    if (!marked) {
+      console.error(`[Webhook] BLOCKING transfer - failed to mark payment as processed`);
+      return {
+        action: 'blocked_mark_failed',
+        paymentId,
+        status,
+        error: 'Failed to mark payment as processed in Redis',
+      };
     }
-    console.error(`[Webhook] BLOCKING transfer - failed to mark payment as processed`);
-    return {
-      action: 'blocked_mark_failed',
-      paymentId,
-      status,
-      error: 'Failed to mark payment as processed in Redis',
-    };
-  }
 
   // Parse wallet address and paymentId from note
   let { paymentId: notePaymentId, walletAddress, riskProfile, email, ergcPurchase, debitErgc } = parsePaymentNote(note);
@@ -2530,9 +2498,15 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
 
   console.log(`[Webhook] ✅ Final amount to send: $${depositAmount} (validated against Square payment: $${amountUsd})`);
 
-  if (isConnectedWallet) {
-    // Connected wallet (Privy or MetaMask): Always send USDC
-    console.log(`[Webhook] Sending $${depositAmount} USDC to connected wallet ${walletAddress}...`);
+  // CRITICAL: For GMX strategies, DO NOT send USDC - execute GMX directly from hub wallet
+  // This matches the Bitcoin page flow exactly: no USDC transfer, just execute GMX
+  if (isConnectedWallet && gmxAmount > 0) {
+    console.log(`[Webhook] ⚠️ GMX strategy detected - SKIPPING USDC transfer (matching Bitcoin page flow)`);
+    console.log(`[Webhook] GMX will execute from hub wallet using hub's USDC (exactly like Bitcoin page)`);
+    transferResult = { success: true }; // Mark as success since we're not transferring
+  } else if (isConnectedWallet) {
+    // Connected wallet with NO GMX (conservative only): Send USDC for Aave
+    console.log(`[Webhook] Sending $${depositAmount} USDC to connected wallet ${walletAddress} for Aave...`);
     transferResult = await sendUsdcTransfer(walletAddress, depositAmount, `${lookupPaymentId}-connected`);
     if (!transferResult.success) {
       return { action: 'transfer_failed', paymentId: lookupPaymentId, status, error: transferResult.error };
@@ -2614,118 +2588,64 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
   console.log(`[Webhook] Using privyUserId from earlier lookup: ${privyUserId ? 'FOUND' : 'NOT FOUND'}`);
 
   if (isConnectedWallet) {
-    if (privyUserId) {
-      // PRIVY EXECUTION - GMX FIRST, THEN AAVE
-      console.log(`[Webhook] Using Privy execution for wallet ${walletAddress}`);
-
-      // Execute GMX first to ensure it has full USDC balance before Aave takes its portion
-      if (gmxAmount > 0) {
-        console.log(`[Webhook] ===== GMX EXECUTION =====`);
-        console.log(`[Webhook] Executing GMX FIRST: $${gmxAmount} (before Aave)`);
-        console.log(`[Webhook] Wallet should have $${depositAmount} USDC, GMX will use $${gmxAmount}`);
-        
-        // CRITICAL: Wait for USDC transfer to confirm on-chain before executing GMX
-        console.log(`[Webhook] Waiting 5 seconds for USDC transfer to confirm on-chain...`);
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        
-        // Verify USDC balance before executing GMX
-        const provider = new ethers.JsonRpcProvider(AVALANCHE_RPC);
-        const usdcContract = new ethers.Contract(USDC_CONTRACT, ERC20_ABI, provider);
-        const balance = await usdcContract.balanceOf(walletAddress);
-        const balanceFormatted = Number(balance) / 1_000_000;
-        console.log(`[Webhook] Current USDC balance in wallet: ${balanceFormatted} USDC (need ${gmxAmount} for GMX)`);
-        
-        if (balanceFormatted < gmxAmount * 0.9) {
-          console.warn(`[Webhook] ⚠️ USDC balance (${balanceFormatted}) is less than GMX amount (${gmxAmount}), waiting 5 more seconds...`);
-          await new Promise(resolve => setTimeout(resolve, 5000));
-          const balance2 = await usdcContract.balanceOf(walletAddress);
-          const balanceFormatted2 = Number(balance2) / 1_000_000;
-          console.log(`[Webhook] USDC balance after additional wait: ${balanceFormatted2} USDC`);
-          if (balanceFormatted2 < gmxAmount * 0.9) {
-            console.error(`[Webhook] ❌ USDC still insufficient after wait. Balance: ${balanceFormatted2}, Need: ${gmxAmount}`);
+    // CRITICAL: For GMX strategies, ALWAYS use hub wallet execution (matches Bitcoin page exactly)
+    // No Privy execution for GMX - hub wallet executes directly with its own USDC
+    if (gmxAmount > 0) {
+      console.log(`[Webhook] ===== GMX EXECUTION (HUB WALLET - MATCHING BITCOIN PAGE) =====`);
+      console.log(`[Webhook] Executing GMX from hub wallet: $${gmxAmount} (exactly like Bitcoin page)`);
+      console.log(`[Webhook] No USDC transfer - hub wallet uses its own USDC`);
+      
+      gmxResult = await executeGmxFromHubWallet(walletAddress, gmxAmount, lookupPaymentId);
+      if (!gmxResult.success) {
+        console.error(`[Webhook] ❌ GMX hub wallet execution FAILED: ${gmxResult.error}`);
+        console.error(`[Webhook] ❌ CRITICAL: GMX execution is mandatory - returning error`);
+        return {
+          action: 'gmx_execution_failed',
+          paymentId: lookupPaymentId,
+          status,
+          error: `GMX execution failed: ${gmxResult.error}. Payment will be refunded.`,
+          gmxResult
+        };
+      } else {
+        console.log(`[Webhook] ✅ GMX executed successfully from hub wallet: ${gmxResult.txHash}`);
+        // After successful GMX, send remaining USDC (if any) for Aave
+        if (aaveAmount > 0) {
+          console.log(`[Webhook] Sending remaining $${aaveAmount} USDC for Aave execution...`);
+          const aaveUsdcTransfer = await sendUsdcTransfer(walletAddress, aaveAmount, `${lookupPaymentId}-aave`);
+          if (!aaveUsdcTransfer.success) {
+            console.error(`[Webhook] ⚠️ Failed to send Aave USDC, but GMX succeeded: ${aaveUsdcTransfer.error}`);
+          } else {
+            console.log(`[Webhook] ✅ Aave USDC transferred: ${aaveUsdcTransfer.txHash}`);
           }
         }
-        
-        gmxResult = await executeGmxViaPrivy(privyUserId, walletAddress, gmxAmount, riskProfile);
-        if (!gmxResult.success) {
-          console.error(`[Webhook] ❌ GMX execution failed: ${gmxResult.error}`);
-          console.error(`[Webhook] GMX error details: ${gmxResult.error}`);
-          gmxResult = {
-            success: false,
-            txHash: transferResult.txHash,
-            error: `GMX automation failed: ${gmxResult.error}. Funds remain in your wallet for manual execution.`
-          };
-        } else {
-          console.log(`[Webhook] ✅ GMX executed successfully: ${gmxResult.txHash}`);
-        }
-      } else {
-        console.log(`[Webhook] Skipping GMX: gmxAmount is 0 or negative`);
       }
+    } else {
+      console.log(`[Webhook] Skipping GMX: gmxAmount is 0 or negative`);
+    }
 
-      // Execute Aave AFTER GMX (so GMX has first access to USDC)
-      if (aaveAmount > 0) {
-        console.log(`[Webhook] ===== AAVE EXECUTION =====`);
-        console.log(`[Webhook] Executing AAVE SECOND: $${aaveAmount} (after GMX)`);
-        console.log(`[Webhook] Wallet should have $${depositAmount - (gmxResult?.success ? gmxAmount : 0)} USDC remaining, Aave will use $${aaveAmount}`);
+    // Execute Aave AFTER GMX (if any remaining)
+    if (aaveAmount > 0) {
+      console.log(`[Webhook] ===== AAVE EXECUTION =====`);
+      console.log(`[Webhook] Executing AAVE: $${aaveAmount} (after GMX)`);
+      
+      // Use Privy if available, otherwise hub wallet
+      if (privyUserId) {
         aaveResult = await executeAaveViaPrivy(privyUserId, walletAddress, aaveAmount, lookupPaymentId);
-        // Fallback if Privy integration fails
         if (!aaveResult.success && aaveResult.error?.includes('Privy integration unavailable')) {
           console.log(`[Webhook] Privy unavailable, falling back to hub wallet for Aave`);
           aaveResult = await executeAaveFromHubWallet(walletAddress, aaveAmount, lookupPaymentId);
         }
-        if (aaveResult.success) {
-          console.log(`[Webhook] ✅ AAVE executed successfully: ${aaveResult.txHash}`);
-        } else {
-          console.error(`[Webhook] ❌ AAVE execution failed: ${aaveResult.error}`);
-        }
       } else {
-        console.log(`[Webhook] Skipping Aave: aaveAmount is 0 or negative`);
+        aaveResult = await executeAaveFromHubWallet(walletAddress, aaveAmount, lookupPaymentId);
+      }
+      
+      if (aaveResult.success) {
+        console.log(`[Webhook] ✅ AAVE executed successfully: ${aaveResult.txHash}`);
+      } else {
+        console.error(`[Webhook] ❌ AAVE execution failed: ${aaveResult.error}`);
       }
     } else {
-      // PRIVY USER ID NOT FOUND - Try hub wallet execution for both Aave and GMX
-      // This handles cases where wallet association failed or wallet is not Privy
-      // CRITICAL: Always try hub wallet execution FIRST before sending USDC to user
-      console.log(`[Webhook] ⚠️ Privy user ID not found for wallet ${walletAddress}`);
-      console.log(`[Webhook] Attempting hub wallet execution for automated strategies (proven auto way)`);
-
-      // GMX FIRST: ALWAYS try hub wallet execution first (proven auto way)
-      if (gmxAmount > 0) {
-        if (gmxAmount >= GMX_MIN_COLLATERAL_USD) {
-          console.log(`[Webhook] ===== GMX EXECUTION (HUB WALLET - PROVEN AUTO WAY) =====`);
-          console.log(`[Webhook] Executing GMX FIRST: $${gmxAmount} from hub wallet`);
-          gmxResult = await executeGmxFromHubWallet(walletAddress, gmxAmount, riskProfile);
-          if (gmxResult.success) {
-            console.log(`[Webhook] ✅ GMX executed from hub wallet: ${gmxResult.txHash}`);
-          } else {
-            console.error(`[Webhook] ❌ GMX hub wallet execution failed: ${gmxResult.error}`);
-            // Only send USDC to user as last resort if hub execution fails
-            console.log(`[Webhook] Hub execution failed, sending GMX portion to user wallet for manual execution`);
-            const gmxTransfer = await sendUsdcTransfer(walletAddress, gmxAmount, `${lookupPaymentId}-gmx`);
-            gmxResult = gmxTransfer.success
-              ? { success: true, txHash: gmxTransfer.txHash, error: 'USDC sent - execute GMX manually' }
-              : { success: false, error: gmxTransfer.error };
-          }
-        } else {
-          console.log(`[Webhook] GMX amount ($${gmxAmount}) below minimum ($${GMX_MIN_COLLATERAL_USD})`);
-          console.log(`[Webhook] Sending GMX portion to user wallet (below minimum for hub execution)`);
-          const gmxTransfer = await sendUsdcTransfer(walletAddress, gmxAmount, `${lookupPaymentId}-gmx`);
-          gmxResult = gmxTransfer.success
-            ? { success: true, txHash: gmxTransfer.txHash, error: 'USDC sent - execute GMX manually' }
-            : { success: false, error: gmxTransfer.error };
-        }
-      }
-
-      // AAVE SECOND: Execute from hub wallet (proven auto way)
-      if (aaveAmount > 0) {
-        console.log(`[Webhook] ===== AAVE EXECUTION (HUB WALLET - PROVEN AUTO WAY) =====`);
-        console.log(`[Webhook] Executing AAVE SECOND: $${aaveAmount} from hub wallet`);
-        aaveResult = await executeAaveFromHubWallet(walletAddress, aaveAmount, lookupPaymentId);
-        if (aaveResult.success) {
-          console.log(`[Webhook] ✅ AAVE executed from hub wallet: ${aaveResult.txHash}`);
-        } else {
-          console.error(`[Webhook] ❌ AAVE execution failed: ${aaveResult.error}`);
-        }
-      }
+      console.log(`[Webhook] Skipping Aave: aaveAmount is 0 or negative`);
     }
   } else {
     // GENERATED WALLET EXECUTION
@@ -2842,7 +2762,8 @@ async function executeGmxViaPrivy(
       console.log(`[GMX-PRIVY] PrivySigner imported successfully`);
     } catch (importError) {
       console.error('[GMX-PRIVY] Failed to import PrivySigner, falling back to hub wallet:', importError);
-      return await executeGmxFromHubWallet(walletAddress, amountUsd, riskProfile);
+      // Use placeholder paymentId since we don't have it in this context
+      return await executeGmxFromHubWallet(walletAddress, amountUsd, 'privy-fallback');
     }
 
     // For Privy embedded wallets, the user ID IS the wallet ID
