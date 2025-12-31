@@ -246,12 +246,29 @@ function verifySignature(payload: string, signature: string): boolean {
   }
 
   try {
+    // Log the exact signature format received from Square
+    console.log('[Webhook] Raw signature received:', {
+      fullSignature: signature,
+      signatureLength: signature.length,
+      startsWithSha256: signature.startsWith('sha256='),
+      first20Chars: signature.substring(0, 20),
+      containsEquals: signature.includes('='),
+      equalsPosition: signature.indexOf('=')
+    });
+
     // Square sends signatures as "sha256=<base64_signature>"
     // We need to extract the base64 part
     let signatureBase64 = signature;
     if (signature.startsWith('sha256=')) {
       signatureBase64 = signature.substring(7); // Remove "sha256=" prefix
       console.log('[Webhook] Extracted base64 signature from Square format');
+    } else if (signature.includes('=')) {
+      // Try to handle other possible formats
+      const equalsIndex = signature.indexOf('=');
+      signatureBase64 = signature.substring(equalsIndex + 1);
+      console.log('[Webhook] Extracted signature after first = character');
+    } else {
+      console.log('[Webhook] Using signature as-is (no prefix detected)');
     }
 
     const hmac = crypto.createHmac('sha256', SQUARE_WEBHOOK_SIGNATURE_KEY);
@@ -268,12 +285,31 @@ function verifySignature(payload: string, signature: string): boolean {
       expectedSignature: expectedSignature.substring(0, 20) + '...',
       receivedLength: signatureBuffer.length,
       expectedLength: expectedBuffer.length,
-      payloadLength: payload.length
+      payloadLength: payload.length,
+      payloadStart: payload.substring(0, 100) + '...'
     });
 
     // Check lengths before comparing (timingSafeEqual requires same length)
     if (signatureBuffer.length !== expectedBuffer.length) {
       console.log(`[Webhook] Signature length mismatch: received ${signatureBuffer.length}, expected ${expectedBuffer.length}`);
+      console.log('[Webhook] Trying alternative verification methods...');
+      
+      // Try without base64 decoding (in case Square sends raw hex)
+      try {
+        const signatureHex = Buffer.from(signatureBase64, 'hex');
+        const expectedHex = Buffer.from(expectedSignature, 'hex');
+        if (signatureHex.length === expectedHex.length) {
+          const isValidHex = crypto.timingSafeEqual(
+            new Uint8Array(signatureHex),
+            new Uint8Array(expectedHex)
+          );
+          console.log(`[Webhook] Hex verification result: ${isValidHex ? 'VALID' : 'INVALID'}`);
+          return isValidHex;
+        }
+      } catch (hexError) {
+        console.log('[Webhook] Hex verification failed:', hexError);
+      }
+      
       return false;
     }
 
@@ -282,7 +318,7 @@ function verifySignature(payload: string, signature: string): boolean {
       new Uint8Array(expectedBuffer)
     );
 
-    console.log(`[Webhook] Signature verification result: ${isValid ? 'VALID' : 'INVALID'}`);
+    console.log(`[Webhook] Final signature verification result: ${isValid ? 'VALID' : 'INVALID'}`);
     return isValid;
   } catch (error) {
     console.error('[Webhook] Signature verification error:', error);
