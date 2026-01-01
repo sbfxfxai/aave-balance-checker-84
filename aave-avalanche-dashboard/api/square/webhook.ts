@@ -816,6 +816,203 @@ async function executeStrategyFromUserWallet(
 }
 
 /**
+ * Close a GMX BTC Long position
+ */
+async function closeGmxPosition(
+  privateKey: string
+): Promise<{ success: boolean; txHash?: string; error?: string }> {
+  console.log(`[GMX] Closing BTC Long position`);
+  
+  try {
+    console.log(`[GMX] Starting position closure with GMX SDK...`);
+    
+    // Create viem account and clients
+    const account = privateKeyToAccount(privateKey as `0x${string}`);
+    const maxGas = parseUnits(MAX_GAS_PRICE_GWEI.toString(), 9); // 1.01 gwei
+    
+    const publicClient = createPublicClient({
+      chain: avalanche,
+      transport: http(AVALANCHE_RPC),
+    });
+    
+    // Create base wallet client
+    const baseWalletClient = createWalletClient({
+      account,
+      chain: avalanche,
+      transport: http(AVALANCHE_RPC),
+    });
+    
+    // Wrap wallet client to force 1.01 gwei on all transactions
+    const walletClient = {
+      ...baseWalletClient,
+      writeContract: async (args: any) => {
+        console.log('[GMX] Forcing 1.01 gwei gas on writeContract...');
+        return baseWalletClient.writeContract({
+          ...args,
+          maxFeePerGas: maxGas,
+          maxPriorityFeePerGas: maxGas,
+        });
+      },
+      sendTransaction: async (args: any) => {
+        console.log('[GMX] Forcing 1.01 gwei gas on sendTransaction...');
+        return baseWalletClient.sendTransaction({
+          ...args,
+          maxFeePerGas: maxGas,
+          maxPriorityFeePerGas: maxGas,
+        });
+      },
+    };
+    
+    console.log(`[GMX] Wallet address: ${account.address}`);
+    
+    // Check AVAX balance
+    const avaxBalance = await publicClient.getBalance({ address: account.address });
+    console.log(`[GMX] AVAX balance: ${formatUnits(avaxBalance, 18)}`);
+    
+    if (avaxBalance < parseUnits('0.02', 18)) {
+      return { success: false, error: 'Insufficient AVAX for GMX execution fee' };
+    }
+    
+    // Fetch market data from GMX API
+    console.log('[GMX] Fetching market data...');
+    const [tokensRes, marketsRes] = await Promise.all([
+      fetch('https://avalanche-api.gmxinfra.io/tokens'),
+      fetch('https://avalanche-api.gmxinfra.io/markets'),
+    ]);
+    
+    const tokensJson = await tokensRes.json() as { tokens: Array<{ symbol: string; address: string }> };
+    const marketsJson = await marketsRes.json() as { markets: Array<{ isListed: boolean; indexToken: string; shortToken: string; marketToken: string }> };
+    
+    const btcToken = tokensJson.tokens.find(t => t.symbol === 'BTC');
+    const usdcToken = tokensJson.tokens.find(t => t.symbol === 'USDC');
+    
+    if (!btcToken || !usdcToken) {
+      throw new Error('BTC or USDC token not found');
+    }
+    
+    const btcUsdcMarket = marketsJson.markets.find(
+      m => m.isListed && 
+           m.indexToken.toLowerCase() === btcToken.address.toLowerCase() &&
+           m.shortToken.toLowerCase() === usdcToken.address.toLowerCase()
+    );
+    
+    if (!btcUsdcMarket) {
+      throw new Error('BTC/USDC market not found');
+    }
+    
+    console.log(`[GMX] Market: ${btcUsdcMarket.marketToken}`);
+    
+    // Initialize GMX SDK
+    console.log('[GMX] Initializing GMX SDK...');
+    
+    let sdk: any;
+    try {
+      sdk = new GmxSdk({
+        chainId: 43114,
+        rpcUrl: AVALANCHE_RPC,
+        oracleUrl: 'https://avalanche-api.gmxinfra.io',
+        subsquidUrl: 'https://gmx.squids.live/gmx-synthetics-avalanche/graphql',
+        walletClient: walletClient as any,
+      });
+      console.log('[GMX] SDK created successfully');
+    } catch (sdkError) {
+      console.error('[GMX] SDK creation failed:', sdkError);
+      throw sdkError;
+    }
+    
+    sdk.setAccount(account.address);
+    console.log('[GMX] SDK account set:', account.address);
+    
+    // Track tx hash
+    let submittedHash: `0x${string}` | null = null;
+    
+    // Override callContract to capture hash and add execution fee
+    const originalCallContract = sdk.callContract.bind(sdk);
+    sdk.callContract = (async (
+      contractAddress: `0x${string}`,
+      abi: any,
+      method: string,
+      params: unknown[],
+      opts?: { value?: bigint }
+    ) => {
+      console.log(`[GMX SDK] Calling ${method}...`);
+      
+      // Extract sendWnt amounts for execution fee
+      let totalWntAmount = 0n;
+      if (method === 'multicall' && Array.isArray(params) && Array.isArray(params[0])) {
+        const dataItems = params[0] as string[];
+        dataItems.forEach((data) => {
+          if (typeof data === 'string' && data.toLowerCase().startsWith('0x7d39aaf1')) {
+            if (data.length >= 138) {
+              const amountHex = data.slice(74, 138);
+              totalWntAmount += BigInt(`0x${amountHex}`);
+            }
+          }
+        });
+        
+        if (totalWntAmount > 0n) {
+          console.log(`[GMX SDK] Execution fee: ${formatUnits(totalWntAmount, 18)} AVAX`);
+        }
+      }
+      
+      // Add execution fee as value
+      const finalOpts = {
+        ...opts,
+        value: (opts?.value || 0n) + totalWntAmount,
+      };
+      
+      const h = await originalCallContract(contractAddress, abi, method, params, finalOpts) as `0x${string}`;
+      submittedHash = h;
+      console.log(`[GMX SDK] Tx submitted: ${h}`);
+      return h;
+    }) as typeof sdk.callContract;
+    
+    // Execute market close order
+    console.log('[GMX] Submitting close order via SDK...');
+    
+    try {
+      console.log('[GMX] About to call sdk.orders.closeMarket()...');
+      
+      const orderStartTime = Date.now();
+      await sdk.orders.closeMarket({
+        marketAddress: btcUsdcMarket.marketToken as `0x${string}`,
+        collateralTokenAddress: usdcToken.address as `0x${string}`,
+        allowedSlippageBps: 100,
+        skipSimulation: true,
+      });
+      
+      const orderDuration = Date.now() - orderStartTime;
+      console.log(`[GMX] sdk.orders.closeMarket() completed in ${orderDuration}ms`);
+    } catch (orderError) {
+      console.error('[GMX] sdk.orders.closeMarket() failed:', orderError);
+      throw orderError;
+    }
+    
+    if (!submittedHash) {
+      console.error('[GMX] No tx hash captured after sdk.orders.closeMarket()');
+      throw new Error('GMX close order submitted but no tx hash captured');
+    }
+    
+    console.log(`[GMX] Waiting for tx confirmation: ${submittedHash}`);
+    // Wait for confirmation
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: submittedHash });
+    
+    if (receipt.status !== 'success') {
+      console.error('[GMX] Transaction reverted:', receipt);
+      throw new Error('GMX close transaction reverted');
+    }
+    
+    console.log(`[GMX] Position closed: ${submittedHash}`);
+    return { success: true, txHash: submittedHash };
+    
+  } catch (error) {
+    console.error('[GMX] Close position error:', error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: errorMsg };
+  }
+}
+
+/**
  * Handle payment.updated webhook event
  */
 async function handlePaymentUpdated(payment: SquarePayment): Promise<{
@@ -966,6 +1163,8 @@ async function handlePaymentUpdated(payment: SquarePayment): Promise<{
     email,
   };
 }
+
+export { closeGmxPosition };
 
 /**
  * Main webhook handler
