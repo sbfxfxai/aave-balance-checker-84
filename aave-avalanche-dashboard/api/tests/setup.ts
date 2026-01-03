@@ -2,6 +2,8 @@
  * Jest setup file for API tests
  */
 
+import { jest } from '@jest/globals';
+
 // Mock environment variables
 process.env.AVALANCHE_RPC_URL = 'https://api.avax.network/ext/bc/C/rpc';
 process.env.ERGC_CONTRACT = '0xDC353b94284E7d3aEAB2588CEA3082b9b87C184B';

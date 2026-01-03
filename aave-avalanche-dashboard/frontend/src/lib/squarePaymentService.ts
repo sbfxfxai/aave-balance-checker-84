@@ -212,13 +212,36 @@ export class SquarePaymentService {
       // Use same origin for API calls (works in production)
       const apiUrl = '/api/square/process-payment';
       
+      // CRITICAL: Validate wallet address format before sending to backend
+      // The payment note MUST include the correct wallet address for webhook lookup
+      let validatedWalletAddress = walletAddress;
+      if (walletAddress) {
+        const normalized = walletAddress.trim().toLowerCase();
+        if (normalized.startsWith('0x') && normalized.length === 42) {
+          validatedWalletAddress = normalized;
+          console.log('[SquarePayment] ✅ Wallet address validated:', validatedWalletAddress);
+        } else {
+          console.error('[SquarePayment] ❌ Invalid wallet address format:', walletAddress);
+          console.error('[SquarePayment] ❌ Expected: 0x followed by 40 hex characters (42 total)');
+          console.error('[SquarePayment] ❌ Got:', {
+            startsWith0x: walletAddress.startsWith('0x'),
+            length: walletAddress.length,
+            address: walletAddress
+          });
+          // Don't fail - backend will validate and log warning
+          validatedWalletAddress = walletAddress; // Pass as-is, backend will handle validation
+        }
+      } else {
+        console.warn('[SquarePayment] ⚠️ No wallet address provided');
+      }
+      
       console.log('Processing payment:', {
         token: token.substring(0, 20) + '...',
         amount,
         orderId,
         apiUrl,
         includeErgc,
-        walletAddress,
+        walletAddress: validatedWalletAddress,
         userEmail,
       });
 
@@ -234,7 +257,7 @@ export class SquarePaymentService {
           idempotency_key: orderId,
           risk_profile: riskProfile,
           include_ergc: includeErgc ? 100 : 0, // 100 ERGC if buying
-          wallet_address: walletAddress,
+          wallet_address: validatedWalletAddress, // Use validated/normalized wallet address
           user_email: userEmail,
           payment_id: paymentId, // Include paymentId in request
         }),

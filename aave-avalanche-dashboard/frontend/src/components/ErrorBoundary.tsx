@@ -24,6 +24,10 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
+    // Hide loading screen when error occurs
+    if (typeof document !== 'undefined') {
+      document.body.classList.add('tv-app-loaded');
+    }
   }
 
   private handleReset = () => {
@@ -32,6 +36,11 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
+      // Ensure loading screen is hidden
+      if (typeof document !== 'undefined') {
+        document.body.classList.add('tv-app-loaded');
+      }
+      
       return (
         <div className="min-h-screen bg-gradient-subtle flex items-center justify-center p-4">
           <Card className="p-8 max-w-md w-full">

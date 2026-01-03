@@ -115,23 +115,44 @@ export function PrivyLogin() {
 
                     if (response.ok) {
                         const result = await response.json();
-                        if (result.signatureVerified) {
-                            console.log('[PrivyLogin] ✅✅✅ SIGNATURE VERIFIED by backend');
-                            console.log('[PrivyLogin] ✅ Wallet ownership cryptographically confirmed');
-                            console.log('[PrivyLogin] ✅ Association completed with signature verification');
+                        if (result.success) {
+                            if (result.signatureVerified) {
+                                console.log('[PrivyLogin] ✅✅✅ SIGNATURE VERIFIED by backend');
+                                console.log('[PrivyLogin] ✅ Wallet ownership cryptographically confirmed');
+                                console.log('[PrivyLogin] ✅ Association completed with signature verification');
+                            } else if (signature) {
+                                console.warn('[PrivyLogin] ⚠️ Signature sent but backend did not verify (unexpected)');
+                            } else {
+                                console.log('[PrivyLogin] ✅ User associated with wallet successfully (implicit association - no signature)');
+                            }
+                            console.log('[PrivyLogin] ✅ Wallet association stored in Redis');
                             console.log('[PrivyLogin] Wallet:', walletAddress);
                             console.log('[PrivyLogin] Privy User ID:', user.id);
-                        } else if (signature) {
-                            console.warn('[PrivyLogin] ⚠️ Signature sent but backend did not verify (unexpected)');
                         } else {
-                            console.log('[PrivyLogin] ✅ User associated with wallet successfully (implicit association - no signature)');
+                            console.error('[PrivyLogin] ❌ Association failed - backend returned success:false');
+                            console.error('[PrivyLogin] Result:', result);
                         }
                     } else {
-                        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                        let errorData: any = { error: 'Unknown error' };
+                        try {
+                            const text = await response.text();
+                            errorData = text ? JSON.parse(text) : { error: `HTTP ${response.status}` };
+                        } catch (parseError) {
+                            console.error('[PrivyLogin] Failed to parse error response:', parseError);
+                            errorData = { error: `HTTP ${response.status}: ${response.statusText}` };
+                        }
+                        
                         console.error('[PrivyLogin] ❌ Failed to associate user with wallet:', errorData);
+                        console.error('[PrivyLogin] Response status:', response.status);
+                        console.error('[PrivyLogin] Error details:', errorData.details || errorData);
+                        
                         if (errorData.error?.includes('signature')) {
                             console.error('[PrivyLogin] ❌ Signature verification failed - wallet association rejected');
-                            console.error('[PrivyLogin] Error details:', errorData.details);
+                        } else if (errorData.error?.includes('Redis') || errorData.error?.includes('storage failed') || errorData.error?.includes('mapping is mandatory')) {
+                            console.error('[PrivyLogin] ❌ CRITICAL: Redis storage failed - association could not be completed');
+                            console.error('[PrivyLogin] ❌ The wallet association MUST be stored in Redis for webhook operations');
+                            console.error('[PrivyLogin] ❌ Please contact support - this is a server configuration issue');
+                            console.error('[PrivyLogin] Error details:', errorData.details || errorData.message || errorData);
                         }
                     }
                 } catch (error) {

@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
+import { OptimizedLogo } from '@/components/OptimizedLogo';
 
 interface SidebarProps {
   collapsed?: boolean;
@@ -44,7 +45,7 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
       {/* Logo Header */}
       <div className="h-16 flex items-center px-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <img src="/tiltvault-logo.png" alt="TiltVault" className="w-8 h-8 object-contain" />
+          <OptimizedLogo className="w-8 h-8 object-contain" width={32} height={28} loading="eager" />
           {!isCollapsed && (
             <span className="text-sidebar-foreground font-semibold text-lg">TiltVault</span>
           )}
@@ -61,6 +62,7 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
             <Link
               key={item.path}
               to={item.path}
+              aria-label={isCollapsed ? item.label : undefined}
               className={`
                 flex items-center gap-3 px-3 py-3 rounded-lg mb-1
                 transition-all duration-200
@@ -70,7 +72,7 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
                 }
               `}
             >
-              <Icon className="w-5 h-5 flex-shrink-0" />
+              <Icon className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
               {!isCollapsed && (
                 <span className="font-medium">{item.label}</span>
               )}
@@ -82,6 +84,7 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
       {/* Collapse Toggle */}
       <button
         onClick={handleToggle}
+        aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         className="
           absolute bottom-4 right-0 translate-x-1/2
           w-6 h-6 rounded-full
@@ -92,9 +95,9 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
         "
       >
         {isCollapsed ? (
-          <ChevronRight className="w-3 h-3" />
+          <ChevronRight className="w-3 h-3" aria-hidden="true" />
         ) : (
-          <ChevronLeft className="w-3 h-3" />
+          <ChevronLeft className="w-3 h-3" aria-hidden="true" />
         )}
       </button>
     </aside>

@@ -3,10 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
+    "@gmx-io/sdk": "^1.0.5",
     "@hpke/common": "^1.8.1",
     "@privy-io/server-auth": "^1.32.5",
     "@upstash/redis": "^1.35.8",
     "@vercel/kv": "^3.0.0",
+    "@vercel/node": "^5.5.16",
     "@zerodev/sdk": "^5.5.7",
     "ethers": "^6.16.0",
     "viem": "^2.43.3"
@@ -21,6 +23,11 @@
   "scripts": {
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "test:security": "jest tests/security",
+    "test:security:coverage": "jest tests/security --coverage",
+    "test:fuzzing": "jest tests/security/fuzzing.test.ts",
+    "test:mutation": "jest tests/security/mutation-testing.test.ts",
+    "test:formal": "jest tests/security/formal-verification.test.ts"
   }
 }

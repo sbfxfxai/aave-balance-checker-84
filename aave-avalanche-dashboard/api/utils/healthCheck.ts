@@ -233,7 +233,7 @@ class HealthMonitor {
       }
     });
 
-    const results = await Promise.all(checkPromises);
+    const results: HealthCheck[] = await Promise.all(checkPromises);
     
     // Determine overall status
     let overallStatus: 'healthy' | 'unhealthy' | 'degraded' = 'healthy';

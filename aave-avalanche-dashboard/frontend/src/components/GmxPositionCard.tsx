@@ -132,6 +132,42 @@ export function GmxPositionCard({ onRefresh, walletAddress }: GmxPositionCardPro
                     <p className="font-medium">{position.leverage.toFixed(2)}x</p>
                   </div>
                 </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 pt-2 border-t border-border/50">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Claimable Funding</p>
+                    <p className="font-medium text-green-500">
+                      ${Math.abs(parseFloat(position.claimableFundingAmount || '0')) > 0.0001 
+                        ? parseFloat(position.claimableFundingAmount).toFixed(4)
+                        : '$0.00'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Opened</p>
+                    <p className="font-medium text-sm">
+                      {position.increasedAtTime > 0 
+                        ? new Date(position.increasedAtTime * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                        : 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Last Updated</p>
+                    <p className="font-medium text-sm">
+                      {position.decreasedAtTime > 0 
+                        ? new Date(position.decreasedAtTime * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                        : position.increasedAtTime > 0 
+                          ? new Date(position.increasedAtTime * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                          : 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Borrowing Factor</p>
+                    <p className="font-medium text-sm">
+                      {parseFloat(position.borrowingFactor || '0') > 0
+                        ? (parseFloat(position.borrowingFactor) * 100).toFixed(4) + '%'
+                        : '0.00%'}
+                    </p>
+                  </div>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => openModal('deposit', position)}>
                     <Plus className="h-3 w-3 mr-1" />Deposit

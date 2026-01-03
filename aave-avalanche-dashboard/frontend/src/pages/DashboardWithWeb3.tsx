@@ -1,5 +1,6 @@
 import { SimpleDashboard } from '@/components/SimpleDashboard';
 import { NetworkGuard } from '@/components/NetworkGuard';
+import { Footer } from '@/components/Footer';
 import { useAccount } from 'wagmi';
 import { TrendingUp, Zap, Bitcoin } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -8,6 +9,7 @@ import { Web3Providers } from '@/components/Web3Providers';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { DirectWalletConnect } from '@/components/DirectWalletConnect';
 import { PrivyLogin } from '@/components/PrivyLogin';
+import { OptimizedLogo } from '@/components/OptimizedLogo';
 
 function DashboardContent() {
   const { isConnected } = useAccount();
@@ -19,11 +21,7 @@ function DashboardContent() {
         <div className="container mx-auto px-4 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 sm:gap-3">
-              <img
-                src="/tiltvault-logo.png"
-                alt="TiltVault"
-                className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg"
-              />
+              <OptimizedLogo loading="eager" />
               <div>
                 <h1 className="text-lg sm:text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
                   Banking
@@ -31,20 +29,20 @@ function DashboardContent() {
                 <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Savings & Lending</p>
               </div>
             </div>
-            <div className="flex items-center gap-1 sm:gap-2">
-              <Link to="/gmx">
-                <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
-                  <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4" />
+            <nav className="flex items-center gap-1 sm:gap-2" aria-label="Main navigation">
+              <Link to="/gmx" aria-label="Go to Bitcoin trading page">
+                <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Bitcoin">
+                  <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
                   <span className="hidden sm:inline">Bitcoin</span>
                 </Button>
               </Link>
-              <Link to="/stack">
-                <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
-                  <Zap className="h-3 w-3 sm:h-4 sm:w-4" />
+              <Link to="/stack" aria-label="Go to Auto Invest page">
+                <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Auto Invest">
+                  <Zap className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
                   <span className="hidden sm:inline">Auto</span>
                 </Button>
               </Link>
-            </div>
+            </nav>
           </div>
         </div>
       </header>
@@ -70,16 +68,7 @@ function DashboardContent() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-border/50 mt-16">
-        <div className="container mx-auto px-4 py-4 sm:py-6">
-          <p className="text-center text-xs sm:text-sm text-muted-foreground">
-            TiltVault • Secure Banking & Investments
-          </p>
-          <p className="text-center text-xs sm:text-sm text-muted-foreground mt-2">
-            Support: <a href="mailto:support@tiltvault.com" className="text-emerald-500 hover:underline">support@tiltvault.com</a>
-          </p>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

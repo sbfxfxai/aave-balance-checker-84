@@ -1,15 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { Redis } from '@upstash/redis';
+import { getRedis } from '../utils/redis';
 import { checkRateLimit, RATE_LIMITS } from './rateLimit';
 import { withMonitoring } from './monitoring';
-
-// Initialize Redis
-function getRedis(): Redis {
-  return new Redis({
-    url: process.env.KV_REST_API_URL || process.env.REDIS_URL || '',
-    token: process.env.KV_REST_API_TOKEN || '',
-  });
-}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers

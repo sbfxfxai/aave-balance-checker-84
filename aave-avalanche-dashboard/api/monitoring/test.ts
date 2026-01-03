@@ -46,10 +46,10 @@ export default async function handler(req: any, res: any) {
         break;
 
       case 'slack':
-        const slackSuccess = await slackService.testSlackConfiguration();
+        const slackTestResult = await slackService.testSlackConfiguration();
         result = { 
-          success: slackSuccess, 
-          message: slackSuccess ? 'Slack test sent successfully' : 'Slack test failed'
+          success: slackTestResult, 
+          message: slackTestResult ? 'Slack test sent successfully' : 'Slack test failed'
         };
         break;
 

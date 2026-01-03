@@ -19,15 +19,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const applicationId = process.env.SQUARE_APPLICATION_ID;
+    // Backend can use SQUARE_APPLICATION_ID or fallback to VITE_SQUARE_APPLICATION_ID (same value)
+    const applicationId = process.env.SQUARE_APPLICATION_ID || process.env.VITE_SQUARE_APPLICATION_ID;
     const locationId = process.env.SQUARE_LOCATION_ID;
     const environment = process.env.SQUARE_ENVIRONMENT || 'production';
     const accessToken = process.env.SQUARE_ACCESS_TOKEN;
 
+    // Return config even if incomplete (frontend will handle validation)
+    // This allows the frontend to use env vars as fallback
     if (!applicationId || !locationId) {
-      return res.status(500).json({ 
-        error: 'Square configuration not found',
-        has_access_token: !!accessToken
+      console.warn('[Square Config] Missing config:', {
+        hasAppId: !!applicationId,
+        hasLocationId: !!locationId,
+        hasAccessToken: !!accessToken
+      });
+      
+      // Return partial config instead of 500 - frontend can use env vars
+      return res.status(200).json({
+        application_id: applicationId || '',
+        location_id: locationId || '',
+        environment,
+        api_base_url: environment === 'sandbox' 
+          ? 'https://connect.squareupsandbox.com'
+          : 'https://connect.squareup.com',
+        has_access_token: !!accessToken,
+        incomplete: !applicationId || !locationId
       });
     }
 

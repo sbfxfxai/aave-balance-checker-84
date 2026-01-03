@@ -1,8 +1,21 @@
-import { Suspense, ReactNode } from 'react';
+import { Suspense, ReactNode, useEffect } from 'react';
 import { WagmiProvider } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { config } from '@/config/wagmi';
 
+// Lazy load Buffer polyfill when Web3Providers mounts (only when Web3 is actually needed)
+const ensureBufferPolyfill = async () => {
+  if (typeof window !== "undefined" && !(window as any).Buffer) {
+    try {
+      const { Buffer } = await import("buffer");
+      (window as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
+      (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
+    } catch (error) {
+      // Silently fail - some Web3 operations may not work without Buffer
+      console.warn('Failed to load Buffer polyfill:', error);
+    }
+  }
+};
 
 // Optimized QueryClient for web3 usage
 // Created here so it's only instantiated when Web3Providers is loaded
@@ -30,6 +43,11 @@ interface Web3ProvidersProps {
 }
 
 export function Web3Providers({ children }: Web3ProvidersProps) {
+  // Load Buffer polyfill when Web3Providers mounts (deferred until Web3 is needed)
+  useEffect(() => {
+    ensureBufferPolyfill();
+  }, []);
+
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>

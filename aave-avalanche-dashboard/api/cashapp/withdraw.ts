@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { CASHAPP_CONFIG, getCashAppHeaders, generateIdempotencyKey } from './config';
+import { getRedis } from '../utils/redis';
 
 /**
  * Cash App Withdrawal Endpoint
@@ -34,8 +35,69 @@ interface WithdrawalRecord {
   error?: string;
 }
 
-// In-memory store for demo (use Redis/DB in production)
-const withdrawals: Map<string, WithdrawalRecord> = new Map();
+// Redis-based withdrawal storage (persistent across server restarts)
+const CASHAPP_WITHDRAWAL_TTL = 90 * 24 * 60 * 60; // 90 days TTL for withdrawal records
+const CASHAPP_WITHDRAWAL_LIST_TTL = 365 * 24 * 60 * 60; // 1 year for user withdrawal lists
+
+/**
+ * Store Cash App withdrawal record in Redis
+ */
+async function storeCashAppWithdrawal(withdrawalId: string, record: WithdrawalRecord): Promise<void> {
+  const redis = getRedis();
+  await redis.set(`cashapp_withdrawal:${withdrawalId}`, JSON.stringify(record), { ex: CASHAPP_WITHDRAWAL_TTL });
+  
+  // Also maintain a list of withdrawals per wallet for quick lookup
+  if (record.walletAddress) {
+    const walletKey = `cashapp_withdrawals:${record.walletAddress.toLowerCase()}`;
+    await redis.lpush(walletKey, withdrawalId);
+    await redis.expire(walletKey, CASHAPP_WITHDRAWAL_LIST_TTL);
+  }
+}
+
+/**
+ * Get Cash App withdrawal record from Redis
+ */
+async function getCashAppWithdrawal(withdrawalId: string): Promise<WithdrawalRecord | null> {
+  const redis = getRedis();
+  const data = await redis.get(`cashapp_withdrawal:${withdrawalId}`);
+  if (!data) return null;
+  try {
+    const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+    // Validate that parsed data has required fields
+    if (parsed && typeof parsed === 'object' && 'id' in parsed && 'walletAddress' in parsed) {
+      return parsed as WithdrawalRecord;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get all Cash App withdrawals for a wallet from Redis
+ */
+async function getCashAppWalletWithdrawals(walletAddress: string): Promise<WithdrawalRecord[]> {
+  const redis = getRedis();
+  const walletKey = `cashapp_withdrawals:${walletAddress.toLowerCase()}`;
+  const withdrawalIds = await redis.lrange(walletKey, 0, -1);
+  
+  if (!withdrawalIds || withdrawalIds.length === 0) {
+    return [];
+  }
+  
+  // Fetch all withdrawal records
+  const withdrawals = await Promise.all(
+    withdrawalIds.map(async (id) => {
+      const record = await getCashAppWithdrawal(id);
+      return record;
+    })
+  );
+  
+  // Filter out nulls and sort by creation date (newest first)
+  return withdrawals
+    .filter((w): w is WithdrawalRecord => w !== null)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
 
 // Create customer request for Cash App linking
 async function createCustomerRequest(
@@ -159,7 +221,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             completedAt: payment.status === 'COMPLETED' ? new Date().toISOString() : undefined,
           };
           
-          withdrawals.set(withdrawalId, record);
+          await storeCashAppWithdrawal(withdrawalId, record);
 
           return res.status(200).json({
             success: true,
@@ -190,7 +252,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         createdAt: new Date().toISOString(),
       };
 
-      withdrawals.set(withdrawalId, record);
+      await storeCashAppWithdrawal(withdrawalId, record);
 
       return res.status(200).json({
         success: true,
@@ -211,7 +273,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Missing withdrawalId query parameter' });
       }
 
-      const record = withdrawals.get(withdrawalId);
+      const record = await getCashAppWithdrawal(withdrawalId);
       
       if (!record) {
         return res.status(404).json({ error: 'Withdrawal not found' });

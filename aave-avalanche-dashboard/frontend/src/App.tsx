@@ -4,7 +4,6 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { AuthGuard } from "@/components/AuthGuard";
 import { PrivyAuthProvider } from "@/components/PrivyAuthProvider";
 
 // Lazy load routes for code splitting
@@ -14,8 +13,9 @@ const GmxIntegration = lazy(() => import("./pages/GmxIntegration"));
 const MonitoringDashboard = lazy(() => import("./pages/MonitoringDashboard"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
-const Web3Providers = lazy(() =>
-  import("./components/Web3Providers").then((m) => ({ default: m.Web3Providers }))
+// Lazy load RouteWrapper (includes Web3Providers + AuthGuard)
+const RouteWrapper = lazy(() =>
+  import("./components/RouteWrapper").then((m) => ({ default: m.RouteWrapper }))
 );
 
 // Optimized loading fallback - renders immediately to improve LCP
@@ -65,41 +65,36 @@ const App = () => (
         <BrowserRouter>
           <Suspense fallback={<PageLoader />}>
             <Routes>
-              <Route path="/" element={
-                <Web3Providers>
-                  <AuthGuard>
+              <Route 
+                path="/" 
+                element={
+                  <RouteWrapper>
                     <DashboardWithWeb3 />
-                  </AuthGuard>
-                </Web3Providers>
-              } />
+                  </RouteWrapper>
+                } 
+              />
               <Route
                 path="/stack"
                 element={
-                  <Web3Providers>
-                    <AuthGuard>
-                      <StackApp />
-                    </AuthGuard>
-                  </Web3Providers>
+                  <RouteWrapper>
+                    <StackApp />
+                  </RouteWrapper>
                 }
               />
               <Route
                 path="/gmx"
                 element={
-                  <Web3Providers>
-                    <AuthGuard>
-                      <GmxIntegration />
-                    </AuthGuard>
-                  </Web3Providers>
+                  <RouteWrapper>
+                    <GmxIntegration />
+                  </RouteWrapper>
                 }
               />
               <Route
                 path="/monitoring"
                 element={
-                  <Web3Providers>
-                    <AuthGuard>
-                      <MonitoringDashboard />
-                    </AuthGuard>
-                  </Web3Providers>
+                  <RouteWrapper>
+                    <MonitoringDashboard />
+                  </RouteWrapper>
                 }
               />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

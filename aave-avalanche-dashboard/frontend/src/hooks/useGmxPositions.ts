@@ -14,6 +14,12 @@ export interface GmxPositionData {
   entryPrice: string;
   leverage: number;
   isLong: boolean;
+  // Additional fields from contract
+  borrowingFactor: string;
+  fundingFeeAmountPerSize: string;
+  claimableFundingAmount: string;
+  increasedAtTime: number;
+  decreasedAtTime: number;
 }
 
 const MARKET_INFO: Record<string, { name: string; indexToken: string }> = {
@@ -108,11 +114,17 @@ export function useGmxPositions(overrideAddress?: string | null) {
         console.log('[GMX] Raw positions:', positions);
 
         if (!positions || positions.length === 0) {
-          console.log('[GMX] No positions found');
+          // Defer console.log to avoid blocking
+          if (process.env.NODE_ENV === 'development') {
+            setTimeout(() => console.log('[GMX] No positions found'), 0);
+          }
           return [];
         }
 
-        return positions.map((pos, index) => {
+        // Process positions synchronously but in smaller batches to prevent blocking
+        // For small arrays (< 10), process all at once
+        // For larger arrays, process in chunks to yield to main thread
+        const processPosition = (pos: any, index: number) => {
           const market = pos.addresses.market.toLowerCase();
           const marketInfo = MARKET_INFO[market];
           const sizeUsd = Number(formatUnits(pos.numbers.sizeInUsd, 30));
@@ -126,12 +138,21 @@ export function useGmxPositions(overrideAddress?: string | null) {
           const isBtcPosition = marketInfo?.indexToken === 'BTC' || marketInfo?.name?.includes('BTC');
           const isLong = isBtcPosition ? true : pos.flags.isLong;
 
-          console.log('[GMX] Position mapping:', {
-            market: marketInfo?.name,
-            contractIsLong: pos.flags.isLong,
-            forcedIsLong: isLong,
-            isBtcPosition,
-          });
+          // Calculate claimable funding based on position direction
+          // These are per-size values, so multiply by position size
+          const claimableFundingPerSize = isLong 
+            ? Number(formatUnits(pos.numbers.longTokenClaimableFundingAmountPerSize, 30))
+            : Number(formatUnits(pos.numbers.shortTokenClaimableFundingAmountPerSize, 30));
+          
+          // Total claimable funding = per-size amount * position size in tokens
+          const totalClaimableFunding = claimableFundingPerSize * sizeInTokens;
+          
+          // Convert timestamps (they're in seconds)
+          const increasedAt = Number(pos.numbers.increasedAtTime);
+          const decreasedAt = Number(pos.numbers.decreasedAtTime);
+          
+          // Borrowing factor is stored as a decimal (e.g., 0.0001 = 0.01%)
+          const borrowingFactorValue = Number(formatUnits(pos.numbers.borrowingFactor, 30));
 
           return {
             id: `${pos.addresses.market}-${pos.addresses.collateralToken}-${index}`,
@@ -145,16 +166,44 @@ export function useGmxPositions(overrideAddress?: string | null) {
             entryPrice: entryPrice.toFixed(2),
             leverage: parseFloat(leverage.toFixed(2)),
             isLong,
+            // Additional fields
+            borrowingFactor: borrowingFactorValue.toString(),
+            fundingFeeAmountPerSize: formatUnits(pos.numbers.fundingFeeAmountPerSize, 30),
+            claimableFundingAmount: totalClaimableFunding.toFixed(4),
+            increasedAtTime: increasedAt,
+            decreasedAtTime: decreasedAt,
           };
-        }).filter(p => parseFloat(p.sizeInUsd) > 0);
+        };
+
+        // For small arrays, process synchronously
+        if (positions.length <= 10) {
+          return positions.map(processPosition).filter(p => parseFloat(p.sizeInUsd) > 0);
+        }
+
+        // For larger arrays, process in batches to yield to main thread
+        const results: any[] = [];
+        const batchSize = 5;
+        
+        for (let i = 0; i < positions.length; i += batchSize) {
+          const batch = positions.slice(i, i + batchSize);
+          const batchResults = batch.map((pos, batchIndex) => processPosition(pos, i + batchIndex));
+          results.push(...batchResults);
+          
+          // Yield to main thread after each batch (except the last)
+          if (i + batchSize < positions.length) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+          }
+        }
+        
+        return results.filter(p => parseFloat(p.sizeInUsd) > 0);
       } catch (error) {
         console.error('[GMX] Error fetching positions:', error);
         return [];
       }
     },
     enabled: hasAddress && !!publicClient,
-    refetchInterval: 30000,
-    staleTime: 25000,
+    refetchInterval: 15000,
+    staleTime: 12000,
     gcTime: 60000,
     refetchOnWindowFocus: false,
     refetchOnMount: false,

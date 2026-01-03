@@ -26,7 +26,7 @@ export default async function handler(req: any, res: any) {
     // Get all monitoring data
     const [errorStats, alertStats, healthResult, logStats] = await Promise.all([
       Promise.resolve(errorTracker.getErrorStats()),
-      Promise.resolve(alertingSystem.getAlertStats()),
+      alertingSystem.getAlertStats(),
       healthMonitor.runHealthCheck(),
       Promise.resolve(logger.getLogStats())
     ]);
@@ -81,7 +81,7 @@ export default async function handler(req: any, res: any) {
         active: alertStats.activeAlerts,
         bySeverity: alertStats.alertsBySeverity,
         byType: alertStats.alertsByType,
-        recent: alertingSystem.getAlertHistory(10).map(alert => ({
+        recent: (await alertingSystem.getAlertHistory(10)).map(alert => ({
           id: alert.id,
           type: alert.type,
           severity: alert.severity,

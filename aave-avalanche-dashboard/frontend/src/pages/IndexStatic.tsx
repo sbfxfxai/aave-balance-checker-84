@@ -66,15 +66,15 @@ export default function IndexStatic() {
       <main className="container mx-auto px-4 py-8">
         <div className="max-w-6xl mx-auto text-center space-y-8">
           <div className="space-y-4">
-            <h2 className="text-4xl font-bold">Earn 5-8% on Your Savings</h2>
+            <h2 className="text-4xl font-bold">Track your Aave positions</h2>
             <p className="text-xl text-muted-foreground">
-              Traditional banks pay 0.5%. Get real returns through battle-tested protocols—no crypto knowledge needed.
+              Supply, borrow, and manage your DeFi portfolio on Avalanche C-Chain
             </p>
           </div>
           <div className="flex justify-center gap-4">
             <Button size="lg" className="flex items-center gap-2" onClick={() => setShowWeb3(true)}>
               <Wallet className="h-5 w-5" />
-              Get Started
+              Connect Wallet to Start
             </Button>
           </div>
         </div>
@@ -85,9 +85,6 @@ export default function IndexStatic() {
         <div className="container mx-auto px-4 py-6">
           <p className="text-center text-sm text-muted-foreground">
             Powered by Aave V3 • Avalanche C-Chain • Trader Joe
-          </p>
-          <p className="text-center text-xs sm:text-sm text-muted-foreground mt-2">
-            Support: <a href="mailto:support@tiltvault.com" className="text-emerald-500 hover:underline">support@tiltvault.com</a>
           </p>
         </div>
       </footer>

@@ -54,6 +54,9 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   const [isCheckingErgc, setIsCheckingErgc] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [cooldownTime, setCooldownTime] = useState<number>(0);
+  const [storedPaymentId, setStoredPaymentId] = useState<string | null>(null); // Store paymentId from first step
+  const [hubUsdcBalance, setHubUsdcBalance] = useState<number | null>(null); // Hub wallet USDC balance
+  const [isLoadingHubBalance, setIsLoadingHubBalance] = useState(false);
   const { toast } = useToast();
 
   // Get the most relevant wallet address - prioritize Privy for authenticated users
@@ -150,29 +153,37 @@ export const DepositModal: React.FC<DepositModalProps> = ({
     if (isOpen) {
       let cancelled = false;
       const checkConfig = async () => {
-        await ensureSquareConfigAvailable();
-        const resolvedConfig = getSquareConfig();
+        try {
+          // Try to get config from API first (production), then fall back to env
+          await ensureSquareConfigAvailable();
+          const resolvedConfig = getSquareConfig();
 
-        if (cancelled) return;
+          if (cancelled) return;
 
-        setSquareConfig(resolvedConfig);
+          setSquareConfig(resolvedConfig);
 
-        const configured = !!resolvedConfig.applicationId && !!resolvedConfig.locationId;
-        setIsConfigured(configured);
-        
-        if (configured) {
-          console.log('[DepositModal] Square configured:', {
-            environment: resolvedConfig.environment,
-            locationId: resolvedConfig.locationId,
-            source: resolvedConfig.source,
-          });
-        } else if (import.meta.env.DEV) {
-          console.warn('[DepositModal] Square not configured');
-          toast({
-            title: 'Square API not configured',
-            description: 'Please configure Square API credentials in .env file',
-            variant: 'destructive',
-          });
+          // Check if Square is properly configured (both app ID and location ID required)
+          // Use resolved config (which merges API + env vars)
+          const hasAppId = !!resolvedConfig.applicationId;
+          const hasLocationId = !!resolvedConfig.locationId;
+          const configured = hasAppId && hasLocationId;
+          
+          setIsConfigured(configured);
+          
+          if (!configured) {
+            console.warn('[DepositModal] Square config incomplete:', {
+              hasAppId,
+              hasLocationId,
+              configAppId: !!resolvedConfig.applicationId,
+              configLocationId: !!resolvedConfig.locationId,
+            });
+          }
+        } catch (error) {
+          console.error('[DepositModal] Error loading Square config:', error);
+          // Fallback to env vars if API fails
+          const hasAppId = !!import.meta.env.VITE_SQUARE_APPLICATION_ID;
+          const hasLocationId = !!import.meta.env.VITE_SQUARE_LOCATION_ID;
+          setIsConfigured(hasAppId && hasLocationId);
         }
 
         // Fetch AVAX price for fee calculation
@@ -230,6 +241,58 @@ export const DepositModal: React.FC<DepositModalProps> = ({
     }
   }, [isOpen, isConnected, connectedAddress, checkUserErgcBalance]);
 
+  // Fetch hub wallet USDC balance when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let cancelled = false;
+    const fetchHubBalance = async () => {
+      setIsLoadingHubBalance(true);
+      try {
+        const runtimeApiBaseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+        const response = await fetch(`${runtimeApiBaseUrl}/api/hub/balance`);
+        if (response.ok) {
+          const data = await response.json();
+          if (!cancelled && data.success && data.balance !== undefined) {
+            const balance = Math.floor(data.balance);
+            setHubUsdcBalance(balance);
+            console.log('[DepositModal] Hub USDC balance fetched:', balance);
+          } else if (!cancelled) {
+            console.warn('[DepositModal] Hub balance API returned unsuccessful response:', data);
+            setHubUsdcBalance(9999); // Fallback
+          }
+        } else {
+          console.error('[DepositModal] Hub balance API returned error status:', response.status);
+          if (!cancelled) {
+            setHubUsdcBalance(9999); // Fallback
+          }
+        }
+      } catch (error) {
+        console.error('[DepositModal] Failed to fetch hub balance:', error);
+        if (!cancelled) {
+          // Fallback to 9999 if fetch fails
+          setHubUsdcBalance(9999);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingHubBalance(false);
+        }
+      }
+    };
+
+    fetchHubBalance();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
+  // Calculate max deposit amount: min(hub balance, 9999)
+  // If hub balance is less than 9999, use hub balance; otherwise cap at 9999
+  const maxDepositAmount = hubUsdcBalance !== null 
+    ? Math.min(hubUsdcBalance, 9999)
+    : 9999;
+
 
   const handleDeposit = async () => {
     // REQUIRE: Web3 wallet must be connected (funds go to connected wallet)
@@ -263,10 +326,10 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       return;
     }
     
-    if (depositAmount > 9999) {
+    if (depositAmount > maxDepositAmount) {
       toast({
         title: 'Maximum deposit exceeded',
-        description: 'Maximum deposit amount is $9,999',
+        description: `Maximum deposit amount is $${maxDepositAmount.toLocaleString()}`,
         variant: 'destructive',
       });
       return;
@@ -278,20 +341,35 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       // SECURITY: Generate payment ID first (validated format)
       const paymentId = `payment-${Date.now()}-${Math.random().toString(36).substring(7)}`;
       
-      // Use connected Web3 wallet address (required)
-      const walletAddress = connectedAddress;
+      // CRITICAL: Validate and normalize wallet address
+      // Both payment_info and payment note must use the same normalized format
+      if (!connectedAddress) {
+        throw new Error('Wallet address is required. Please connect your wallet.');
+      }
+      
+      const normalizedWallet = connectedAddress.trim().toLowerCase();
+      if (!normalizedWallet.startsWith('0x') || normalizedWallet.length !== 42) {
+        console.error('[DepositModal] ❌ Invalid wallet address format:', connectedAddress);
+        throw new Error('Invalid wallet address format. Please reconnect your wallet.');
+      }
+      
+      console.log('[DepositModal] ✅ Wallet address validated:', {
+        original: connectedAddress,
+        normalized: normalizedWallet
+      });
       
       // Get email from localStorage if available (optional, for payment info)
       const userEmail = localStorage.getItem('tiltvault_email') || '';
 
-      // Store payment info with wallet address (for webhook)
+      // Store payment info with normalized wallet address (for webhook)
+      // CRITICAL: Use normalized wallet address to match payment note format
       const runtimeApiBaseUrl = typeof window !== 'undefined' ? window.location.origin : '';
       const paymentInfoResponse = await fetch(`${runtimeApiBaseUrl}/api/wallet/store-payment-info`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           paymentId,
-          walletAddress,
+          walletAddress: normalizedWallet, // Use normalized wallet address
           userEmail: userEmail || undefined, // Optional - only if user is logged in
           riskProfile: riskProfile.id,
           amount: parseFloat(amount),
@@ -306,11 +384,15 @@ export const DepositModal: React.FC<DepositModalProps> = ({
           description: 'Payment info storage failed, but deposit will continue',
           variant: 'destructive',
         });
+      } else {
+        console.log('[DepositModal] ✅ Payment info stored successfully with paymentId:', paymentId);
+        // Store paymentId for use in handlePaymentNonce
+        setStoredPaymentId(paymentId);
       }
 
       toast({
         title: 'Using connected wallet',
-        description: `Deposits will be sent to ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`,
+        description: `Deposits will be sent to ${normalizedWallet.slice(0, 6)}...${normalizedWallet.slice(-4)}`,
       });
 
       // Show payment form
@@ -349,34 +431,68 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       // Get email from localStorage if available (optional)
       const userEmail = localStorage.getItem('tiltvault_email') || '';
       
-      // Get paymentId from earlier step (stored in state or generate if needed)
-      const paymentId = `payment-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+      // CRITICAL: Reuse paymentId from first step (handleDeposit)
+      // This ensures payment_info and payment note use the same paymentId
+      const paymentId = storedPaymentId || `payment-${Date.now()}-${Math.random().toString(36).substring(7)}`;
       
-      // Store payment info with paymentId BEFORE processing payment
-      const runtimeApiBaseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-      const paymentInfoResponse = await fetch(`${runtimeApiBaseUrl}/api/wallet/store-payment-info`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          paymentId,
-          walletAddress: connectedAddress,
-          userEmail: userEmail || undefined,
-          riskProfile: riskProfile.id,
-          amount: parseFloat(amount),
-        }),
+      // CRITICAL: Validate and normalize wallet address
+      // Both payment_info and payment note must use the same normalized format
+      if (!connectedAddress) {
+        throw new Error('Wallet address is required. Please connect your wallet.');
+      }
+      
+      const normalizedWallet = connectedAddress.trim().toLowerCase();
+      if (!normalizedWallet.startsWith('0x') || normalizedWallet.length !== 42) {
+        console.error('[DepositModal] ❌ Invalid wallet address format:', connectedAddress);
+        throw new Error('Invalid wallet address format. Please reconnect your wallet.');
+      }
+      
+      console.log('[DepositModal] ✅ Wallet address validated for payment:', {
+        original: connectedAddress,
+        normalized: normalizedWallet,
+        paymentId
       });
+      
+      // Payment info should already be stored in handleDeposit, but verify it exists
+      // If not stored (e.g., user skipped first step), store it now
+      if (!storedPaymentId) {
+        console.warn('[DepositModal] ⚠️ Payment info not stored in first step, storing now...');
+        const runtimeApiBaseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+        const paymentInfoResponse = await fetch(`${runtimeApiBaseUrl}/api/wallet/store-payment-info`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            paymentId,
+            walletAddress: normalizedWallet, // Use normalized wallet address
+            userEmail: userEmail || undefined,
+            riskProfile: riskProfile.id,
+            amount: parseFloat(amount),
+          }),
+        });
 
-      if (!paymentInfoResponse.ok) {
-        console.warn('[DepositModal] Failed to store payment info before payment');
+        if (!paymentInfoResponse.ok) {
+          console.warn('[DepositModal] Failed to store payment info before payment');
+        } else {
+          console.log('[DepositModal] ✅ Payment info stored successfully');
+        }
       }
 
+      // CRITICAL: Log wallet address being sent to payment note
+      console.log('[DepositModal] ✅ Processing payment with:', {
+        paymentId,
+        walletAddress: normalizedWallet,
+        riskProfile: riskProfile.id,
+        amount: totalAmount,
+        note: `payment_id:${paymentId} wallet:${normalizedWallet} risk:${riskProfile.id}`
+      });
+      
       const result = await squarePaymentService.processPayment(
         nonce,
         totalAmount,
         orderId,
         riskProfile.id,
         includeErgc,
-        connectedAddress, // Use connected wallet address
+        normalizedWallet, // Use normalized wallet address (lowercase)
         userEmail || undefined, // Optional email
         paymentId // Pass paymentId so it can be included in payment note
       );
@@ -476,16 +592,17 @@ export const DepositModal: React.FC<DepositModalProps> = ({
               <Input
                 id="amount"
                 type="number"
-                placeholder="10.00"
+                placeholder="1.00"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                disabled={isProcessing}
-                min={10}
-                max={9999}
+                disabled={isProcessing || isLoadingHubBalance}
+                min={1}
+                max={maxDepositAmount}
                 step={0.01}
               />
               <p className="text-xs text-muted-foreground">
-                Min: $10 · Max: $9,999
+                Min: $1 · Max: ${maxDepositAmount.toLocaleString()}
+                {isLoadingHubBalance && ' (loading...)'}
               </p>
               {cooldownTime > 0 && (
                 <p className="text-xs text-orange-600">

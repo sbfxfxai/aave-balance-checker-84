@@ -85,13 +85,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Convert amount to cents
     const amountCents = Math.round(amount * 100);
 
+    // CRITICAL: Validate wallet address format before including in payment note
+    // The webhook depends on this to identify the user's wallet
+    let normalizedWalletAddress: string | undefined = undefined;
+    if (walletAddress) {
+      // Validate wallet address format
+      const trimmed = walletAddress.trim();
+      if (trimmed.startsWith('0x') && trimmed.length === 42) {
+        normalizedWalletAddress = trimmed.toLowerCase();
+        console.log('[ProcessPayment] ✅ Wallet address validated:', normalizedWalletAddress);
+      } else {
+        console.error('[ProcessPayment] ❌ Invalid wallet address format:', trimmed);
+        console.error('[ProcessPayment] ❌ Expected: 0x followed by 40 hex characters (42 total)');
+        console.error('[ProcessPayment] ❌ Got:', {
+          startsWith0x: trimmed.startsWith('0x'),
+          length: trimmed.length,
+          address: trimmed
+        });
+        // Don't fail the payment, but log the error - webhook will use payment_info instead
+        console.warn('[ProcessPayment] ⚠️ Invalid wallet address - payment note will not include wallet');
+        console.warn('[ProcessPayment] ⚠️ Webhook will rely on payment_info lookup instead');
+      }
+    } else {
+      console.warn('[ProcessPayment] ⚠️ No wallet address provided - payment note will not include wallet');
+      console.warn('[ProcessPayment] ⚠️ Webhook will rely on payment_info lookup instead');
+    }
+
     // Build payment note for webhook
     const noteParts: string[] = [];
     if (paymentId) {
       noteParts.push(`payment_id:${paymentId}`);
     }
-    if (walletAddress) {
-      noteParts.push(`wallet:${walletAddress.toLowerCase()}`);
+    if (normalizedWalletAddress) {
+      noteParts.push(`wallet:${normalizedWalletAddress}`);
+      console.log('[ProcessPayment] ✅ Including wallet address in payment note:', normalizedWalletAddress);
     }
     if (riskProfile) {
       noteParts.push(`risk:${riskProfile}`);
@@ -104,6 +131,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (useExistingErgc !== undefined) {
       noteParts.push(`debit_ergc:${Math.floor(useExistingErgc)}`);
+    }
+    
+    // Log final note for debugging
+    if (noteParts.length > 0) {
+      console.log('[ProcessPayment] Payment note:', noteParts.join(' '));
+    } else {
+      console.warn('[ProcessPayment] ⚠️ Payment note is empty - webhook may have issues identifying wallet');
     }
 
     // Prepare Square API payload

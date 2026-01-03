@@ -10,17 +10,19 @@ const NotFound = () => {
   }, [location.pathname]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">404</h1>
-        <p className="mb-4 text-xl text-muted-foreground">Oops! Page not found</p>
-        <Link to="/" className="text-primary underline hover:text-primary/90">
-          Return to Home
-        </Link>
-        <p className="mt-8 text-xs sm:text-sm text-muted-foreground">
-          Support: <a href="mailto:support@tiltvault.com" className="text-emerald-500 hover:underline">support@tiltvault.com</a>
-        </p>
-      </div>
+    <div className="min-h-screen bg-muted">
+      <main className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <h1 className="mb-4 text-4xl font-bold">404</h1>
+          <p className="mb-4 text-xl text-muted-foreground">Oops! Page not found</p>
+          <Link to="/" className="text-primary underline hover:text-primary/90" aria-label="Return to home page">
+            Return to Home
+          </Link>
+          <p className="mt-8 text-xs sm:text-sm text-muted-foreground">
+            Support: <a href="mailto:support@tiltvault.com" className="text-emerald-500 hover:underline">support@tiltvault.com</a>
+          </p>
+        </div>
+      </main>
     </div>
   );
 };

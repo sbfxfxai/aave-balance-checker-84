@@ -34,7 +34,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
     return (
       <div className="min-h-screen bg-gradient-subtle">
         <Navigation />
-        <div className="max-w-2xl mx-auto p-8">
+        <main className="max-w-2xl mx-auto p-8">
           <div className="space-y-6">
             {/* Hero Section */}
             <div className="text-center space-y-4">
@@ -106,12 +106,21 @@ export function AuthGuard({ children }: AuthGuardProps) {
               </Card>
             </div>
           </div>
-        </div>
+        </main>
         
         {/* Footer */}
         <footer className="border-t border-border/50 mt-16">
           <div className="container mx-auto px-4 py-6">
-            <p className="text-center text-xs sm:text-sm text-muted-foreground">
+            <p className="text-center text-sm text-muted-foreground">
+              TiltVault bridges traditional banking convenience with DeFi opportunities
+            </p>
+            <p className="text-center text-xs text-muted-foreground mt-2">
+              High-yield savings via Aave • 2.5x leveraged Bitcoin positions • Simple, secure, designed for US users
+            </p>
+            <p className="text-center text-xs text-muted-foreground mt-2">
+              Powered by Aave V3 • GMX • Avalanche C-Chain
+            </p>
+            <p className="text-center text-xs sm:text-sm text-muted-foreground mt-3">
               Support: <a href="mailto:support@tiltvault.com" className="text-emerald-500 hover:underline">support@tiltvault.com</a>
             </p>
           </div>

@@ -6,7 +6,9 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { DepositModal } from '@/components/stack/DepositModal';
+import { Footer } from '@/components/Footer';
 import { Link } from 'react-router-dom';
+import { OptimizedLogo } from '@/components/OptimizedLogo';
 
 // Helper to calculate blended APY based on USDC allocation percentage
 const calculateBlendedAPY = (usdcPercent: number, aaveAPY: number, btcLevReturn: number = 15) => {
@@ -119,11 +121,7 @@ const StackApp = () => {
         <div className="container mx-auto px-4 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 sm:gap-3">
-              <img
-                src="/tiltvault-logo.png"
-                alt="TiltVault"
-                className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg"
-              />
+              <OptimizedLogo loading="eager" />
               <div>
                 <h1 className="text-lg sm:text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
                   Auto
@@ -131,20 +129,20 @@ const StackApp = () => {
                 <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Automated Investing</p>
               </div>
             </div>
-            <div className="flex items-center gap-1 sm:gap-2">
-              <Link to="/gmx">
-                <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
-                  <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4" />
+            <nav className="flex items-center gap-1 sm:gap-2" aria-label="Main navigation">
+              <Link to="/gmx" aria-label="Go to Bitcoin trading page">
+                <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Bitcoin">
+                  <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
                   <span className="hidden sm:inline">Bitcoin</span>
                 </Button>
               </Link>
-              <Link to="/">
-                <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
-                  <Landmark className="h-3 w-3 sm:h-4 sm:w-4" />
+              <Link to="/" aria-label="Go to Banking page">
+                <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Banking">
+                  <Landmark className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
                   <span className="hidden sm:inline">Banking</span>
                 </Button>
               </Link>
-            </div>
+            </nav>
           </div>
         </div>
       </header>
@@ -162,7 +160,19 @@ const StackApp = () => {
             </p>
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/20 rounded-full text-sm text-green-600 font-medium">
               <Sparkles className="h-4 w-4" />
-              <span>$1000+ deposits: 3.7% USDC - 3.2% fee = 0.5% instant profit</span>
+              <span>
+                $1000+ deposits:{' '}
+                <a
+                  href="https://app.aave.com/reserve-overview/?underlyingAsset=0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e&marketName=proto_avalanche_v3"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-green-500 font-semibold transition-colors"
+                  title={`Current Aave USDC APY: ${aaveAPY.toFixed(2)}%`}
+                >
+                  {aaveAPY.toFixed(1)}%
+                </a>
+                {' '}USDC - 3.2% fee = {(aaveAPY - 3.2).toFixed(1)}% instant profit
+              </span>
             </div>
           </div>
 
@@ -188,7 +198,7 @@ const StackApp = () => {
                 >
                   <DollarSign className="h-8 w-8" />
                   <span className="text-lg font-semibold">Deposit USD</span>
-                  <span className="text-xs text-muted-foreground">Credit/Debit Card</span>
+                  <span className="text-xs text-muted-foreground">Debit Card</span>
                 </Button>
               </div>
             </CardContent>
@@ -276,20 +286,7 @@ const StackApp = () => {
       )}
 
       {/* Footer */}
-      <footer className="border-t border-border/50 mt-16">
-        <div className="container mx-auto px-4 py-6">
-          <p className="text-center text-sm text-muted-foreground">
-            Powered by GMX • Aave V3 • Avalanche C-Chain • Square Payments
-          </p>
-          <p className="text-center text-xs text-muted-foreground mt-2">
-            This product involves risk. Automated leverage trading can result in total loss of capital.
-            Not investment advice.
-          </p>
-          <p className="text-center text-xs sm:text-sm text-muted-foreground mt-2">
-            Support: <a href="mailto:support@tiltvault.com" className="text-emerald-500 hover:underline">support@tiltvault.com</a>
-          </p>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 };

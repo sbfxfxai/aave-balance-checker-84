@@ -4943,6 +4943,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    // Handle payout.paid events - Square sends these when batch payouts are completed and paid to merchant bank
+    // NOTE: payout.paid is about Square's payout to merchant being completed, NOT individual payments
+    // Individual payments should still trigger payment.sent or payment.paid events
+    if (eventType === 'payout.paid') {
+      const payout = (event.data?.object as any)?.payout;
+      logger.info('Received payout.paid event (batch payout completed, not individual payment)', LogCategory.WEBHOOK, {
+        eventType,
+        eventId: event.id,
+        payoutId: payout?.id,
+        payoutAmount: payout?.amount_money ? (payout.amount_money.amount || 0) / 100 : undefined,
+        payoutStatus: payout?.status,
+        payoutType: payout?.type,
+        arrivalDate: payout?.arrival_date,
+        message: 'payout.paid indicates Square has completed transferring funds to merchant bank - individual payments should trigger payment.sent/payment.paid events'
+      });
+      
+      return res.status(200).json({
+        success: true,
+        action: 'logged',
+        eventType,
+        payoutId: payout?.id,
+        payoutAmount: payout?.amount_money ? (payout.amount_money.amount || 0) / 100 : undefined,
+        message: 'payout.paid event logged - individual payments should trigger payment.sent/payment.paid events when they complete'
+      });
+    }
+
     // Handle payment.updated - check if status is COMPLETED and process it
     // Square sometimes sends payment.updated with COMPLETED status instead of payment.sent
     if (eventType === 'payment.updated' || eventType === 'payment.completed') {

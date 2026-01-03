@@ -1,6 +1,6 @@
 @import "./tailwind.css";
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap');
+/* Google Fonts moved to index.html <head> to avoid render blocking */
 
 /* Stack App Design System - Dark theme with emerald green primary */
 

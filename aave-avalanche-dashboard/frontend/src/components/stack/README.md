@@ -12,7 +12,7 @@ Modal component for handling deposit confirmation and payment processing.
 
 The Square integration is handled in `src/lib/square.ts` and supports:
 
-1. **USD Deposits**: Credit/debit card processing via Square Payments API
+1. **USD Deposits**: Debit card processing via Square Payments API
 2. **Bitcoin Deposits**: Lightning Network payments via Square Bitcoin API
 
 ## Setup Instructions

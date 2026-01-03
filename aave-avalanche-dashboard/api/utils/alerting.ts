@@ -3,7 +3,7 @@
  * Sends alerts for critical issues and monitoring events
  */
 
-import { logger } from './logger';
+import { logger, LogCategory } from './logger';
 import { errorTracker } from './errorTracker';
 import { emailService } from './notifications/emailService';
 import { slackService } from './notifications/slackService';
@@ -51,10 +51,13 @@ class AlertingSystem {
   private static instance: AlertingSystem;
   private isEnabled: boolean;
   private rules: Map<AlertType, AlertRule> = new Map();
-  private alertHistory: Alert[] = [];
   private maxHistorySize = 1000;
   private webhookUrl?: string;
   private emailRecipients: string[] = [];
+  
+  // Redis-based alert history (persistent across server restarts)
+  private readonly ALERT_HISTORY_KEY = 'alerts:history';
+  private readonly ALERT_TTL = 30 * 24 * 60 * 60; // 30 days TTL for alert history
 
   private constructor() {
     this.isEnabled = process.env.NODE_ENV === 'production';
@@ -139,18 +142,28 @@ class AlertingSystem {
     return `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  private addToHistory(alert: Alert): void {
-    this.alertHistory.push(alert);
-    
-    // Keep history size manageable
-    if (this.alertHistory.length > this.maxHistorySize) {
-      this.alertHistory.shift();
+  private async addToHistory(alert: Alert): Promise<void> {
+    try {
+      const { getRedis } = await import('./redis.js');
+      const redis = getRedis();
+      
+      // Add alert to Redis list (prepend for newest first)
+      await redis.lpush(this.ALERT_HISTORY_KEY, JSON.stringify(alert));
+      
+      // Trim list to maxHistorySize
+      await redis.ltrim(this.ALERT_HISTORY_KEY, 0, this.maxHistorySize - 1);
+      
+      // Set TTL on the list (refresh on each add)
+      await redis.expire(this.ALERT_HISTORY_KEY, this.ALERT_TTL);
+    } catch (error) {
+      // Log error but don't fail alert processing
+      console.error('[Alerting] Failed to store alert in Redis:', error);
     }
   }
 
   private async sendAlert(alert: Alert): Promise<void> {
     if (!this.isEnabled) {
-      logger.warn('Alerting disabled', 'API', { alert });
+      logger.warn('Alerting disabled', LogCategory.API, { alert });
       return;
     }
 
@@ -187,7 +200,7 @@ class AlertingSystem {
       }
 
       // Log the alert
-      logger.error(`ALERT: ${alert.title}`, 'API', {
+      logger.error(`ALERT: ${alert.title}`, LogCategory.API, {
         alertId: alert.id,
         type: alert.type,
         severity: alert.severity,
@@ -195,7 +208,7 @@ class AlertingSystem {
       });
 
     } catch (error) {
-      logger.error('Failed to send alert', 'API', { 
+      logger.error('Failed to send alert', LogCategory.API, { 
         alertId: alert.id,
         error: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -205,7 +218,7 @@ class AlertingSystem {
   public async triggerAlert(type: AlertType, title: string, message: string, context?: Record<string, any>): Promise<void> {
     const rule = this.rules.get(type);
     if (!rule) {
-      logger.warn(`No rule found for alert type: ${type}`, 'ALERTING');
+      logger.warn(`No rule found for alert type: ${type}`, LogCategory.API);
       return;
     }
 
@@ -224,7 +237,7 @@ class AlertingSystem {
       timestamp: new Date().toISOString()
     };
 
-    this.addToHistory(alert);
+    await this.addToHistory(alert);
     await this.sendAlert(alert);
 
     // Update last triggered time
@@ -244,7 +257,7 @@ class AlertingSystem {
           });
         }
       } catch (error) {
-        logger.error(`Error checking alert rule: ${type}`, 'ALERTING', {
+        logger.error(`Error checking alert rule: ${type}`, LogCategory.API, {
           error: error instanceof Error ? error.message : 'Unknown error'
         });
       }
@@ -290,44 +303,100 @@ class AlertingSystem {
     );
   }
 
-  public getAlertHistory(limit: number = 50): Alert[] {
-    return this.alertHistory.slice(-limit);
-  }
-
-  public getActiveAlerts(): Alert[] {
-    return this.alertHistory.filter(alert => !alert.resolved);
-  }
-
-  public resolveAlert(alertId: string): void {
-    const alert = this.alertHistory.find(a => a.id === alertId);
-    if (alert && !alert.resolved) {
-      alert.resolved = true;
-      alert.resolvedAt = new Date().toISOString();
+  public async getAlertHistory(limit: number = 50): Promise<Alert[]> {
+    try {
+      const { getRedis } = await import('./redis.js');
+      const redis = getRedis();
       
-      logger.info(`Alert resolved: ${alertId}`, 'ALERTING', { alertId });
+      // Get alerts from Redis (newest first)
+      const alerts = await redis.lrange(this.ALERT_HISTORY_KEY, 0, limit - 1);
+      
+      return alerts
+        .map((alertStr: string) => {
+          try {
+            return typeof alertStr === 'string' ? JSON.parse(alertStr) : alertStr;
+          } catch {
+            return null;
+          }
+        })
+        .filter((alert): alert is Alert => alert !== null);
+    } catch (error) {
+      console.error('[Alerting] Failed to get alert history from Redis:', error);
+      return [];
     }
   }
 
-  public getAlertStats(): {
+  public async getActiveAlerts(): Promise<Alert[]> {
+    const history = await this.getAlertHistory(this.maxHistorySize);
+    return history.filter(alert => !alert.resolved);
+  }
+
+  public async resolveAlert(alertId: string): Promise<void> {
+    try {
+      const { getRedis } = await import('./redis.js');
+      const redis = getRedis();
+      
+      // Get all alerts
+      const alerts = await redis.lrange(this.ALERT_HISTORY_KEY, 0, -1);
+      
+      // Find and update the alert
+      for (let i = 0; i < alerts.length; i++) {
+        const alertStr = alerts[i];
+        try {
+          const alert: Alert = typeof alertStr === 'string' ? JSON.parse(alertStr) : alertStr;
+          if (alert.id === alertId && !alert.resolved) {
+            alert.resolved = true;
+            alert.resolvedAt = new Date().toISOString();
+            
+            // Update in Redis
+            await redis.lset(this.ALERT_HISTORY_KEY, i, JSON.stringify(alert));
+            
+            logger.info(`Alert resolved: ${alertId}`, LogCategory.API, { alertId });
+            return;
+          }
+        } catch {
+          // Skip invalid alerts
+          continue;
+        }
+      }
+      
+      logger.warn(`Alert not found: ${alertId}`, LogCategory.API, { alertId });
+    } catch (error) {
+      console.error('[Alerting] Failed to resolve alert in Redis:', error);
+    }
+  }
+
+  public async getAlertStats(): Promise<{
     totalAlerts: number;
     activeAlerts: number;
     alertsBySeverity: Record<string, number>;
     alertsByType: Record<string, number>;
-  } {
-    const alertsBySeverity: Record<string, number> = {};
-    const alertsByType: Record<string, number> = {};
+  }> {
+    try {
+      const history = await this.getAlertHistory(this.maxHistorySize);
+      const alertsBySeverity: Record<string, number> = {};
+      const alertsByType: Record<string, number> = {};
 
-    this.alertHistory.forEach(alert => {
-      alertsBySeverity[alert.severity] = (alertsBySeverity[alert.severity] || 0) + 1;
-      alertsByType[alert.type] = (alertsByType[alert.type] || 0) + 1;
-    });
+      history.forEach(alert => {
+        alertsBySeverity[alert.severity] = (alertsBySeverity[alert.severity] || 0) + 1;
+        alertsByType[alert.type] = (alertsByType[alert.type] || 0) + 1;
+      });
 
-    return {
-      totalAlerts: this.alertHistory.length,
-      activeAlerts: this.alertHistory.filter(a => !a.resolved).length,
-      alertsBySeverity,
-      alertsByType
-    };
+      return {
+        totalAlerts: history.length,
+        activeAlerts: history.filter(a => !a.resolved).length,
+        alertsBySeverity,
+        alertsByType
+      };
+    } catch (error) {
+      console.error('[Alerting] Failed to get alert stats from Redis:', error);
+      return {
+        totalAlerts: 0,
+        activeAlerts: 0,
+        alertsBySeverity: {},
+        alertsByType: {}
+      };
+    }
   }
 }
 

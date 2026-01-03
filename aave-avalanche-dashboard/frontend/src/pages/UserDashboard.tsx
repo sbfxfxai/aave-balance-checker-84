@@ -266,7 +266,7 @@ export default function UserDashboard() {
 
     // Initialize steps
     const steps: ExecutionStep[] = [];
-    if (aaveAmount > 0.5) {
+    if (aaveAmount > 1) { // TEMPORARY: Set to $1 for testing, will revert to 0.5 after verification
       steps.push({ id: 'aave', name: `Supply $${aaveAmount.toFixed(2)} to AAVE`, status: 'pending' });
     }
     if (gmxAmount > 2) { // GMX minimum
@@ -284,7 +284,7 @@ export default function UserDashboard() {
 
     try {
       // Execute AAVE supply
-      if (aaveAmount > 0.5) {
+      if (aaveAmount > 1) { // TEMPORARY: Set to $1 for testing, will revert to 0.5 after verification
         updateStep('aave', { status: 'executing' });
         try {
           await supplyUSDC(aaveAmount.toFixed(2));

@@ -13,7 +13,7 @@ import { useWalletBalances } from '@/hooks/useWalletBalances';
 import { GmxPositionCard } from '@/components/GmxPositionCard';
 import { ActionModal } from '@/components/ActionModal';
 import { useConnect } from 'wagmi';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, startTransition } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { CONTRACTS, AAVE_DATA_PROVIDER_ABI } from '@/config/contracts';
@@ -37,34 +37,50 @@ export function SimpleDashboard() {
   const [activeAction, setActiveAction] = useState<'swap' | 'supply' | 'withdraw' | 'borrow' | 'repay' | 'send' | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Helper to check if address is Ethereum format (memoized to avoid recreation)
+  const isEthereumAddress = useCallback((addr: string | undefined | null): boolean => {
+    return !!addr && addr.startsWith('0x') && addr.length === 42;
+  }, []);
+
   // Get the most relevant wallet address - prioritize Privy for authenticated users
   // Filter out Solana addresses (only use Ethereum addresses)
+  // Optimized: Early returns and reduced array iterations
   const walletAddress = useMemo(() => {
-    // Helper to check if address is Ethereum format
-    const isEthereumAddress = (addr: string | undefined | null): boolean => {
-      return !!addr && addr.startsWith('0x') && addr.length === 42;
-    };
-
-    // If user is authenticated with Privy, use Privy wallet (Ethereum only)
-    if (authenticated && ready) {
-      // Find Privy wallet with Ethereum address
-      const privyWallet = wallets.find(w =>
-        w.walletClientType === 'privy' && isEthereumAddress(w.address)
-      );
-      if (privyWallet) return privyWallet.address;
-
-      // Check user wallet address
-      const userWalletAddr = user?.wallet?.address;
-      if (isEthereumAddress(userWalletAddr)) return userWalletAddr;
-
-      // Try to find any Ethereum wallet from Privy
-      const ethereumWallet = wallets.find(w => isEthereumAddress(w.address));
-      if (ethereumWallet) return ethereumWallet.address;
+    // Fast path: wagmi address (always Ethereum)
+    if (wagmiAddress && isEthereumAddress(wagmiAddress)) {
+      return wagmiAddress;
     }
 
-    // Fall back to wagmi wallet (always Ethereum)
-    return wagmiAddress || (window as TiltVaultWindow).tiltvaultWallet?.address;
-  }, [authenticated, ready, wallets, user, wagmiAddress]);
+    // Fast path: window wallet
+    const windowWallet = (window as TiltVaultWindow).tiltvaultWallet?.address;
+    if (windowWallet && isEthereumAddress(windowWallet)) {
+      return windowWallet;
+    }
+
+    // Privy wallet lookup (only if authenticated)
+    if (authenticated && ready) {
+      // Check user wallet first (fastest)
+      const userWalletAddr = user?.wallet?.address;
+      if (userWalletAddr && isEthereumAddress(userWalletAddr)) {
+        return userWalletAddr;
+      }
+
+      // Find Privy wallet (only iterate if wallets array exists)
+      if (wallets && wallets.length > 0) {
+        // Try Privy wallet first
+        const privyWallet = wallets.find(w =>
+          w.walletClientType === 'privy' && isEthereumAddress(w.address)
+        );
+        if (privyWallet) return privyWallet.address;
+
+        // Fallback to any Ethereum wallet
+        const ethereumWallet = wallets.find(w => isEthereumAddress(w.address));
+        if (ethereumWallet) return ethereumWallet.address;
+      }
+    }
+
+    return wagmiAddress || windowWallet || undefined;
+  }, [authenticated, ready, wallets, user, wagmiAddress, isEthereumAddress]);
 
   // Check if user has any wallet connected (Privy or wagmi)
   const hasWallet = Boolean(walletAddress && (authenticated || isWagmiConnected));
@@ -84,21 +100,28 @@ export function SimpleDashboard() {
     },
   });
 
-  // Log direct read for debugging
+  // Log direct read for debugging (deferred to avoid blocking)
   useEffect(() => {
-    if (directWavaxData) {
-      console.log('[SimpleDashboard] DIRECT WAVAX read:', directWavaxData);
+    if (directWavaxData && process.env.NODE_ENV === 'development') {
+      // Defer console.log to avoid blocking main thread
+      setTimeout(() => {
+        console.log('[SimpleDashboard] DIRECT WAVAX read:', directWavaxData);
+      }, 0);
     }
   }, [directWavaxData]);
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    try {
+    
+    // Use startTransition for non-urgent query invalidations
+    startTransition(() => {
       queryClient.invalidateQueries({ queryKey: ['balance'] });
       queryClient.invalidateQueries({ queryKey: ['aavePositions'] });
       queryClient.invalidateQueries({ queryKey: ['userBalancesExtended'] });
       queryClient.invalidateQueries({ queryKey: ['readContract'], exact: false });
+    });
 
+    try {
       if ('refetch' in positions && positions.refetch) {
         await (positions.refetch as () => Promise<any>)();
       }
@@ -106,11 +129,14 @@ export function SimpleDashboard() {
       toast.success('Positions refreshed!');
     } catch (error) {
       toast.error('Failed to refresh positions');
-      console.error('Refresh error:', error);
+      // Defer error logging to avoid blocking
+      if (process.env.NODE_ENV === 'development') {
+        setTimeout(() => console.error('Refresh error:', error), 0);
+      }
     } finally {
       setIsRefreshing(false);
     }
-  };
+  }, [queryClient, positions]);
 
   const handleDisconnect = async () => {
     if (authenticated) {
@@ -302,7 +328,7 @@ export function SimpleDashboard() {
             className="flex items-center gap-2 h-12"
           >
             <ArrowDownUp className="h-4 w-4" />
-            Swap AVAX → USDC
+            Get USDC
           </Button>
 
           <Button
@@ -311,7 +337,7 @@ export function SimpleDashboard() {
             variant="outline"
           >
             <Plus className="h-4 w-4" />
-            Add to Savings
+            Earn Interest
           </Button>
 
           <Button
@@ -320,7 +346,7 @@ export function SimpleDashboard() {
             variant="outline"
           >
             <Minus className="h-4 w-4" />
-            Withdraw Savings
+            Cash Out
           </Button>
 
           <Button
@@ -329,7 +355,7 @@ export function SimpleDashboard() {
             variant="outline"
           >
             <TrendingDown className="h-4 w-4" />
-            Take a Loan
+            Borrow Now
           </Button>
 
           <Button
@@ -338,7 +364,7 @@ export function SimpleDashboard() {
             variant="outline"
           >
             <TrendingUp className="h-4 w-4" />
-            Repay Loan
+            Pay Off Debt
           </Button>
 
           <Button
@@ -346,7 +372,7 @@ export function SimpleDashboard() {
             className="flex items-center gap-2 h-12 bg-emerald-600 hover:bg-emerald-700 text-white"
           >
             <ArrowDownUp className="h-4 w-4" />
-            Send Funds
+            Send Money
           </Button>
         </div>
       </Card>

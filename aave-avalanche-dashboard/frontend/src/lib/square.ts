@@ -2,7 +2,7 @@
  * Square Payment Processing Integration
  * 
  * Handles USD and Bitcoin deposits via Square API
- * - USD deposits: Credit/debit card processing
+ * - USD deposits: Debit card processing
  * - Bitcoin deposits: Lightning Network via Square Bitcoin
  */
 
@@ -128,6 +128,8 @@ async function loadRuntimeSquareConfig(): Promise<SquarePublicConfig | null> {
       });
 
       if (!response.ok) {
+        // If API fails, return null to fallback to env vars
+        console.warn('[Square] API config endpoint returned:', response.status);
         return null;
       }
 
@@ -137,15 +139,28 @@ async function loadRuntimeSquareConfig(): Promise<SquarePublicConfig | null> {
         environment?: string;
         api_base_url?: string;
         has_access_token?: boolean;
+        incomplete?: boolean;
       };
 
-      if (!data?.application_id || !data?.location_id) {
+      // Accept partial config - we'll merge with env vars
+      if (!data?.application_id && !data?.location_id) {
+        return null;
+      }
+      
+      // If incomplete, merge with env vars
+      const envAppId = import.meta.env.VITE_SQUARE_APPLICATION_ID;
+      const envLocationId = import.meta.env.VITE_SQUARE_LOCATION_ID;
+      
+      const finalAppId = data.application_id || envAppId || '';
+      const finalLocationId = data.location_id || envLocationId || '';
+      
+      if (!finalAppId || !finalLocationId) {
         return null;
       }
 
       runtimeSquareConfig = {
-        applicationId: data.application_id,
-        locationId: data.location_id,
+        applicationId: finalAppId,
+        locationId: finalLocationId,
         environment: data.environment || 'production',
         apiUrl: data.api_base_url || SQUARE_API_BASE_URL,
         hasAccessToken: data.has_access_token,
@@ -179,7 +194,26 @@ async function ensureSquareConfig(): Promise<SquarePublicConfig | null> {
 }
 
 function currentSquareConfig(): SquarePublicConfig {
-  return runtimeSquareConfig ?? envSquareConfig;
+  // Prefer runtime config if available, otherwise use env config
+  const config = runtimeSquareConfig ?? envSquareConfig;
+  
+  // If config is incomplete, merge with env vars as fallback
+  if ((!config.applicationId || !config.locationId) && typeof window !== 'undefined') {
+    const envAppId = import.meta.env.VITE_SQUARE_APPLICATION_ID;
+    const envLocationId = import.meta.env.VITE_SQUARE_LOCATION_ID;
+    
+    // Merge API config with env vars (API takes precedence)
+    return {
+      applicationId: config.applicationId || envAppId || '',
+      locationId: config.locationId || envLocationId || '',
+      environment: config.environment || import.meta.env.VITE_SQUARE_ENVIRONMENT || 'production',
+      apiUrl: config.apiUrl || SQUARE_API_BASE_URL,
+      hasAccessToken: config.hasAccessToken,
+      source: (config.source === 'api' && config.applicationId && config.locationId) ? 'api' : 'env' as const,
+    };
+  }
+  
+  return config;
 }
 
 // Validate Square configuration (prefers runtime config when available)

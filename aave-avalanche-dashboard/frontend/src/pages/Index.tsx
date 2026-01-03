@@ -1,5 +1,6 @@
 import { SimpleDashboard } from '@/components/SimpleDashboard';
 import { NetworkGuard } from '@/components/NetworkGuard';
+import { Footer } from '@/components/Footer';
 import { useAccount } from 'wagmi';
 import { TrendingUp, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -25,20 +26,20 @@ function DashboardContent() {
                 <p className="text-sm text-muted-foreground">Avalanche C-Chain</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Link to="/gmx">
-                <Button variant="outline" className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4" />
+            <nav className="flex items-center gap-2" aria-label="Main navigation">
+              <Link to="/gmx" aria-label="Go to Bitcoin trading page">
+                <Button variant="outline" className="flex items-center gap-2" aria-label="Bitcoin Trading">
+                  <TrendingUp className="h-4 w-4" aria-hidden="true" />
                   GMX
                 </Button>
               </Link>
-              <Link to="/stack">
-                <Button variant="outline" className="flex items-center gap-2">
-                  <Zap className="h-4 w-4" />
+              <Link to="/stack" aria-label="Go to Auto Invest page">
+                <Button variant="outline" className="flex items-center gap-2" aria-label="Auto Invest">
+                  <Zap className="h-4 w-4" aria-hidden="true" />
                   Stack App
                 </Button>
               </Link>
-            </div>
+            </nav>
           </div>
         </div>
       </header>
@@ -55,16 +56,7 @@ function DashboardContent() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-border/50 mt-16">
-        <div className="container mx-auto px-4 py-6">
-          <p className="text-center text-sm text-muted-foreground">
-            Powered by Aave V3 • Avalanche C-Chain • Trader Joe
-          </p>
-          <p className="text-center text-xs sm:text-sm text-muted-foreground mt-2">
-            Support: <a href="mailto:support@tiltvault.com" className="text-emerald-500 hover:underline">support@tiltvault.com</a>
-          </p>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

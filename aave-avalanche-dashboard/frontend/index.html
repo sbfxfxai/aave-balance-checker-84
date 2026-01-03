@@ -10,18 +10,37 @@
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
     <meta http-equiv="Permissions-Policy" content="geolocation=(), microphone=(), camera=()" />
     
-    <!-- Performance: preconnect to critical web3 endpoints for LCP improvement -->
+    <!-- Performance: preconnect to critical endpoints for LCP improvement -->
+    <!-- Google Fonts - highest priority for render blocking -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Web3 and Auth - critical for app functionality -->
     <link rel="preconnect" href="https://api.avax.network" crossorigin />
     <link rel="preconnect" href="https://api.web3modal.org" crossorigin />
     <link rel="preconnect" href="https://pulse.walletconnect.org" crossorigin />
+    <link rel="preconnect" href="https://auth.privy.io" crossorigin />
+    <!-- DNS prefetch for less critical resources -->
     <link rel="dns-prefetch" href="https://web.squarecdn.com" />
     <link rel="dns-prefetch" href="https://relay.walletconnect.org" />
     <link rel="dns-prefetch" href="https://sandbox.kit.cash.app" />
     <link rel="dns-prefetch" href="https://kit.cash.app" />
     
-    <title>TiltVault - Banking that works as hard as you do</title>
-    <meta name="description" content="Traditional banks give you 0.5%. TiltVault gives you 5-8% APY through battle-tested DeFi protocols—without the complexity. Secured by Aave's $70B+ protocol." />
+    <!-- Preload logo - smallest optimized version for above-the-fold LCP -->
+    <!-- Only preload if optimized versions exist, otherwise browser will use fallback -->
+    <link rel="preload" as="image" href="/tiltvault-logo-32w.webp" type="image/webp" fetchpriority="high" />
+    
+    <!-- Google Fonts - loaded as link tag to avoid render blocking from CSS @import -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" media="print" onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" /></noscript>
+    
+    <title>TiltVault - Real Returns Through Battle-Tested DeFi | 5-8% APY vs 0.5% Banks | No Crypto Wallet Required</title>
+    <meta name="description" content="Traditional banks give you 0.5%. TiltVault gives you real returns through battle-tested DeFi protocols—without the complexity. Your funds secured by Aave's $70B+ audited protocol. 2.5x Bitcoin exposure with automatic safety limits. Bank transfers & debit card funding—no crypto wallet required to start. See exactly where your money goes and how it earns." />
+    <meta name="keywords" content="high yield savings, DeFi banking, Aave protocol, battle-tested DeFi, audited DeFi, Aave $70B, leveraged Bitcoin, 2.5x Bitcoin, liquidation protection, bank transfer crypto, debit card crypto, no wallet required, transparent DeFi, real returns, traditional bank alternative, crypto savings account, stablecoin yields, Bitcoin leverage, DeFi safety, smart contract audit, automated crypto yields, set and forget crypto, simplified DeFi" />
     <meta name="author" content="TiltVault" />
+    <meta name="robots" content="index, follow" />
+    <meta name="language" content="English" />
+    <meta name="geo.region" content="US" />
+    <meta name="geo.placename" content="United States" />
 
     <!-- Favicon and App Icons -->
     <link rel="icon" type="image/png" href="/tiltvault-logo.png" />
@@ -30,7 +49,9 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
 
     <!-- Critical CSS to prevent flash of unstyled content -->
+    <!-- Inlined for immediate render - includes above-the-fold styles -->
     <style>
+      /* Critical: Initial shell styles */
       .tv-initial-shell {
         min-height: 100vh;
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
@@ -93,24 +114,67 @@
       .tv-app-loaded .tv-initial-shell {
         display: none;
       }
+      
+      /* Fallback: Hide loading screen if JavaScript takes too long (10s timeout) */
+      .tv-initial-shell {
+        animation: fadeOut 0.3s ease-out 10s forwards;
+      }
+      @keyframes fadeOut {
+        to {
+          opacity: 0;
+          visibility: hidden;
+        }
+      }
+      
+      /* Critical: Base styles to prevent FOUC */
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      #root {
+        min-height: 100vh;
+      }
     </style>
+    
+    <!-- Preload main CSS file (Vite will extract it during build) -->
+    <!-- This is a hint to the browser - actual CSS will be injected by Vite -->
 
     <!-- CSP is handled by vercel.json in production, meta tag removed to prevent conflicts -->
 
-    <meta property="og:title" content="TiltVault - Banking that works as hard as you do" />
-    <meta property="og:description" content="Traditional banks give you 0.5%. TiltVault gives you 5-8% APY through battle-tested DeFi protocols—without the complexity." />
+    <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://www.tiltvault.com" />
+    <meta property="og:title" content="TiltVault - Real Returns Through Battle-Tested DeFi | 5-8% APY vs 0.5% Banks" />
+    <meta property="og:description" content="Traditional banks give you 0.5%. TiltVault gives you real returns through battle-tested DeFi protocols—without the complexity. Secured by Aave's $70B+ audited protocol. 2.5x Bitcoin with safety limits. Bank transfers & debit cards—no crypto wallet required." />
     <meta property="og:image" content="https://www.tiltvault.com/tiltvault-logo.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="TiltVault Logo" />
+    <meta property="og:image:alt" content="TiltVault - Real Returns Through Battle-Tested DeFi" />
+    <meta property="og:site_name" content="TiltVault" />
+    <meta property="og:locale" content="en_US" />
 
+    <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@TiltVault" />
-    <meta name="twitter:title" content="TiltVault - Banking that works as hard as you do" />
-    <meta name="twitter:description" content="Traditional banks give you 0.5%. TiltVault gives you 5-8% APY through battle-tested DeFi protocols—without the complexity." />
+    <meta name="twitter:creator" content="@TiltVault" />
+    <meta name="twitter:title" content="TiltVault - Real Returns Through Battle-Tested DeFi | 5-8% APY vs 0.5% Banks" />
+    <meta name="twitter:description" content="Traditional banks: 0.5%. TiltVault: Real returns through battle-tested DeFi—without complexity. Secured by Aave's $70B+ protocol. No crypto wallet required." />
     <meta name="twitter:image" content="https://www.tiltvault.com/tiltvault-logo.png" />
+    <meta name="twitter:image:alt" content="TiltVault - Real Returns Through Battle-Tested DeFi" />
+
+    <!-- Additional SEO Meta Tags -->
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="TiltVault" />
+    <link rel="canonical" href="https://www.tiltvault.com" />
       </head>
 
   <body>
@@ -119,7 +183,7 @@
       <div class="tv-initial-shell">
         <header class="tv-initial-header">
           <div class="tv-initial-header-inner">
-            <img src="/tiltvault-logo.png" alt="TiltVault" class="tv-initial-logo" />
+            <img src="/tiltvault-logo.png" alt="TiltVault" class="tv-initial-logo" loading="eager" width="40" height="40" />
             <div>
               <div class="tv-initial-title">TiltVault</div>
               <div class="tv-initial-subtitle">Smart Savings</div>
@@ -134,7 +198,7 @@
         </main>
       </div>
     </div>
-    <!-- Square Web Payments SDK loaded dynamically when needed (not render-blocking) -->
+    <!-- Main app script - loaded as module (modules are deferred by default) -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
