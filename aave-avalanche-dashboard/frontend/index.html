@@ -221,13 +221,9 @@
       })();
     </script>
     
-    <!-- CRITICAL: Preload react-vendor chunk to ensure React loads before web3-vendor and privy -->
-    <!-- This prevents "can't access property useLayoutEffect/createContext of undefined" errors -->
-    <!-- The actual chunk name will have a hash, but this is a hint for the browser -->
-    <link rel="modulepreload" href="/assets/react-vendor-*.js" />
-    
     <!-- Main app script - loaded as module (modules are deferred by default) -->
-    <!-- React is exposed globally in main.tsx before any other code runs -->
+    <!-- React is bundled in the main entry chunk and exposed globally in main.tsx -->
+    <!-- This ensures React is available before any vendor chunks (web3-vendor, privy) load -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

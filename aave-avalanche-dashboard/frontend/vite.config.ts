@@ -78,22 +78,24 @@ export default defineConfig(({ mode }) => ({
         // Ensure proper chunk loading order - React must load before Privy and web3-vendor
         // Use consistent chunk names for preloading
         manualChunks: (id) => {
-          // CRITICAL: React and ReactDOM MUST be in a react-vendor chunk that loads first
-          // This ensures React is available before web3-vendor and privy chunks try to use it
+          // CRITICAL: React MUST be in the main entry chunk (not a separate chunk)
+          // This ensures React loads synchronously with the main bundle and is available
+          // before any vendor chunks (web3-vendor, privy) try to use it
           // SES lockdown from wallet extensions freezes the environment, so React must be global
+          // By returning undefined, React stays in the main entry chunk
           if (id.includes('node_modules/react/') && !id.includes('react-router')) {
-            return 'react-vendor';
+            return undefined; // Keep in main entry chunk
           }
           if (id.includes('node_modules/react-dom/')) {
-            return 'react-vendor';
+            return undefined; // Keep in main entry chunk
           }
           if (id.includes('node_modules/scheduler/')) {
-            return 'react-vendor';
+            return undefined; // Keep in main entry chunk
           }
           
           // CRITICAL: React Query must be with React - it uses React.useLayoutEffect
           if (id.includes('@tanstack')) {
-            return 'react-vendor';
+            return undefined; // Keep in main entry chunk
           }
           
           // Router - can be slightly deferred
