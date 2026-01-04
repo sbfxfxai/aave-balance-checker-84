@@ -16,43 +16,65 @@ interface PrivyAuthProviderProps {
 export function PrivyAuthProvider({ children }: PrivyAuthProviderProps) {
     const [bufferReady, setBufferReady] = useState(false);
 
-    // Verify Buffer is available (handled by vite-plugin-node-polyfills)
+    // Ensure Buffer is available (vite-plugin-node-polyfills should provide it, but ensure it's on window)
     useEffect(() => {
-        const verifyBuffer = () => {
+        let timeoutId: NodeJS.Timeout;
+        
+        const ensureBuffer = async () => {
             if (typeof window !== "undefined") {
+                // Check if Buffer is already available
                 if ((window as any).Buffer) {
-                    // Verify Buffer works
                     try {
                         const testBuffer = (window as any).Buffer.from('test');
                         if (testBuffer && typeof testBuffer.toString === 'function') {
                             console.log('[PrivyAuthProvider] Buffer verified and working');
                             setBufferReady(true);
-                        } else {
-                            console.error('[PrivyAuthProvider] Buffer exists but is not functional');
-                            setBufferReady(true); // Still try to render
+                            return;
                         }
-                    } catch (verifyError) {
-                        console.error('[PrivyAuthProvider] Buffer verification failed:', verifyError);
-                        setBufferReady(true); // Still try to render
+                    } catch (error) {
+                        console.warn('[PrivyAuthProvider] Buffer exists but verification failed, will reload:', error);
                     }
-                } else {
-                    console.warn('[PrivyAuthProvider] Buffer not available - vite-plugin-node-polyfills should have loaded it');
-                    // Wait a bit for plugin to load it
-                    setTimeout(() => {
-                        if ((window as any).Buffer) {
-                            setBufferReady(true);
-                        } else {
-                            console.error('[PrivyAuthProvider] Buffer still not available after wait');
-                            setBufferReady(true); // Still try to render
-                        }
-                    }, 100);
                 }
+                
+                // Try to import Buffer if not available (vite-plugin-node-polyfills should make this work)
+                try {
+                    const { Buffer } = await import("buffer");
+                    (window as any).Buffer = Buffer;
+                    (globalThis as any).Buffer = Buffer;
+                    
+                    // Verify it works
+                    const testBuffer = Buffer.from('test');
+                    if (testBuffer && typeof testBuffer.toString === 'function') {
+                        console.log('[PrivyAuthProvider] Buffer loaded and verified');
+                        setBufferReady(true);
+                        return;
+                    }
+                } catch (importError) {
+                    console.error('[PrivyAuthProvider] Failed to import Buffer:', importError);
+                }
+                
+                // If we get here, Buffer isn't available - but still try to render
+                // Privy might work without it, or the error will be more informative
+                console.warn('[PrivyAuthProvider] Buffer not available, proceeding anyway');
+                setBufferReady(true);
             } else {
                 setBufferReady(true);
             }
         };
         
-        verifyBuffer();
+        // Set a maximum timeout to prevent infinite loading
+        timeoutId = setTimeout(() => {
+            console.warn('[PrivyAuthProvider] Timeout reached, proceeding without Buffer verification');
+            setBufferReady(true);
+        }, 2000); // 2 second max wait
+        
+        ensureBuffer().then(() => {
+            clearTimeout(timeoutId);
+        });
+        
+        return () => {
+            clearTimeout(timeoutId);
+        };
     }, []);
     // Suppress wallet provider errors and analytics CORS errors in console (known Privy issues)
     // Setup is deferred to avoid blocking initial render

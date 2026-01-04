@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => ({
     nodePolyfills({
       // Polyfill Buffer and process
       include: ['buffer'],
-      // Globals that need to be polyfilled
+      // Globals that need to be polyfilled - these will be available on window/globalThis
       globals: {
         Buffer: true,
         global: true,
@@ -26,6 +26,10 @@ export default defineConfig(({ mode }) => ({
       },
       // Use protocol imports for better compatibility
       protocolImports: true,
+      // Ensure Buffer is available as a global
+      polyfills: {
+        buffer: true,
+      },
     }),
     mode === "development" && componentTagger()
   ].filter(Boolean),
