@@ -4,7 +4,10 @@ import { useAccount, usePublicClient, useWalletClient, useBalance, useSwitchChai
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { ethers } from 'ethers';
 import { avalanche } from 'wagmi/chains';
-import { CONTRACTS as GMX_SDK_CONTRACTS } from '@gmx-io/sdk/configs/contracts';
+// CRITICAL: Lazy load GMX SDK contracts to avoid TDZ errors with SES lockdown
+// Static imports cause the entire GMX SDK bundle to evaluate at module load time,
+// which triggers Temporal Dead Zone errors when SES lockdown is active
+// const { CONTRACTS: GMX_SDK_CONTRACTS } = await import('@gmx-io/sdk/configs/contracts');
 import { erc20Abi, maxUint256, formatUnits, parseUnits, WalletClient, Abi, createPublicClient, http, Hex } from 'viem';
 
 import { Button } from '@/components/ui/button';

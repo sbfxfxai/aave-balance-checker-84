@@ -1,3 +1,16 @@
+// CRITICAL: Detect SES lockdown from wallet extensions
+// SES lockdown enforces stricter JavaScript semantics and can cause TDZ errors
+if (typeof window !== "undefined") {
+  // Check for SES lockdown (from MetaMask or other wallet extensions)
+  if (typeof (window as any).lockdown !== 'undefined' || 
+      typeof (window as any).harden !== 'undefined' ||
+      (window as any).__SES__) {
+    console.warn('[TiltVault] SES Lockdown detected - likely from wallet extension');
+    console.warn('[TiltVault] This may cause compatibility issues with some bundles');
+    (window as any).__SES_DETECTED__ = true;
+  }
+}
+
 // CRITICAL: React is now bundled WITH web3-vendor, so it will be available
 // when web3-vendor executes. We still need to expose it globally for Privy.
 // Import React - it will be available from web3-vendor chunk

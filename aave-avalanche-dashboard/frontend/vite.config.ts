@@ -77,6 +77,10 @@ export default defineConfig(({ mode }) => ({
               entryFileNames: 'assets/[name]-[hash].js',
               chunkFileNames: 'assets/[name]-[hash].js',
               assetFileNames: 'assets/[name]-[hash].[ext]',
+              // Use ES module format to avoid hoisting issues with SES lockdown
+              format: 'es',
+              // Preserve module structure to avoid TDZ errors
+              preserveModules: false,
               // CRITICAL: Don't minify buffer polyfill - it breaks internal code
               // Use a function to conditionally minify
               // Ensure proper chunk loading order - React must load before Privy and web3-vendor
