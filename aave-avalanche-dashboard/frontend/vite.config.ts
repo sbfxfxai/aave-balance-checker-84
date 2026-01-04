@@ -75,25 +75,30 @@ export default defineConfig(({ mode }) => ({
       output: {
         // CRITICAL: Don't minify buffer polyfill - it breaks internal code
         // Use a function to conditionally minify
+        // Ensure proper chunk loading order - React must load before Privy
         manualChunks: (id) => {
-          // Core React - CRITICAL: React, React-DOM, scheduler, and React Query must be in the same chunk
-          // React Query depends on React and must be available when React loads
-          // The scheduler is required by React-DOM and must be available when React-DOM loads
-          // Check for exact package names to avoid partial matches
-          if (id.includes('node_modules/react/') && !id.includes('react-router')) {
-            return 'react-core';
-          }
-          if (id.includes('node_modules/react-dom/')) {
-            return 'react-core';
-          }
-          if (id.includes('node_modules/scheduler/')) {
-            return 'react-core';
-          }
+          // CRITICAL: React must be in the main entry chunk (not a separate chunk)
+          // This ensures React loads synchronously before Privy tries to use it
+          // Don't chunk React separately - let it be in the main entry point
+          // This prevents "can't access property useLayoutEffect of undefined" errors
+          
+          // Only chunk React if it's not in the entry point
+          // For now, let React be in the main entry to ensure it loads first
+          // if (id.includes('node_modules/react/') && !id.includes('react-router')) {
+          //   return 'react-core';
+          // }
+          // if (id.includes('node_modules/react-dom/')) {
+          //   return 'react-core';
+          // }
+          // if (id.includes('node_modules/scheduler/')) {
+          //   return 'react-core';
+          // }
+          
           // CRITICAL: React Query must be with React - it uses React.useLayoutEffect
-          // Separating it causes "can't access property useLayoutEffect of undefined" errors
-          if (id.includes('@tanstack')) {
-            return 'react-core';
-          }
+          // But since React is in the main entry, React Query should also be in the main entry
+          // if (id.includes('@tanstack')) {
+          //   return 'react-core';
+          // }
           
           // Router - can be slightly deferred
           if (id.includes('react-router')) {
@@ -105,7 +110,9 @@ export default defineConfig(({ mode }) => ({
             return 'gmx-sdk';
           }
           
-          // Privy - heavy auth library, separate chunk
+          // Privy - CRITICAL: Must load AFTER React is available
+          // Privy uses React.useLayoutEffect, so React must be loaded first
+          // Keep Privy separate but ensure proper load order via chunk dependencies
           if (id.includes('@privy-io')) {
             return 'privy';
           }
