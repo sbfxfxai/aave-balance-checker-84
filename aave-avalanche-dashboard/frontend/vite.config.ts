@@ -75,7 +75,8 @@ export default defineConfig(({ mode }) => ({
         // CRITICAL: Don't minify buffer polyfill - it breaks internal code
         // Use a function to conditionally minify
         manualChunks: (id) => {
-          // Core React - CRITICAL: React, React-DOM, and scheduler must be in the same chunk
+          // Core React - CRITICAL: React, React-DOM, scheduler, and React Query must be in the same chunk
+          // React Query depends on React and must be available when React loads
           // The scheduler is required by React-DOM and must be available when React-DOM loads
           // Check for exact package names to avoid partial matches
           if (id.includes('node_modules/react/') && !id.includes('react-router')) {
@@ -85,6 +86,11 @@ export default defineConfig(({ mode }) => ({
             return 'react-core';
           }
           if (id.includes('node_modules/scheduler/')) {
+            return 'react-core';
+          }
+          // CRITICAL: React Query must be with React - it uses React.useLayoutEffect
+          // Separating it causes "can't access property useLayoutEffect of undefined" errors
+          if (id.includes('@tanstack')) {
             return 'react-core';
           }
           
@@ -130,11 +136,6 @@ export default defineConfig(({ mode }) => ({
           // Charts - lazy load (only if used)
           if (id.includes('recharts') || id.includes('d3-')) {
             return 'chart-vendor';
-          }
-          
-          // Query - lazy load
-          if (id.includes('@tanstack')) {
-            return 'query-vendor';
           }
           
           // Lucide icons - lazy load (can be large)
