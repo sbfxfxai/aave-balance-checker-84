@@ -347,9 +347,15 @@ export default function GmxIntegration() {
 
   // Lazy load GMX SDK
   const loadGmxSdk = useCallback(async (): Promise<GmxSdk> => {
+    // CRITICAL: Lazy load both GmxSdk AND contracts to avoid TDZ errors
+    // This ensures the entire GMX SDK bundle only loads when needed
+    const [{ GmxSdk }, { CONTRACTS: GMX_SDK_CONTRACTS }] = await Promise.all([
+      import('@gmx-io/sdk'),
+      import('@gmx-io/sdk/configs/contracts')
+    ]);
+    
     // Check if using Privy wallet
     const isPrivyWallet = authenticated && ready && wallets.some(w => w.address === address && w.walletClientType === 'privy');
-    const { GmxSdk } = await import('@gmx-io/sdk');
     const rpcUrl = import.meta.env.VITE_AVALANCHE_RPC_URL || 'https://api.avax.network/ext/bc/C/rpc';
     
     // For Privy wallets, we need to use ethers.js provider
@@ -418,6 +424,7 @@ export default function GmxIntegration() {
       });
       
       console.log('[GMX SDK] SDK initialized with Privy wallet');
+      console.log('[GMX SDK] Available contracts:', GMX_SDK_CONTRACTS[GMX_AVALANCHE_CHAIN_ID]);
       return sdk;
     }
     
@@ -715,7 +722,10 @@ export default function GmxIntegration() {
       setTxStage('approving');
       setTxProgress({ step: 1, total: 3, message: 'Validating inputs...' });
 
-      const orderVault = GMX_SDK_CONTRACTS[GMX_AVALANCHE_CHAIN_ID].OrderVault as `0x${string}`;
+      // CRITICAL: Lazy load contracts here if needed (orderVault is not currently used)
+      // If you need orderVault in the future, uncomment and lazy load:
+      // const { CONTRACTS: GMX_SDK_CONTRACTS } = await import('@gmx-io/sdk/configs/contracts');
+      // const orderVault = GMX_SDK_CONTRACTS[GMX_AVALANCHE_CHAIN_ID].OrderVault as `0x${string}`;
 
       console.log('[GMX trade token]', {
         payTokenAddress,
