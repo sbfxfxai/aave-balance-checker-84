@@ -2,6 +2,13 @@
 
 /* Google Fonts moved to index.html <head> to avoid render blocking */
 
+/* WalletConnect Modal - Ensure it's visible when present */
+w3m-modal,
+w3m-modal-backdrop,
+[data-w3m-modal] {
+  z-index: 9999 !important;
+}
+
 /* Stack App Design System - Dark theme with emerald green primary */
 
 @layer base {
