@@ -71,13 +71,17 @@ export default defineConfig(({ mode }) => ({
     cssMinify: true,
     // Optimize asset inlining threshold (small assets inline, large ones external)
     assetsInlineLimit: 4096, // 4KB - inline smaller assets
-    rollupOptions: {
-      output: {
-        // CRITICAL: Don't minify buffer polyfill - it breaks internal code
-        // Use a function to conditionally minify
-        // Ensure proper chunk loading order - React must load before Privy and web3-vendor
-        // Use consistent chunk names for preloading
-        manualChunks: (id) => {
+          rollupOptions: {
+            output: {
+              // CRITICAL: Ensure main entry chunk loads first and executes before vendor chunks
+              // This ensures React is exposed globally before web3-vendor tries to use it
+              // Use entryFileNames to ensure main entry has predictable name for preloading
+              entryFileNames: 'assets/index-[hash].js',
+              // CRITICAL: Don't minify buffer polyfill - it breaks internal code
+              // Use a function to conditionally minify
+              // Ensure proper chunk loading order - React must load before Privy and web3-vendor
+              // Use consistent chunk names for preloading
+              manualChunks: (id) => {
           // CRITICAL: React MUST be in the main entry chunk (not a separate chunk)
           // This ensures React loads synchronously with the main bundle and is available
           // before any vendor chunks (web3-vendor, privy) try to use it
