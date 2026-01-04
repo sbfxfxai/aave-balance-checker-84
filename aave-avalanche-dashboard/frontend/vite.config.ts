@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
+import { nodePolyfills } from "vite-plugin-node-polyfills";
 
 // https://vitejs.dev/config/
 // Updated: Force rebuild for env vars
@@ -143,11 +144,10 @@ export default defineConfig(({ mode }) => ({
             return 'icons';
           }
           
-          // Other vendor libraries
-          if (id.includes('node_modules/')) {
-            // Group smaller vendor libs together
-            return 'vendor';
-          }
+          // Don't create a catch-all vendor chunk - let Vite handle remaining dependencies
+          // This prevents circular dependency issues from bundling unrelated libraries together
+          // Return undefined to let Vite's default chunking handle it
+          return undefined;
         },
       },
     },
