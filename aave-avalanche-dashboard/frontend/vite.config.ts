@@ -86,15 +86,9 @@ export default defineConfig(({ mode }) => ({
               inlineDynamicImports: true,
               // Preserve module structure to avoid TDZ errors
               preserveModules: false,
-              // CRITICAL: Don't minify buffer polyfill - it breaks internal code
-              // Use a function to conditionally minify
               // DISABLED: No manual chunks - everything inlined to avoid SES TDZ errors
-              // manualChunks: (id) => {
-                // DISABLED: Code splitting disabled to avoid SES TDZ errors
-                // All code will be inlined into a single bundle
-                // This ensures correct load order and prevents TDZ errors from chunk dependencies
-                return undefined;
-              },
+              // All code will be inlined into a single bundle
+              // This ensures correct load order and prevents TDZ errors from chunk dependencies
       },
     },
   },
