@@ -113,9 +113,30 @@ const App = () => (
               <Route
                 path="/gmx"
                 element={
-                  <RouteWrapper>
-                    <GmxIntegration />
-                  </RouteWrapper>
+                  <ErrorBoundary fallback={
+                    <div className="min-h-screen bg-gradient-subtle flex items-center justify-center p-4">
+                      <div className="text-center max-w-md">
+                        <h2 className="text-2xl font-bold mb-4">GMX Integration Unavailable</h2>
+                        <p className="text-muted-foreground mb-4">
+                          The GMX integration failed to load. This may be due to a browser extension conflict
+                          (such as MetaMask with SES lockdown enabled).
+                        </p>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          Try opening this page in incognito mode or disabling wallet extensions.
+                        </p>
+                        <button 
+                          onClick={() => window.location.reload()} 
+                          className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    </div>
+                  }>
+                    <RouteWrapper>
+                      <GmxIntegration />
+                    </RouteWrapper>
+                  </ErrorBoundary>
                 }
               />
               <Route

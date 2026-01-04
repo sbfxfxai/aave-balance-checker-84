@@ -5,6 +5,7 @@ import { AlertCircle, RefreshCw } from 'lucide-react';
 
 interface Props {
   children: ReactNode;
+  fallback?: ReactNode;
 }
 
 interface State {
@@ -39,6 +40,11 @@ export class ErrorBoundary extends Component<Props, State> {
       // Ensure loading screen is hidden
       if (typeof document !== 'undefined') {
         document.body.classList.add('tv-app-loaded');
+      }
+      
+      // Use custom fallback if provided
+      if (this.props.fallback) {
+        return this.props.fallback;
       }
       
       return (

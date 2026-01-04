@@ -56,10 +56,11 @@ export default defineConfig(({ mode }) => ({
     target: "es2020",
     // Extract CSS to separate files (prevents render blocking)
     cssCodeSplit: true,
-    // Use esbuild for faster builds
-    // CRITICAL: Buffer polyfill is handled by vite-plugin-node-polyfills
-    // which should prevent it from being broken during bundling
-    minify: "esbuild",
+          // Use esbuild for faster builds
+          // CRITICAL: Buffer polyfill is handled by vite-plugin-node-polyfills
+          // which should prevent it from being broken during bundling
+          // Temporarily disable minification to see clearer TDZ errors
+          minify: process.env.NODE_ENV === "production" ? "esbuild" : false,
     // Enable source maps for debugging (can be disabled in production for smaller size)
     sourcemap: process.env.NODE_ENV === "development",
     // Report compressed sizes to help identify large bundles
@@ -109,10 +110,12 @@ export default defineConfig(({ mode }) => ({
                   return 'react-router';
                 }
                 
-                // GMX SDK - only used on /gmx page, separate chunk
-                if (id.includes('@gmx-io/sdk')) {
-                  return 'gmx-sdk';
-                }
+                // CRITICAL: Don't chunk GMX SDK separately - bundle it with other vendors
+                // Separating it causes TDZ errors when SES lockdown is active
+                // The circular dependencies in GMX SDK break when code-split
+                // if (id.includes('@gmx-io/sdk')) {
+                //   return 'gmx-sdk';
+                // }
                 
                 // Privy - CRITICAL: Must load AFTER React is available
                 // Privy uses React.useLayoutEffect, so React must be loaded first
