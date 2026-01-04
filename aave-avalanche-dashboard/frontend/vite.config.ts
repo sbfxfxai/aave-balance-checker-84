@@ -80,89 +80,21 @@ export default defineConfig(({ mode }) => ({
               assetFileNames: 'assets/[name]-[hash].[ext]',
               // Use ES module format to avoid hoisting issues with SES lockdown
               format: 'es',
+              // CRITICAL: Disable code splitting entirely to avoid SES TDZ errors
+              // SES lockdown from wallet extensions causes TDZ errors when chunks load in wrong order
+              // By inlining everything, we ensure all code loads synchronously in correct order
+              inlineDynamicImports: true,
               // Preserve module structure to avoid TDZ errors
               preserveModules: false,
               // CRITICAL: Don't minify buffer polyfill - it breaks internal code
               // Use a function to conditionally minify
-              // Ensure proper chunk loading order - React must load before Privy and web3-vendor
-              // Use consistent chunk names for preloading
-              manualChunks: (id) => {
-                // CRITICAL: Bundle React WITH web3-vendor to ensure React is available
-                // when web3-vendor executes its module-level code (React.createContext)
-                // This prevents "can't access property 'createContext' of undefined" errors
-                if (id.includes('node_modules/react/') && !id.includes('react-router')) {
-                  return 'web3-vendor'; // Bundle React with web3 libraries
-                }
-                if (id.includes('node_modules/react-dom/')) {
-                  return 'web3-vendor'; // Bundle ReactDOM with web3 libraries
-                }
-                if (id.includes('node_modules/scheduler/')) {
-                  return 'web3-vendor'; // Bundle scheduler with web3 libraries
-                }
-                
-                // CRITICAL: React Query must be with React - it uses React.useLayoutEffect
-                if (id.includes('@tanstack')) {
-                  return 'web3-vendor'; // Bundle React Query with web3 libraries
-                }
-                
-                // Router - can be slightly deferred
-                if (id.includes('react-router')) {
-                  return 'react-router';
-                }
-                
-                // CRITICAL: Don't chunk GMX SDK separately - bundle it with other vendors
-                // Separating it causes TDZ errors when SES lockdown is active
-                // The circular dependencies in GMX SDK break when code-split
-                // if (id.includes('@gmx-io/sdk')) {
-                //   return 'gmx-sdk';
-                // }
-                
-                // Privy - CRITICAL: Must load AFTER React is available
-                // Privy uses React.useLayoutEffect, so React must be loaded first
-                // Keep Privy separate but ensure proper load order via chunk dependencies
-                if (id.includes('@privy-io')) {
-                  return 'privy';
-                }
-                
-                // Web3 libraries - bundle with React to ensure React is available
-                // Viem must be available when wagmi loads, so bundle them together
-                if (id.includes('node_modules/viem/') || 
-                    id.includes('node_modules/wagmi/') || 
-                    id.includes('node_modules/@wagmi/')) {
-                  return 'web3-vendor';
-                }
-          
-          // Ethers.js - separate from viem/wagmi (different ecosystem)
-          if (id.includes('node_modules/ethers/')) {
-            return 'ethers-core';
-          }
-          
-          // Buffer polyfill - DO NOT chunk it separately, let vite-plugin-node-polyfills handle it
-          // Chunking buffer separately breaks its internal dependencies
-          // if (id.includes('node_modules/buffer/') || id.includes('node_modules\\buffer\\')) {
-          //   return 'buffer-polyfill';
-          // }
-          
-          // UI components - lazy load (Radix UI is heavy)
-          if (id.includes('@radix-ui')) {
-            return 'ui-vendor';
-          }
-          
-          // Charts - lazy load (only if used)
-          if (id.includes('recharts') || id.includes('d3-')) {
-            return 'chart-vendor';
-          }
-          
-          // Lucide icons - lazy load (can be large)
-          if (id.includes('lucide-react')) {
-            return 'icons';
-          }
-          
-          // Don't create a catch-all vendor chunk - let Vite handle remaining dependencies
-          // This prevents circular dependency issues from bundling unrelated libraries together
-          // Return undefined to let Vite's default chunking handle it
-          return undefined;
-        },
+              // DISABLED: No manual chunks - everything inlined to avoid SES TDZ errors
+              // manualChunks: (id) => {
+                // DISABLED: Code splitting disabled to avoid SES TDZ errors
+                // All code will be inlined into a single bundle
+                // This ensures correct load order and prevents TDZ errors from chunk dependencies
+                return undefined;
+              },
       },
     },
   },
