@@ -172,6 +172,25 @@ PositionDetails.displayName = 'PositionDetails';
 
 export default function GmxIntegration() {
   const { toast } = useToast();
+  
+  // CRITICAL: Check for GMX SDK TDZ errors on mount
+  // SES lockdown can cause TDZ errors during module evaluation that bypass React error boundaries
+  useEffect(() => {
+    if (typeof window !== 'undefined' && (window as any).__GMX_SDK_ERROR__) {
+      const error = (window as any).__GMX_SDK_ERROR__;
+      console.error('[GmxIntegration] GMX SDK TDZ error detected:', error);
+      
+      // Show error toast
+      toast({
+        title: 'GMX SDK Error',
+        description: 'The GMX SDK failed to load due to browser extension conflicts. Please try incognito mode or disable wallet extensions.',
+        variant: 'destructive',
+      });
+      
+      // Clear the error flag
+      delete (window as any).__GMX_SDK_ERROR__;
+    }
+  }, [toast]);
   const { address: wagmiAddress, isConnected: isWagmiConnected, chainId } = useAccount();
   const { authenticated, ready } = usePrivy();
   const { wallets } = useWallets();

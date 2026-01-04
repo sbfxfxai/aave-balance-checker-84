@@ -9,6 +9,58 @@ if (typeof window !== "undefined") {
     console.warn('[TiltVault] This may cause compatibility issues with some bundles');
     (window as any).__SES_DETECTED__ = true;
   }
+  
+  // CRITICAL: Catch SES_UNCAUGHT_EXCEPTION errors that occur during module evaluation
+  // These happen before React error boundaries can catch them
+  const originalError = window.onerror;
+  window.onerror = (message, source, lineno, colno, error) => {
+    const messageStr = String(message || '');
+    
+    // Check if this is a TDZ error from GMX SDK
+    if (messageStr.includes("can't access lexical declaration") && 
+        (messageStr.includes('before initialization') || messageStr.includes('uo'))) {
+      console.error('[TiltVault] Caught GMX SDK TDZ error - likely due to SES lockdown');
+      console.error('[TiltVault] Error details:', { message, source, lineno, colno, error });
+      
+      // Set a flag that the GMX route can check
+      (window as any).__GMX_SDK_ERROR__ = {
+        type: 'TDZ_ERROR',
+        message: messageStr,
+        source,
+        timestamp: Date.now()
+      };
+      
+      // Don't prevent default - let it propagate but mark it as handled
+      // The error boundary will catch it when the component tries to render
+      return false;
+    }
+    
+    // Call original error handler for other errors
+    if (originalError) {
+      return originalError(message, source, lineno, colno, error);
+    }
+    return false;
+  };
+  
+  // Also catch unhandled promise rejections
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    if (reason && typeof reason === 'object' && 'message' in reason) {
+      const msg = String(reason.message);
+      if (msg.includes("can't access lexical declaration") && 
+          (msg.includes('before initialization') || msg.includes('uo'))) {
+        console.error('[TiltVault] Caught GMX SDK TDZ error in promise rejection');
+        (window as any).__GMX_SDK_ERROR__ = {
+          type: 'TDZ_ERROR',
+          message: msg,
+          source: 'unhandledrejection',
+          timestamp: Date.now()
+        };
+        // Prevent default to avoid console spam
+        event.preventDefault();
+      }
+    }
+  });
 }
 
 // CRITICAL: React is now bundled WITH web3-vendor, so it will be available
