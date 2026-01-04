@@ -2,20 +2,27 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 
-// Lazy load Buffer polyfill only when Web3 is needed (deferred)
-// This reduces initial bundle size since Buffer is only needed for Web3 operations
-const setupBufferPolyfill = async () => {
-  if (typeof window !== "undefined" && !(window as any).Buffer) {
-    const { Buffer } = await import("buffer");
-    (window as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
-    (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
+// Buffer polyfill is handled by vite-plugin-node-polyfills
+// It should be available globally as window.Buffer automatically
+// Verify it's available and log status
+if (typeof window !== "undefined") {
+  if ((window as any).Buffer) {
+    console.log('[TiltVault] Buffer polyfill available (from vite-plugin-node-polyfills)');
+    // Verify Buffer works
+    try {
+      const test = (window as any).Buffer.from('test');
+      if (test && typeof test.toString === 'function') {
+        console.log('[TiltVault] Buffer verified and working');
+      } else {
+        console.error('[TiltVault] Buffer exists but is not functional');
+      }
+    } catch (error) {
+      console.error('[TiltVault] Buffer verification failed:', error);
+    }
+  } else {
+    console.warn('[TiltVault] Buffer not available - vite-plugin-node-polyfills should have loaded it');
   }
-};
-
-// Setup Buffer polyfill in background (non-blocking)
-setupBufferPolyfill().catch(() => {
-  // Silently fail - Buffer will be loaded when Web3 providers initialize
-});
+}
 
 // Early interceptors to suppress Privy analytics CORS errors (must run before Privy loads)
 // Defer setup slightly to avoid blocking initial render

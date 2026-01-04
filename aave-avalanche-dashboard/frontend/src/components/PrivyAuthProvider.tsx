@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { PrivyProvider } from '@privy-io/react-auth';
 import { PRIVY_APP_ID, privyConfig } from '@/lib/privy-config';
 
@@ -9,8 +9,51 @@ interface PrivyAuthProviderProps {
 /**
  * PrivyAuthProvider wraps the app with Privy authentication
  * This enables email-based login and smart wallet creation
+ * 
+ * CRITICAL: Buffer polyfill must be loaded BEFORE PrivyProvider renders
+ * because Privy uses Buffer synchronously for transaction signing
  */
 export function PrivyAuthProvider({ children }: PrivyAuthProviderProps) {
+    const [bufferReady, setBufferReady] = useState(false);
+
+    // Verify Buffer is available (handled by vite-plugin-node-polyfills)
+    useEffect(() => {
+        const verifyBuffer = () => {
+            if (typeof window !== "undefined") {
+                if ((window as any).Buffer) {
+                    // Verify Buffer works
+                    try {
+                        const testBuffer = (window as any).Buffer.from('test');
+                        if (testBuffer && typeof testBuffer.toString === 'function') {
+                            console.log('[PrivyAuthProvider] Buffer verified and working');
+                            setBufferReady(true);
+                        } else {
+                            console.error('[PrivyAuthProvider] Buffer exists but is not functional');
+                            setBufferReady(true); // Still try to render
+                        }
+                    } catch (verifyError) {
+                        console.error('[PrivyAuthProvider] Buffer verification failed:', verifyError);
+                        setBufferReady(true); // Still try to render
+                    }
+                } else {
+                    console.warn('[PrivyAuthProvider] Buffer not available - vite-plugin-node-polyfills should have loaded it');
+                    // Wait a bit for plugin to load it
+                    setTimeout(() => {
+                        if ((window as any).Buffer) {
+                            setBufferReady(true);
+                        } else {
+                            console.error('[PrivyAuthProvider] Buffer still not available after wait');
+                            setBufferReady(true); // Still try to render
+                        }
+                    }, 100);
+                }
+            } else {
+                setBufferReady(true);
+            }
+        };
+        
+        verifyBuffer();
+    }, []);
     // Suppress wallet provider errors and analytics CORS errors in console (known Privy issues)
     // Setup is deferred to avoid blocking initial render
     useEffect(() => {
@@ -123,6 +166,16 @@ export function PrivyAuthProvider({ children }: PrivyAuthProviderProps) {
             }
         };
     }, []);
+
+    // Don't render PrivyProvider until Buffer is ready
+    // This prevents "fromByteArray" errors when Privy tries to sign transactions
+    if (!bufferReady) {
+        return (
+            <div className="min-h-screen bg-gradient-subtle flex items-center justify-center">
+                <div className="animate-pulse bg-muted h-10 w-32 rounded-md" />
+            </div>
+        );
+    }
 
     return (
         <PrivyProvider

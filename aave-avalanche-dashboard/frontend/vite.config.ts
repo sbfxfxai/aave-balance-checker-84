@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
+import { nodePolyfills } from "vite-plugin-node-polyfills";
 
 // https://vitejs.dev/config/
 // Updated: Force rebuild for env vars
@@ -10,11 +11,29 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
   },
-  plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
+  plugins: [
+    react(),
+    // CRITICAL: Use node polyfills plugin to properly handle Buffer without breaking it
+    // This plugin handles Buffer polyfill correctly without breaking internal dependencies
+    nodePolyfills({
+      // Polyfill Buffer and process
+      include: ['buffer'],
+      // Globals that need to be polyfilled
+      globals: {
+        Buffer: true,
+        global: true,
+        process: true,
+      },
+      // Use protocol imports for better compatibility
+      protocolImports: true,
+    }),
+    mode === "development" && componentTagger()
+  ].filter(Boolean),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      buffer: "buffer",
+      // Don't alias buffer - let vite-plugin-node-polyfills handle it
+      // buffer: "buffer",
     },
     dedupe: [
       "@privy-io/react-auth",
@@ -26,12 +45,16 @@ export default defineConfig(({ mode }) => ({
   define: {
     global: "globalThis",
     "process.env": {},
+    // Ensure process.browser is available for buffer polyfill
+    "process.browser": true,
   },
   build: {
     target: "es2020",
     // Extract CSS to separate files (prevents render blocking)
     cssCodeSplit: true,
-    // Use esbuild for faster builds (better than terser for most cases)
+    // Use esbuild for faster builds
+    // CRITICAL: Buffer polyfill is handled by vite-plugin-node-polyfills
+    // which should prevent it from being broken during bundling
     minify: "esbuild",
     // Enable source maps for debugging (can be disabled in production for smaller size)
     sourcemap: process.env.NODE_ENV === "development",
@@ -45,6 +68,8 @@ export default defineConfig(({ mode }) => ({
     assetsInlineLimit: 4096, // 4KB - inline smaller assets
     rollupOptions: {
       output: {
+        // CRITICAL: Don't minify buffer polyfill - it breaks internal code
+        // Use a function to conditionally minify
         manualChunks: (id) => {
           // Core React - CRITICAL: React, React-DOM, and scheduler must be in the same chunk
           // The scheduler is required by React-DOM and must be available when React-DOM loads
@@ -87,10 +112,11 @@ export default defineConfig(({ mode }) => ({
             return 'ethers-core';
           }
           
-          // Buffer polyfill - only needed for Web3
-          if (id.includes('buffer')) {
-            return 'buffer-polyfill';
-          }
+          // Buffer polyfill - DO NOT chunk it separately, let vite-plugin-node-polyfills handle it
+          // Chunking buffer separately breaks its internal dependencies
+          // if (id.includes('node_modules/buffer/') || id.includes('node_modules\\buffer\\')) {
+          //   return 'buffer-polyfill';
+          // }
           
           // UI components - lazy load (Radix UI is heavy)
           if (id.includes('@radix-ui')) {
@@ -122,7 +148,9 @@ export default defineConfig(({ mode }) => ({
     },
   },
   optimizeDeps: {
-    exclude: ["@noble/curves"],
+    // CRITICAL: Exclude buffer from optimization - it breaks when optimized/bundled
+    // Buffer must be loaded as-is to prevent "fromByteArray" errors
+    exclude: ["@noble/curves", "buffer"],
     include: [
       "@privy-io/react-auth",
       "react",
@@ -131,6 +159,7 @@ export default defineConfig(({ mode }) => ({
       "scheduler", // CRITICAL: Scheduler must be pre-bundled with React
       "viem", // Pre-bundle viem to resolve circular deps
       "wagmi" // Pre-bundle wagmi (depends on viem)
+      // NOTE: buffer is excluded - it must be loaded as-is to prevent bundling issues
     ],
     esbuildOptions: {
       define: {
