@@ -1,6 +1,16 @@
+// CRITICAL: Import React first and make it globally available
+// This ensures React is available before any other chunks try to use it
+import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+
+// CRITICAL: Expose React globally for SES environment and other chunks
+// This prevents "can't access property createContext of undefined" errors
+if (typeof window !== "undefined") {
+  (window as any).React = React;
+  console.log('[TiltVault] React exposed globally for SES environment');
+}
 
 // Buffer polyfill is handled by vite-plugin-node-polyfills
 // It should be available globally as window.Buffer automatically

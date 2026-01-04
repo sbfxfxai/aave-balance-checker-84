@@ -77,28 +77,22 @@ export default defineConfig(({ mode }) => ({
         // Use a function to conditionally minify
         // Ensure proper chunk loading order - React must load before Privy
         manualChunks: (id) => {
-          // CRITICAL: React must be in the main entry chunk (not a separate chunk)
-          // This ensures React loads synchronously before Privy tries to use it
-          // Don't chunk React separately - let it be in the main entry point
-          // This prevents "can't access property useLayoutEffect of undefined" errors
-          
-          // Only chunk React if it's not in the entry point
-          // For now, let React be in the main entry to ensure it loads first
-          // if (id.includes('node_modules/react/') && !id.includes('react-router')) {
-          //   return 'react-core';
-          // }
-          // if (id.includes('node_modules/react-dom/')) {
-          //   return 'react-core';
-          // }
-          // if (id.includes('node_modules/scheduler/')) {
-          //   return 'react-core';
-          // }
-          
+          // CRITICAL: React, React-DOM, scheduler, and React Query MUST be in the same chunk
+          // This ensures they load together and React is available when other chunks need it
+          // Separating them causes "can't access property createContext/useLayoutEffect of undefined" errors
+          if (id.includes('node_modules/react/') && !id.includes('react-router')) {
+            return 'react-core';
+          }
+          if (id.includes('node_modules/react-dom/')) {
+            return 'react-core';
+          }
+          if (id.includes('node_modules/scheduler/')) {
+            return 'react-core';
+          }
           // CRITICAL: React Query must be with React - it uses React.useLayoutEffect
-          // But since React is in the main entry, React Query should also be in the main entry
-          // if (id.includes('@tanstack')) {
-          //   return 'react-core';
-          // }
+          if (id.includes('@tanstack')) {
+            return 'react-core';
+          }
           
           // Router - can be slightly deferred
           if (id.includes('react-router')) {
