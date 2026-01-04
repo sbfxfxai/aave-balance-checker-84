@@ -1,3 +1,13 @@
+// CRITICAL: Manually import Buffer polyfill at the very top
+// This ensures Buffer is available before any Web3 libraries try to use it
+// The vite-plugin-node-polyfills should handle this, but manual import ensures it works
+import { Buffer } from 'buffer';
+if (typeof window !== "undefined") {
+  // Expose Buffer globally for libraries that expect it
+  (window as any).Buffer = Buffer;
+  (globalThis as any).Buffer = Buffer;
+}
+
 // CRITICAL: Detect SES lockdown from wallet extensions
 // SES lockdown enforces stricter JavaScript semantics and can cause TDZ errors
 if (typeof window !== "undefined") {
@@ -93,25 +103,24 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 
-// Buffer polyfill is handled by vite-plugin-node-polyfills
-// It should be available globally as window.Buffer automatically
+// Buffer polyfill is manually imported at the top and exposed globally
 // Verify it's available and log status
 if (typeof window !== "undefined") {
   if ((window as any).Buffer) {
-    console.log('[TiltVault] Buffer polyfill available (from vite-plugin-node-polyfills)');
+    console.log('[TiltVault] ✅ Buffer polyfill available (manually imported)');
     // Verify Buffer works
     try {
       const test = (window as any).Buffer.from('test');
       if (test && typeof test.toString === 'function') {
-        console.log('[TiltVault] Buffer verified and working');
+        console.log('[TiltVault] ✅ Buffer verified and working');
       } else {
-        console.error('[TiltVault] Buffer exists but is not functional');
+        console.error('[TiltVault] ❌ Buffer exists but is not functional');
       }
     } catch (error) {
-      console.error('[TiltVault] Buffer verification failed:', error);
+      console.error('[TiltVault] ❌ Buffer verification failed:', error);
     }
   } else {
-    console.warn('[TiltVault] Buffer not available - vite-plugin-node-polyfills should have loaded it');
+    console.error('[TiltVault] ❌ CRITICAL: Buffer not available after manual import!');
   }
 }
 

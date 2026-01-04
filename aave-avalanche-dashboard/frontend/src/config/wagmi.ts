@@ -10,6 +10,29 @@ const avalancheRpcUrl = import.meta.env.VITE_AVALANCHE_RPC_URL || 'https://api.a
 // Get one free at https://cloud.walletconnect.com
 // Set VITE_WALLETCONNECT_PROJECT_ID in Vercel/environment
 const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID
+const fallbackProjectId = 'c0daaf12b05ec82413fc8c92c1635a76'
+const finalProjectId = projectId || fallbackProjectId
+
+// Log WalletConnect configuration for debugging
+if (typeof window !== 'undefined') {
+  console.log('[Wagmi Config] WalletConnect Configuration:', {
+    hasEnvProjectId: !!projectId,
+    projectIdLength: projectId?.length || 0,
+    usingFallback: !projectId,
+    finalProjectId: finalProjectId.substring(0, 8) + '...',
+    currentOrigin: window.location.origin,
+    isProduction: import.meta.env.PROD,
+  })
+  
+  if (!projectId && import.meta.env.PROD) {
+    console.warn(
+      '⚠️ [Wagmi Config] VITE_WALLETCONNECT_PROJECT_ID not set in production! ' +
+      'Using fallback project ID. This may cause 403 errors. ' +
+      'Set VITE_WALLETCONNECT_PROJECT_ID in Vercel environment variables. ' +
+      'Also ensure your domain (www.tiltvault.com) is whitelisted in WalletConnect Cloud dashboard.'
+    )
+  }
+}
 
 // Fail hard in production builds (not development) if WalletConnect project ID is missing
 // Only throw in actual production builds, not during local development
@@ -37,7 +60,7 @@ export const config = createConfig({
       shimDisconnect: true,
     }),
     walletConnect({
-      projectId: projectId || 'c0daaf12b05ec82413fc8c92c1635a76', // Fallback only for development
+      projectId: finalProjectId,
       showQrModal: true,
       metadata: {
         name: 'TiltVault',
