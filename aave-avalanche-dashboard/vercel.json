@@ -15,11 +15,9 @@
         {
           "key": "X-Content-Type-Options",
           "value": "nosniff"
-        },
-        {
-          "key": "X-Frame-Options",
-          "value": "DENY"
         }
+        // X-Frame-Options removed - CSP frame-src already controls iframe embedding
+        // X-Frame-Options: DENY was blocking WalletConnect modal iframe
       ]
     },
           {
