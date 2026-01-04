@@ -63,55 +63,55 @@ interface Web3ProvidersProps {
 }
 
 export function Web3Providers({ children }: Web3ProvidersProps) {
+  // CRITICAL: Don't wait for React - it should already be available from CDN/main.tsx
+  // If React isn't available, the error will be caught by ErrorBoundary
+  // Waiting indefinitely causes the app to be stuck on loading spinner
   const [reactReady, setReactReady] = useState(false);
 
-  // CRITICAL: Wait for React to be available before rendering WagmiProvider
-  // Wagmi uses React.createContext, which must be available
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-    let checkCount = 0;
-    const MAX_CHECKS = 50; // 5 seconds max (50 * 100ms)
-    
+    // Check immediately - React should already be available
     const checkReact = () => {
-      checkCount++;
-      
       if (typeof window !== "undefined" && (window as any).React) {
         const globalReact = (window as any).React;
         if (typeof globalReact.createContext === 'function') {
           console.log('[Web3Providers] ✅ React.createContext verified - ready to render WagmiProvider');
           setReactReady(true);
-          return;
-        } else {
-          console.error('[Web3Providers] ❌ React.createContext not available, waiting...');
+          return true;
         }
-      } else {
-        console.warn('[Web3Providers] ⚠️ React not available globally, waiting...');
+      }
+      return false;
+    };
+
+    // Check immediately
+    if (checkReact()) {
+      return; // React is ready, no need to wait
+    }
+
+    // If not immediately available, check a few more times with short delays
+    let checkCount = 0;
+    const MAX_CHECKS = 10; // 1 second max (10 * 100ms)
+    let timeoutId: NodeJS.Timeout;
+    
+    const retryCheck = () => {
+      checkCount++;
+      
+      if (checkReact()) {
+        return; // React is ready
       }
       
-      // If we've checked too many times, proceed anyway (React should be available by now)
+      // If we've checked too many times, proceed anyway
+      // The error will be caught by ErrorBoundary if React truly isn't available
       if (checkCount >= MAX_CHECKS) {
-        console.warn('[Web3Providers] ⚠️ Timeout reached after', checkCount, 'checks. Proceeding anyway - React should be available.');
+        console.warn('[Web3Providers] ⚠️ Timeout reached. Proceeding anyway - error will be caught by ErrorBoundary if React unavailable.');
         setReactReady(true);
         return;
       }
       
-      timeoutId = setTimeout(checkReact, 100);
+      timeoutId = setTimeout(retryCheck, 100);
     };
 
-    // Check immediately first (React should already be available from CDN or main.tsx)
-    if (typeof window !== "undefined" && (window as any).React) {
-      const globalReact = (window as any).React;
-      if (typeof globalReact.createContext === 'function') {
-        console.log('[Web3Providers] ✅ React immediately available - no wait needed');
-        setReactReady(true);
-      } else {
-        // Start checking if not immediately available
-        checkReact();
-      }
-    } else {
-      // Start checking if React not available
-      checkReact();
-    }
+    // Start retry check
+    timeoutId = setTimeout(retryCheck, 100);
     
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
