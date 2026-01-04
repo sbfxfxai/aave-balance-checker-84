@@ -68,24 +68,54 @@ export function Web3Providers({ children }: Web3ProvidersProps) {
   // CRITICAL: Wait for React to be available before rendering WagmiProvider
   // Wagmi uses React.createContext, which must be available
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    let checkCount = 0;
+    const MAX_CHECKS = 50; // 5 seconds max (50 * 100ms)
+    
     const checkReact = () => {
+      checkCount++;
+      
       if (typeof window !== "undefined" && (window as any).React) {
         const globalReact = (window as any).React;
         if (typeof globalReact.createContext === 'function') {
           console.log('[Web3Providers] ✅ React.createContext verified - ready to render WagmiProvider');
           setReactReady(true);
+          return;
         } else {
           console.error('[Web3Providers] ❌ React.createContext not available, waiting...');
-          setTimeout(checkReact, 100);
         }
       } else {
         console.warn('[Web3Providers] ⚠️ React not available globally, waiting...');
-        setTimeout(checkReact, 100);
       }
+      
+      // If we've checked too many times, proceed anyway (React should be available by now)
+      if (checkCount >= MAX_CHECKS) {
+        console.warn('[Web3Providers] ⚠️ Timeout reached after', checkCount, 'checks. Proceeding anyway - React should be available.');
+        setReactReady(true);
+        return;
+      }
+      
+      timeoutId = setTimeout(checkReact, 100);
     };
 
-    // Start checking immediately
-    checkReact();
+    // Check immediately first (React should already be available from CDN or main.tsx)
+    if (typeof window !== "undefined" && (window as any).React) {
+      const globalReact = (window as any).React;
+      if (typeof globalReact.createContext === 'function') {
+        console.log('[Web3Providers] ✅ React immediately available - no wait needed');
+        setReactReady(true);
+      } else {
+        // Start checking if not immediately available
+        checkReact();
+      }
+    } else {
+      // Start checking if React not available
+      checkReact();
+    }
+    
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, []);
 
   // Load Buffer polyfill immediately when Web3Providers mounts (before Privy operations)
