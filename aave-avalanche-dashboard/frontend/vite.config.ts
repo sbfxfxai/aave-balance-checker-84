@@ -73,10 +73,11 @@ export default defineConfig(({ mode }) => ({
     assetsInlineLimit: 4096, // 4KB - inline smaller assets
           rollupOptions: {
             output: {
-              // CRITICAL: Ensure main entry chunk loads first and executes before vendor chunks
-              // This ensures React is exposed globally before web3-vendor tries to use it
-              // Use entryFileNames to ensure main entry has predictable name for preloading
-              entryFileNames: 'assets/index-[hash].js',
+              // CRITICAL: Force .js extension for all output files (not .tsx)
+              // This ensures proper MIME type and module loading
+              entryFileNames: 'assets/[name]-[hash].js',
+              chunkFileNames: 'assets/[name]-[hash].js',
+              assetFileNames: 'assets/[name]-[hash].[ext]',
               // CRITICAL: Don't minify buffer polyfill - it breaks internal code
               // Use a function to conditionally minify
               // Ensure proper chunk loading order - React must load before Privy and web3-vendor
