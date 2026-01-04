@@ -10,7 +10,7 @@ const avalancheRpcUrl = import.meta.env.VITE_AVALANCHE_RPC_URL || 'https://api.a
 // Get one free at https://cloud.walletconnect.com
 // Set VITE_WALLETCONNECT_PROJECT_ID in Vercel/environment
 const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID
-const fallbackProjectId = 'c0daaf12b05ec82413fc8c92c1635a76'
+const fallbackProjectId = '392a0f60dab84b8a1d2a2773b55f3aa1' // Fresh WalletConnect project
 const finalProjectId = projectId || fallbackProjectId
 
 // Log WalletConnect configuration for debugging
