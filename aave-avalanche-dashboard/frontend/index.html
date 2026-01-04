@@ -201,6 +201,7 @@
     
     <!-- CRITICAL: Setup process object BEFORE any scripts load -->
     <!-- Buffer polyfill needs process to be defined -->
+    <!-- CSP hash: sha256-3pRnM6RDgF14MWFkvx4uteJg4lut04LUeWOimQRHoI8= -->
     <script>
       (function() {
         if (typeof process === 'undefined') {
@@ -221,12 +222,12 @@
       })();
     </script>
     
-    <!-- CRITICAL: React will be exposed globally from the bundled code in main.tsx -->
-    <!-- No CDN needed - React is already in the bundle and will be available before vendor chunks -->
-    <!-- The main.tsx entry point exposes React globally immediately on import -->
+    <!-- CRITICAL: Preload main entry chunk to ensure React loads before vendor chunks -->
+    <!-- This ensures React is available when vendor chunks (web3-vendor, privy) execute -->
+    <link rel="modulepreload" href="/src/main.tsx" />
     
-    <!-- Main app script - loaded as module (modules are deferred by default) -->
-    <!-- The bundled React will override the CDN version, but CDN ensures React is available immediately -->
+    <!-- Main app script - loaded as module -->
+    <!-- React will be exposed globally in main.tsx before any vendor chunks execute -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -2,45 +2,28 @@
 // SES lockdown from wallet extensions freezes the environment before React is available
 // We MUST expose React globally BEFORE any vendor bundles (web3-vendor, privy) try to use it
 
-// DIAGNOSTICS: Check if React is already available from CDN
-if (typeof window !== "undefined") {
-  console.log('[Entry] Checking React availability...');
-  console.log('[Entry] window.React:', typeof (window as any).React);
-  console.log('[Entry] window.ReactDOM:', typeof (window as any).ReactDOM);
-  
-  // If React is not available from CDN, log a warning
-  if (!(window as any).React) {
-    console.error('[Entry] CRITICAL: React not available from CDN! Vendor chunks may fail.');
-    console.error('[Entry] This usually means the CDN script failed to load or executed after modules.');
-  } else {
-    console.log('[Entry] React available from CDN - checking methods...');
-    const cdnReact = (window as any).React;
-    if (cdnReact.useLayoutEffect && cdnReact.createContext) {
-      console.log('[Entry] ✅ CDN React verified - useLayoutEffect and createContext available');
-    } else {
-      console.error('[Entry] ❌ CDN React missing required methods!');
-    }
-  }
-}
-
+// IMPORT React FIRST - this must happen before any other imports
+// React is in the main entry chunk, so it loads synchronously with this file
 import React from "react";
 import ReactDOM from "react-dom/client";
 
-// Immediately expose React globally BEFORE any other code runs
-// This prevents "can't access property useLayoutEffect/createContext of undefined" errors
-// The web3-vendor bundle loads at module evaluation time and needs React immediately
+// CRITICAL: Expose React globally IMMEDIATELY after import
+// This must happen BEFORE any other code executes, including vendor chunk evaluation
+// Vendor chunks (web3-vendor, privy) may execute in parallel, so React must be available NOW
 if (typeof window !== "undefined") {
-  // Override CDN React with bundled React (bundled version is more up-to-date)
   (window as any).React = React;
   (window as any).ReactDOM = ReactDOM;
-  console.log('[Entry] ✅ Bundled React and ReactDOM exposed globally (overriding CDN)');
+  console.log('[Entry] ✅ React and ReactDOM exposed globally IMMEDIATELY');
   
   // Verify React is actually available
-  if (!React || !React.useLayoutEffect) {
-    console.error('[Entry] ❌ CRITICAL: Bundled React is not properly loaded!');
+  if (!React || !React.useLayoutEffect || !React.createContext) {
+    console.error('[Entry] ❌ CRITICAL: React is not properly loaded!');
+    console.error('[Entry] React:', React);
+    console.error('[Entry] useLayoutEffect:', typeof React?.useLayoutEffect);
+    console.error('[Entry] createContext:', typeof React?.createContext);
   } else {
-    console.log('[Entry] ✅ Bundled React verified - useLayoutEffect:', typeof React.useLayoutEffect);
-    console.log('[Entry] ✅ Bundled React verified - createContext:', typeof React.createContext);
+    console.log('[Entry] ✅ React verified - useLayoutEffect:', typeof React.useLayoutEffect);
+    console.log('[Entry] ✅ React verified - createContext:', typeof React.createContext);
   }
 }
 
