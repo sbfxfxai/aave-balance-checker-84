@@ -1,19 +1,15 @@
-// CRITICAL: Must be FIRST imports before anything else
-// SES lockdown from wallet extensions freezes the environment before React is available
-// We MUST expose React globally BEFORE any vendor bundles (web3-vendor, privy) try to use it
-
-// IMPORT React FIRST - this must happen before any other imports
-// React is in the main entry chunk, so it loads synchronously with this file
+// CRITICAL: React is now bundled WITH web3-vendor, so it will be available
+// when web3-vendor executes. We still need to expose it globally for Privy.
+// Import React - it will be available from web3-vendor chunk
 import React from "react";
 import ReactDOM from "react-dom/client";
 
-// CRITICAL: Expose React globally IMMEDIATELY after import
-// This must happen BEFORE any other code executes, including vendor chunk evaluation
-// Vendor chunks (web3-vendor, privy) may execute in parallel, so React must be available NOW
+// CRITICAL: Expose React globally for Privy and other libraries that expect it
+// This must happen BEFORE Privy loads
 if (typeof window !== "undefined") {
   (window as any).React = React;
   (window as any).ReactDOM = ReactDOM;
-  console.log('[Entry] ✅ React and ReactDOM exposed globally IMMEDIATELY');
+  console.log('[Entry] ✅ React and ReactDOM exposed globally');
   
   // Verify React is actually available
   if (!React || !React.useLayoutEffect || !React.createContext) {
@@ -27,7 +23,7 @@ if (typeof window !== "undefined") {
   }
 }
 
-// NOW import your App and other dependencies AFTER React is globally available
+// Import App and other dependencies
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";

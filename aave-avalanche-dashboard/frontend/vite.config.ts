@@ -82,50 +82,48 @@ export default defineConfig(({ mode }) => ({
               // Ensure proper chunk loading order - React must load before Privy and web3-vendor
               // Use consistent chunk names for preloading
               manualChunks: (id) => {
-          // CRITICAL: React MUST be in the main entry chunk (not a separate chunk)
-          // This ensures React loads synchronously with the main bundle and is available
-          // before any vendor chunks (web3-vendor, privy) try to use it
-          // SES lockdown from wallet extensions freezes the environment, so React must be global
-          // By returning undefined, React stays in the main entry chunk
-          if (id.includes('node_modules/react/') && !id.includes('react-router')) {
-            return undefined; // Keep in main entry chunk
-          }
-          if (id.includes('node_modules/react-dom/')) {
-            return undefined; // Keep in main entry chunk
-          }
-          if (id.includes('node_modules/scheduler/')) {
-            return undefined; // Keep in main entry chunk
-          }
-          
-          // CRITICAL: React Query must be with React - it uses React.useLayoutEffect
-          if (id.includes('@tanstack')) {
-            return undefined; // Keep in main entry chunk
-          }
-          
-          // Router - can be slightly deferred
-          if (id.includes('react-router')) {
-            return 'react-router';
-          }
-          
-          // GMX SDK - only used on /gmx page, separate chunk
-          if (id.includes('@gmx-io/sdk')) {
-            return 'gmx-sdk';
-          }
-          
-          // Privy - CRITICAL: Must load AFTER React is available
-          // Privy uses React.useLayoutEffect, so React must be loaded first
-          // Keep Privy separate but ensure proper load order via chunk dependencies
-          if (id.includes('@privy-io')) {
-            return 'privy';
-          }
-          
-          // Web3 libraries - keep viem and wagmi together to avoid circular deps
-          // Viem must be available when wagmi loads, so bundle them together
-          if (id.includes('node_modules/viem/') || 
-              id.includes('node_modules/wagmi/') || 
-              id.includes('node_modules/@wagmi/')) {
-            return 'web3-vendor';
-          }
+                // CRITICAL: Bundle React WITH web3-vendor to ensure React is available
+                // when web3-vendor executes its module-level code (React.createContext)
+                // This prevents "can't access property 'createContext' of undefined" errors
+                if (id.includes('node_modules/react/') && !id.includes('react-router')) {
+                  return 'web3-vendor'; // Bundle React with web3 libraries
+                }
+                if (id.includes('node_modules/react-dom/')) {
+                  return 'web3-vendor'; // Bundle ReactDOM with web3 libraries
+                }
+                if (id.includes('node_modules/scheduler/')) {
+                  return 'web3-vendor'; // Bundle scheduler with web3 libraries
+                }
+                
+                // CRITICAL: React Query must be with React - it uses React.useLayoutEffect
+                if (id.includes('@tanstack')) {
+                  return 'web3-vendor'; // Bundle React Query with web3 libraries
+                }
+                
+                // Router - can be slightly deferred
+                if (id.includes('react-router')) {
+                  return 'react-router';
+                }
+                
+                // GMX SDK - only used on /gmx page, separate chunk
+                if (id.includes('@gmx-io/sdk')) {
+                  return 'gmx-sdk';
+                }
+                
+                // Privy - CRITICAL: Must load AFTER React is available
+                // Privy uses React.useLayoutEffect, so React must be loaded first
+                // Keep Privy separate but ensure proper load order via chunk dependencies
+                if (id.includes('@privy-io')) {
+                  return 'privy';
+                }
+                
+                // Web3 libraries - bundle with React to ensure React is available
+                // Viem must be available when wagmi loads, so bundle them together
+                if (id.includes('node_modules/viem/') || 
+                    id.includes('node_modules/wagmi/') || 
+                    id.includes('node_modules/@wagmi/')) {
+                  return 'web3-vendor';
+                }
           
           // Ethers.js - separate from viem/wagmi (different ecosystem)
           if (id.includes('node_modules/ethers/')) {
