@@ -208,12 +208,48 @@ export function SimpleDashboard() {
                     Connect your existing MetaMask or other wallet
                   </p>
                   <Button
-                    onClick={() => {
-                      const walletConnectConnector = connectors.find(c => c.id === 'walletConnect');
-                      if (walletConnectConnector) {
-                        connect({ connector: walletConnectConnector });
-                      } else {
-                        toast.error('WalletConnect not available');
+                    onClick={async () => {
+                      try {
+                        console.log('[SimpleDashboard] WalletConnect button clicked');
+                        console.log('[SimpleDashboard] Available connectors:', connectors.map(c => ({ id: c.id, name: c.name })));
+                        
+                        const walletConnectConnector = connectors.find(c => c.id === 'walletConnect');
+                        console.log('[SimpleDashboard] WalletConnect connector found:', !!walletConnectConnector);
+                        
+                        if (walletConnectConnector) {
+                          console.log('[SimpleDashboard] Attempting to connect with WalletConnect...');
+                          connect({ 
+                            connector: walletConnectConnector,
+                            onError: (error) => {
+                              console.error('[SimpleDashboard] WalletConnect connection error:', error);
+                              toast.error(`Connection failed: ${error.message || 'Unknown error'}`);
+                            },
+                            onSuccess: () => {
+                              console.log('[SimpleDashboard] WalletConnect connection successful');
+                            }
+                          });
+                          
+                          // Check if modal container exists after a short delay
+                          setTimeout(() => {
+                            const modalContainer = document.querySelector('w3m-modal, [data-w3m-modal], #walletconnect-wrapper, .walletconnect-modal');
+                            console.log('[SimpleDashboard] Modal container check:', {
+                              found: !!modalContainer,
+                              element: modalContainer,
+                              styles: modalContainer ? window.getComputedStyle(modalContainer as Element) : null
+                            });
+                            
+                            if (!modalContainer) {
+                              console.warn('[SimpleDashboard] ⚠️ WalletConnect modal container not found in DOM');
+                              toast.error('WalletConnect modal failed to open. Check console for details.');
+                            }
+                          }, 500);
+                        } else {
+                          console.error('[SimpleDashboard] WalletConnect connector not found');
+                          toast.error('WalletConnect not available');
+                        }
+                      } catch (error) {
+                        console.error('[SimpleDashboard] Error connecting WalletConnect:', error);
+                        toast.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
                       }
                     }}
                     className="w-full"
