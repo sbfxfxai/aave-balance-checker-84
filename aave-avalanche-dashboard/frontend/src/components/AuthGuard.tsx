@@ -170,9 +170,44 @@ export function AuthGuard({ children }: AuthGuardProps) {
                                   console.warn('[AuthGuard] ⚠️ Modal container found but is hidden:', {
                                     display: styles.display,
                                     visibility: styles.visibility,
-                                    opacity: styles.opacity
+                                    opacity: styles.opacity,
+                                    zIndex: styles.zIndex
                                   });
-                                  toast.error('WalletConnect modal is hidden. This may be a CSS issue.');
+                                  
+                                  // Try to force the modal to be visible
+                                  console.log('[AuthGuard] Attempting to force modal visibility...');
+                                  (modalContainer as HTMLElement).style.display = 'block';
+                                  (modalContainer as HTMLElement).style.visibility = 'visible';
+                                  (modalContainer as HTMLElement).style.opacity = '1';
+                                  (modalContainer as HTMLElement).style.zIndex = '9999';
+                                  
+                                  // Also check for parent elements that might be hiding it
+                                  let parent = modalContainer.parentElement;
+                                  let depth = 0;
+                                  while (parent && depth < 5) {
+                                    const parentStyles = window.getComputedStyle(parent);
+                                    if (parentStyles.display === 'none' || parentStyles.visibility === 'hidden') {
+                                      console.warn(`[AuthGuard] Parent element at depth ${depth} is hiding modal:`, {
+                                        tag: parent.tagName,
+                                        display: parentStyles.display,
+                                        visibility: parentStyles.visibility
+                                      });
+                                      parent.style.display = 'block';
+                                      parent.style.visibility = 'visible';
+                                    }
+                                    parent = parent.parentElement;
+                                    depth++;
+                                  }
+                                  
+                                  // Check again after forcing visibility
+                                  setTimeout(() => {
+                                    const newStyles = window.getComputedStyle(modalContainer as Element);
+                                    if (newStyles.display === 'none' || newStyles.visibility === 'hidden' || parseFloat(newStyles.opacity) === 0) {
+                                      console.error('[AuthGuard] ❌ Modal still hidden after forcing visibility. This may be a WalletConnect initialization issue.');
+                                    } else {
+                                      console.log('[AuthGuard] ✅ Modal forced to be visible');
+                                    }
+                                  }, 100);
                                 } else {
                                   console.log('[AuthGuard] ✅ Modal container found and visible');
                                 }
