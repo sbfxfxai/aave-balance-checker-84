@@ -1,26 +1,27 @@
-// CRITICAL: Import React and ReactDOM FIRST and expose them globally IMMEDIATELY
-// This MUST happen before ANY other imports to ensure React is available for SES environment
-// SES lockdown (from wallet extensions) can break module resolution, so we need React on window
+// CRITICAL: Must be FIRST imports before anything else
+// SES lockdown from wallet extensions freezes the environment before React is available
+// We MUST expose React globally BEFORE any vendor bundles (web3-vendor, privy) try to use it
 import React from "react";
 import ReactDOM from "react-dom/client";
 
-// CRITICAL: Expose React globally BEFORE any other code runs
+// Immediately expose React globally BEFORE any other code runs
 // This prevents "can't access property useLayoutEffect/createContext of undefined" errors
-// SES lockdown from wallet extensions can break module resolution, so libraries need window.React
+// The web3-vendor bundle loads at module evaluation time and needs React immediately
 if (typeof window !== "undefined") {
   (window as any).React = React;
   (window as any).ReactDOM = ReactDOM;
-  console.log('[TiltVault] React and ReactDOM exposed globally for SES environment');
+  console.log('[Entry] React and ReactDOM exposed globally for SES environment');
   
   // Verify React is actually available
   if (!React || !React.useLayoutEffect) {
-    console.error('[TiltVault] CRITICAL: React is not properly loaded!');
+    console.error('[Entry] CRITICAL: React is not properly loaded!');
   } else {
-    console.log('[TiltVault] React verified - useLayoutEffect available:', typeof React.useLayoutEffect);
+    console.log('[Entry] React verified - useLayoutEffect available:', typeof React.useLayoutEffect);
+    console.log('[Entry] React.createContext available:', typeof React.createContext);
   }
 }
 
-// Now import everything else AFTER React is globally available
+// NOW import your App and other dependencies AFTER React is globally available
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";

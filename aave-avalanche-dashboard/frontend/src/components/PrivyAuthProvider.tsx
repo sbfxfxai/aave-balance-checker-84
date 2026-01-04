@@ -1,21 +1,8 @@
-// CRITICAL: Ensure React is available before importing Privy
-// Privy uses React.useLayoutEffect at module load time, so React must be loaded first
+// React is already exposed globally in main.tsx before any imports
+// No need to expose it again here - it's already available for Privy
 import React, { useEffect, useState } from 'react';
 import { PrivyProvider } from '@privy-io/react-auth';
 import { PRIVY_APP_ID, privyConfig } from '@/lib/privy-config';
-
-// CRITICAL: Ensure React is globally available for Privy
-// This prevents "can't access property useLayoutEffect of undefined" errors
-if (typeof window !== "undefined") {
-  if (!(window as any).React) {
-    (window as any).React = React;
-    console.log('[PrivyAuthProvider] React exposed globally for Privy');
-  }
-  // Verify React has useLayoutEffect
-  if (!React.useLayoutEffect) {
-    console.error('[PrivyAuthProvider] CRITICAL: React.useLayoutEffect is not available!');
-  }
-}
 
 interface PrivyAuthProviderProps {
     children: React.ReactNode;

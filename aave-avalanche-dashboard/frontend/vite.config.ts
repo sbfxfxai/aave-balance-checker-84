@@ -78,30 +78,23 @@ export default defineConfig(({ mode }) => ({
         // Ensure proper chunk loading order - React must load before Privy and web3-vendor
         // Use consistent chunk names for preloading
         manualChunks: (id) => {
-          // CRITICAL: React MUST be in the main entry chunk (not a separate chunk)
-          // This ensures React loads synchronously before Privy tries to use it
-          // Privy is imported directly in App.tsx, so it loads with the main entry
-          // If React is in a separate chunk, Privy's code executes before React is ready
-          // Don't chunk React separately - let it be in the main entry point
-          // This prevents "can't access property useLayoutEffect of undefined" errors
-          
-          // Only chunk React if it's not in the entry point
-          // For now, let React be in the main entry to ensure it loads first
-          // if (id.includes('node_modules/react/') && !id.includes('react-router')) {
-          //   return 'react-core';
-          // }
-          // if (id.includes('node_modules/react-dom/')) {
-          //   return 'react-core';
-          // }
-          // if (id.includes('node_modules/scheduler/')) {
-          //   return 'react-core';
-          // }
+          // CRITICAL: React and ReactDOM MUST be in a react-vendor chunk that loads first
+          // This ensures React is available before web3-vendor and privy chunks try to use it
+          // SES lockdown from wallet extensions freezes the environment, so React must be global
+          if (id.includes('node_modules/react/') && !id.includes('react-router')) {
+            return 'react-vendor';
+          }
+          if (id.includes('node_modules/react-dom/')) {
+            return 'react-vendor';
+          }
+          if (id.includes('node_modules/scheduler/')) {
+            return 'react-vendor';
+          }
           
           // CRITICAL: React Query must be with React - it uses React.useLayoutEffect
-          // But since React is in the main entry, React Query should also be in the main entry
-          // if (id.includes('@tanstack')) {
-          //   return 'react-core';
-          // }
+          if (id.includes('@tanstack')) {
+            return 'react-vendor';
+          }
           
           // Router - can be slightly deferred
           if (id.includes('react-router')) {

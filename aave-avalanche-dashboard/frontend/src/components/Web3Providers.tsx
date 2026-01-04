@@ -1,17 +1,9 @@
-// CRITICAL: Ensure React is available before importing wagmi
-// wagmi uses React.createContext at module load time, so React must be loaded first
-import React from 'react';
+// React is already exposed globally in main.tsx before any imports
+// No need to expose it again here - it's already available for wagmi
 import { Suspense, ReactNode, useEffect } from 'react';
 import { WagmiProvider } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { config } from '@/config/wagmi';
-
-// CRITICAL: Ensure React is globally available for wagmi
-// This prevents "can't access property createContext of undefined" errors
-if (typeof window !== "undefined" && !(window as any).React) {
-  (window as any).React = React;
-  console.log('[Web3Providers] React exposed globally for wagmi');
-}
 
 // Eagerly load Buffer polyfill - Privy needs it synchronously for transaction signing
 // This must be loaded before Privy operations to prevent "fromByteArray" errors
