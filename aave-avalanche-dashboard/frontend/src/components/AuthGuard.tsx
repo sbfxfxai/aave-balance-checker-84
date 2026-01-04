@@ -82,16 +82,109 @@ export function AuthGuard({ children }: AuthGuardProps) {
                       Connect your existing MetaMask or other wallet
                     </p>
                     <Button
-                      onClick={() => {
-                        if (!connectors || connectors.length === 0) {
-                          toast.error('No wallet connectors available');
-                          return;
-                        }
-                        const walletConnectConnector = connectors.find(c => c.id === 'walletConnect');
-                        if (walletConnectConnector) {
-                          connect({ connector: walletConnectConnector });
-                        } else {
-                          toast.error('WalletConnect not available');
+                      onClick={async () => {
+                        try {
+                          console.log('[AuthGuard] WalletConnect button clicked');
+                          console.log('[AuthGuard] Available connectors:', connectors?.map(c => ({ id: c.id, name: c.name })) || 'none');
+                          
+                          if (!connectors || connectors.length === 0) {
+                            console.error('[AuthGuard] No wallet connectors available');
+                            toast.error('No wallet connectors available');
+                            return;
+                          }
+                          
+                          const walletConnectConnector = connectors.find(c => c.id === 'walletConnect');
+                          console.log('[AuthGuard] WalletConnect connector found:', !!walletConnectConnector);
+                          
+                          if (walletConnectConnector) {
+                            console.log('[AuthGuard] Attempting to connect with WalletConnect...');
+                            connect({ 
+                              connector: walletConnectConnector,
+                              onError: (error) => {
+                                console.error('[AuthGuard] WalletConnect connection error:', error);
+                                toast.error(`Connection failed: ${error.message || 'Unknown error'}`);
+                              },
+                              onSuccess: () => {
+                                console.log('[AuthGuard] WalletConnect connection successful');
+                              }
+                            });
+                            
+                            // Check if modal container exists after a short delay
+                            setTimeout(() => {
+                              // Check multiple possible selectors for WalletConnect modal
+                              const selectors = [
+                                'w3m-modal',
+                                '[data-w3m-modal]',
+                                '#walletconnect-wrapper',
+                                '.walletconnect-modal',
+                                'w3m-connect-button',
+                                '[data-w3m-connect-button]',
+                                'w3m-modal-backdrop',
+                                '[id*="walletconnect"]',
+                                '[class*="walletconnect"]',
+                                '[class*="w3m"]'
+                              ];
+                              
+                              let modalContainer: Element | null = null;
+                              for (const selector of selectors) {
+                                modalContainer = document.querySelector(selector);
+                                if (modalContainer) {
+                                  console.log(`[AuthGuard] Found modal container with selector: ${selector}`);
+                                  break;
+                                }
+                              }
+                              
+                              // Also check body for any dynamically added elements
+                              const bodyChildren = Array.from(document.body.children);
+                              const walletConnectElements = bodyChildren.filter(el => 
+                                el.tagName?.toLowerCase().includes('w3m') ||
+                                el.id?.includes('walletconnect') ||
+                                el.className?.toString().includes('walletconnect') ||
+                                el.className?.toString().includes('w3m')
+                              );
+                              
+                              console.log('[AuthGuard] Modal container check:', {
+                                found: !!modalContainer,
+                                element: modalContainer,
+                                tagName: modalContainer?.tagName,
+                                id: modalContainer?.id,
+                                className: modalContainer?.className,
+                                styles: modalContainer ? {
+                                  display: window.getComputedStyle(modalContainer as Element).display,
+                                  visibility: window.getComputedStyle(modalContainer as Element).visibility,
+                                  opacity: window.getComputedStyle(modalContainer as Element).opacity,
+                                  zIndex: window.getComputedStyle(modalContainer as Element).zIndex,
+                                  position: window.getComputedStyle(modalContainer as Element).position
+                                } : null,
+                                walletConnectElementsInBody: walletConnectElements.length,
+                                allBodyChildren: bodyChildren.map(el => ({ tag: el.tagName, id: el.id, className: el.className }))
+                              });
+                              
+                              if (!modalContainer && walletConnectElements.length === 0) {
+                                console.warn('[AuthGuard] ⚠️ WalletConnect modal container not found in DOM');
+                                console.warn('[AuthGuard] This suggests the modal failed to inject. Check CSP and network errors.');
+                                toast.error('WalletConnect modal failed to open. Check console for details.');
+                              } else if (modalContainer) {
+                                const styles = window.getComputedStyle(modalContainer as Element);
+                                if (styles.display === 'none' || styles.visibility === 'hidden' || parseFloat(styles.opacity) === 0) {
+                                  console.warn('[AuthGuard] ⚠️ Modal container found but is hidden:', {
+                                    display: styles.display,
+                                    visibility: styles.visibility,
+                                    opacity: styles.opacity
+                                  });
+                                  toast.error('WalletConnect modal is hidden. This may be a CSS issue.');
+                                } else {
+                                  console.log('[AuthGuard] ✅ Modal container found and visible');
+                                }
+                              }
+                            }, 1000); // Increased delay to 1 second
+                          } else {
+                            console.error('[AuthGuard] WalletConnect connector not found');
+                            toast.error('WalletConnect not available');
+                          }
+                        } catch (error) {
+                          console.error('[AuthGuard] Error connecting WalletConnect:', error);
+                          toast.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
                         }
                       }}
                       className="w-full"
