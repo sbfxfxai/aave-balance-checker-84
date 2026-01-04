@@ -231,18 +231,73 @@ export function SimpleDashboard() {
                           
                           // Check if modal container exists after a short delay
                           setTimeout(() => {
-                            const modalContainer = document.querySelector('w3m-modal, [data-w3m-modal], #walletconnect-wrapper, .walletconnect-modal');
+                            // Check multiple possible selectors for WalletConnect modal
+                            const selectors = [
+                              'w3m-modal',
+                              '[data-w3m-modal]',
+                              '#walletconnect-wrapper',
+                              '.walletconnect-modal',
+                              'w3m-connect-button',
+                              '[data-w3m-connect-button]',
+                              'w3m-modal-backdrop',
+                              '[id*="walletconnect"]',
+                              '[class*="walletconnect"]',
+                              '[class*="w3m"]'
+                            ];
+                            
+                            let modalContainer: Element | null = null;
+                            for (const selector of selectors) {
+                              modalContainer = document.querySelector(selector);
+                              if (modalContainer) {
+                                console.log(`[SimpleDashboard] Found modal container with selector: ${selector}`);
+                                break;
+                              }
+                            }
+                            
+                            // Also check body for any dynamically added elements
+                            const bodyChildren = Array.from(document.body.children);
+                            const walletConnectElements = bodyChildren.filter(el => 
+                              el.tagName?.toLowerCase().includes('w3m') ||
+                              el.id?.includes('walletconnect') ||
+                              el.className?.toString().includes('walletconnect') ||
+                              el.className?.toString().includes('w3m')
+                            );
+                            
                             console.log('[SimpleDashboard] Modal container check:', {
                               found: !!modalContainer,
                               element: modalContainer,
-                              styles: modalContainer ? window.getComputedStyle(modalContainer as Element) : null
+                              tagName: modalContainer?.tagName,
+                              id: modalContainer?.id,
+                              className: modalContainer?.className,
+                              styles: modalContainer ? {
+                                display: window.getComputedStyle(modalContainer as Element).display,
+                                visibility: window.getComputedStyle(modalContainer as Element).visibility,
+                                opacity: window.getComputedStyle(modalContainer as Element).opacity,
+                                zIndex: window.getComputedStyle(modalContainer as Element).zIndex,
+                                position: window.getComputedStyle(modalContainer as Element).position
+                              } : null,
+                              walletConnectElementsInBody: walletConnectElements.length,
+                              allBodyChildren: bodyChildren.map(el => ({ tag: el.tagName, id: el.id, className: el.className }))
                             });
                             
-                            if (!modalContainer) {
+                            if (!modalContainer && walletConnectElements.length === 0) {
                               console.warn('[SimpleDashboard] ⚠️ WalletConnect modal container not found in DOM');
+                              console.warn('[SimpleDashboard] This suggests the modal failed to inject. Check CSP and network errors.');
                               toast.error('WalletConnect modal failed to open. Check console for details.');
+                            } else if (modalContainer) {
+                              const styles = window.getComputedStyle(modalContainer as Element);
+                              if (styles.display === 'none' || styles.visibility === 'hidden' || parseFloat(styles.opacity) === 0) {
+                                console.warn('[SimpleDashboard] ⚠️ Modal container found but is hidden:', {
+                                  display: styles.display,
+                                  visibility: styles.visibility,
+                                  opacity: styles.opacity
+                                });
+                                toast.error('WalletConnect modal is hidden. This may be a CSS issue.');
+                              } else {
+                                console.log('[SimpleDashboard] ✅ Modal container found and visible');
+                              }
                             }
-                          }, 500);
+                          }, 1000); // Increased delay to 1 second
                         } else {
                           console.error('[SimpleDashboard] WalletConnect connector not found');
                           toast.error('WalletConnect not available');
