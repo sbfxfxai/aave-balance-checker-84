@@ -167,11 +167,12 @@ export default defineConfig(({ mode }) => ({
     // Buffer must be loaded as-is to prevent "fromByteArray" errors
     exclude: ["@noble/curves", "buffer"],
     include: [
-      "@privy-io/react-auth",
+      // CRITICAL: React and ReactDOM must be pre-bundled and available first
       "react",
       "react-dom",
       "react/jsx-runtime",
       "scheduler", // CRITICAL: Scheduler must be pre-bundled with React
+      "@privy-io/react-auth", // Privy depends on React, so include it after React
       "viem", // Pre-bundle viem to resolve circular deps
       "wagmi" // Pre-bundle wagmi (depends on viem)
       // NOTE: buffer is excluded - it must be loaded as-is to prevent bundling issues

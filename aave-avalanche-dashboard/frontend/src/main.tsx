@@ -1,16 +1,29 @@
-// CRITICAL: Import React first and make it globally available
-// This ensures React is available before any other chunks try to use it
+// CRITICAL: Import React and ReactDOM FIRST and expose them globally IMMEDIATELY
+// This MUST happen before ANY other imports to ensure React is available for SES environment
+// SES lockdown (from wallet extensions) can break module resolution, so we need React on window
 import React from "react";
+import ReactDOM from "react-dom/client";
+
+// CRITICAL: Expose React globally BEFORE any other code runs
+// This prevents "can't access property useLayoutEffect/createContext of undefined" errors
+// SES lockdown from wallet extensions can break module resolution, so libraries need window.React
+if (typeof window !== "undefined") {
+  (window as any).React = React;
+  (window as any).ReactDOM = ReactDOM;
+  console.log('[TiltVault] React and ReactDOM exposed globally for SES environment');
+  
+  // Verify React is actually available
+  if (!React || !React.useLayoutEffect) {
+    console.error('[TiltVault] CRITICAL: React is not properly loaded!');
+  } else {
+    console.log('[TiltVault] React verified - useLayoutEffect available:', typeof React.useLayoutEffect);
+  }
+}
+
+// Now import everything else AFTER React is globally available
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
-
-// CRITICAL: Expose React globally for SES environment and other chunks
-// This prevents "can't access property createContext of undefined" errors
-if (typeof window !== "undefined") {
-  (window as any).React = React;
-  console.log('[TiltVault] React exposed globally for SES environment');
-}
 
 // Buffer polyfill is handled by vite-plugin-node-polyfills
 // It should be available globally as window.Buffer automatically
