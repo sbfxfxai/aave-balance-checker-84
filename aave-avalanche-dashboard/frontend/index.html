@@ -221,9 +221,29 @@
       })();
     </script>
     
+    <!-- CRITICAL: Preload React from CDN to ensure it's available before vendor chunks -->
+    <!-- This prevents "can't access property createContext/useLayoutEffect of undefined" errors -->
+    <!-- The bundled React will override this, but this ensures React is available immediately -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script>
+      // Expose React globally immediately after CDN loads
+      // This ensures React is available before any vendor chunks (web3-vendor, privy) execute
+      if (typeof window !== 'undefined' && window.React) {
+        console.log('[HTML] React loaded from CDN and exposed globally');
+        // Verify React has the methods we need
+        if (window.React.useLayoutEffect && window.React.createContext) {
+          console.log('[HTML] React verified - useLayoutEffect and createContext available');
+        } else {
+          console.error('[HTML] React loaded but missing required methods!');
+        }
+      } else {
+        console.error('[HTML] CRITICAL: React failed to load from CDN!');
+      }
+    </script>
+    
     <!-- Main app script - loaded as module (modules are deferred by default) -->
-    <!-- React is bundled in the main entry chunk and exposed globally in main.tsx -->
-    <!-- This ensures React is available before any vendor chunks (web3-vendor, privy) load -->
+    <!-- The bundled React will override the CDN version, but CDN ensures React is available immediately -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
