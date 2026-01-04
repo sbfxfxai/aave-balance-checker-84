@@ -221,41 +221,9 @@
       })();
     </script>
     
-    <!-- CRITICAL: Preload React from CDN to ensure it's available before vendor chunks -->
-    <!-- This prevents "can't access property createContext/useLayoutEffect of undefined" errors -->
-    <!-- The bundled React will override this, but this ensures React is available immediately -->
-    <!-- IMPORTANT: These scripts are BLOCKING (no defer/async) so they execute before module scripts -->
-    <script>
-      // Set a flag to track React loading
-      window.__REACT_LOADING__ = true;
-      console.log('[HTML] Starting React CDN load...');
-    </script>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js" onload="console.log('[HTML] React CDN script loaded'); window.__REACT_LOADED__ = true;" onerror="console.error('[HTML] React CDN script failed to load!'); window.__REACT_LOAD_ERROR__ = true;"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" onload="console.log('[HTML] ReactDOM CDN script loaded');" onerror="console.error('[HTML] ReactDOM CDN script failed to load!');"></script>
-    <script>
-      // Expose React globally immediately after CDN loads
-      // This ensures React is available before any vendor chunks (web3-vendor, privy) execute
-      if (typeof window !== 'undefined' && window.React) {
-        console.log('[HTML] ✅ React loaded from CDN and exposed globally');
-        // Verify React has the methods we need
-        if (window.React.useLayoutEffect && window.React.createContext) {
-          console.log('[HTML] ✅ React verified - useLayoutEffect and createContext available');
-          window.__REACT_READY__ = true;
-        } else {
-          console.error('[HTML] ❌ React loaded but missing required methods!');
-          window.__REACT_READY__ = false;
-        }
-      } else {
-        console.error('[HTML] ❌ CRITICAL: React failed to load from CDN!');
-        console.error('[HTML] This will cause vendor chunks to fail with "createContext/useLayoutEffect undefined" errors');
-        window.__REACT_READY__ = false;
-      }
-      
-      // Diagnostic: Log what's available
-      console.log('[HTML] Diagnostic - window.React:', typeof window.React);
-      console.log('[HTML] Diagnostic - window.ReactDOM:', typeof window.ReactDOM);
-      console.log('[HTML] Diagnostic - window.__REACT_READY__:', window.__REACT_READY__);
-    </script>
+    <!-- CRITICAL: React will be exposed globally from the bundled code in main.tsx -->
+    <!-- No CDN needed - React is already in the bundle and will be available before vendor chunks -->
+    <!-- The main.tsx entry point exposes React globally immediately on import -->
     
     <!-- Main app script - loaded as module (modules are deferred by default) -->
     <!-- The bundled React will override the CDN version, but CDN ensures React is available immediately -->
