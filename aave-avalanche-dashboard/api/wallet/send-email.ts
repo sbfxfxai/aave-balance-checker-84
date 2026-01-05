@@ -1,9 +1,26 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import formData from 'form-data';
 import Mailgun from 'mailgun.js';
+// @ts-expect-error - crypto is a Node.js built-in module, types may not be available
 import crypto from 'crypto';
 import { checkRateLimit, RATE_LIMITS } from './rateLimit';
 import { withMonitoring } from './monitoring';
+
+// Buffer is available globally in Node.js/Vercel environments
+interface Buffer extends ArrayLike<number> {
+  from(data: ArrayBuffer | Uint8Array, encoding?: string): Buffer;
+  from(data: string, encoding: 'base64' | 'hex' | 'utf8' | 'utf-8'): Buffer;
+  toString(encoding?: 'utf-8' | 'utf8' | 'base64' | 'hex'): string;
+  length: number;
+}
+
+declare const Buffer: {
+  from(data: ArrayBuffer | Uint8Array, encoding?: string): Buffer;
+  from(data: string, encoding: 'base64' | 'hex' | 'utf8' | 'utf-8'): Buffer;
+  isBuffer(obj: any): boolean;
+  new (data: string, encoding?: string): Buffer;
+  prototype: Buffer;
+};
 
 const mailgun = new Mailgun(formData);
 const mg = mailgun.client({

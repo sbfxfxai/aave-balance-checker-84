@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { useAccount, useBalance, useWalletClient, usePublicClient, useSwitchChain } from 'wagmi';
+import { useAccount, useBalance, useWalletClient, usePublicClient, useSwitchChain, useReadContract } from 'wagmi';
 import { avalanche } from 'wagmi/chains';
 import { formatUnits, parseUnits, erc20Abi, maxUint256 } from 'viem';
-import { CONTRACTS as GMX_SDK_CONTRACTS } from '@gmx-io/sdk/configs/contracts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -115,11 +114,24 @@ export default function UserDashboard() {
   const aaveData = useAavePositions();
   const { positions: gmxPositions, isLoading: gmxLoading, refetch: refetchGmx } = useGmxPositions();
 
-  // Get USDC balance
-  const { data: usdcBalance, isLoading: balanceLoading, refetch: refetchBalance } = useBalance({
-    address: address,
-    token: USDC_ADDRESS,
+  // Get USDC balance using readContract for ERC20 token
+  const { data: usdcBalanceRaw, isLoading: balanceLoading, refetch: refetchBalance } = useReadContract({
+    address: USDC_ADDRESS as `0x${string}`,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: !!address,
+    },
   });
+  
+  // Convert USDC balance to formatted value (6 decimals for USDC)
+  const usdcBalance = usdcBalanceRaw ? {
+    value: usdcBalanceRaw,
+    decimals: 6,
+    formatted: formatUnits(usdcBalanceRaw, 6),
+    symbol: 'USDC',
+  } : undefined;
 
   // Get AVAX balance for gas
   const { data: avaxBalance } = useBalance({ address });
@@ -136,7 +148,7 @@ export default function UserDashboard() {
   const expectedAmount = amountParam ? parseFloat(amountParam) : 0;
 
   const usdcBalanceFormatted = usdcBalance 
-    ? parseFloat(formatUnits(usdcBalance.value, usdcBalance.decimals))
+    ? parseFloat(usdcBalance.formatted)
     : 0;
 
   const hasAavePosition = parseFloat(aaveData.usdcSupply || '0') > 0 || parseFloat(aaveData.totalCollateral?.replace('$', '') || '0') > 0;

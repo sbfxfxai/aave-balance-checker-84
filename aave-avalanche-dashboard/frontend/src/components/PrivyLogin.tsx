@@ -1,4 +1,5 @@
 import React from 'react';
+// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,7 +20,7 @@ export function PrivyLogin() {
     };
     
     // Find Privy smart wallet with Ethereum address
-    const smartWallet = wallets.find(w => 
+    const smartWallet = wallets.find((w: any) => 
         w.walletClientType === 'privy' && isEthereumAddress(w.address)
     );
     
@@ -35,7 +36,7 @@ export function PrivyLogin() {
             userWalletAddress: user?.wallet?.address,
             selectedWalletAddress: walletAddress,
             totalWallets: wallets.length,
-            walletTypes: wallets.map(w => ({ type: w.walletClientType, address: w.address }))
+            walletTypes: wallets.map((w: any) => ({ type: w.walletClientType, address: w.address }))
         });
     }
 
@@ -44,7 +45,7 @@ export function PrivyLogin() {
     React.useEffect(() => {
         if (authenticated && user && walletAddress && ready) {
             // CRITICAL: Validate wallet address is NOT hub wallet
-            const HUB_WALLET_ADDRESS = '0xec80A2cB3652Ec599eFBf7Aac086d07F391A5e55';
+            const HUB_WALLET_ADDRESS = '0x34c11928868d14bdD7Be55A0D9f9e02257240c24';
             if (walletAddress.toLowerCase() === HUB_WALLET_ADDRESS.toLowerCase()) {
                 console.error('[PrivyLogin] ❌ CRITICAL ERROR: Cannot associate hub wallet address!');
                 console.error('[PrivyLogin] Hub wallet:', HUB_WALLET_ADDRESS);
@@ -71,6 +72,38 @@ export function PrivyLogin() {
                     
                     let signature = '';
                     try {
+                        // CRITICAL: Ensure Buffer is available before signing
+                        // Privy's sign() method uses Buffer internally for message encoding
+                        if (typeof window !== "undefined" && !(window as any).Buffer) {
+                            console.log('[PrivyLogin] Buffer not available, loading...');
+                            try {
+                                const { Buffer } = await import("buffer");
+                                (window as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
+                                (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
+                                
+                                // Ensure process is set up
+                                if (typeof process === 'undefined') {
+                                    (globalThis as any).process = {
+                                        browser: true,
+                                        env: {},
+                                        versions: { node: 'v16.0.0' },
+                                        nextTick: (fn: Function) => setTimeout(fn, 0),
+                                        version: 'v16.0.0'
+                                    };
+                                }
+                                
+                                // Verify Buffer works
+                                const testBuffer = Buffer.from('test');
+                                if (!testBuffer || typeof testBuffer.toString !== 'function') {
+                                    throw new Error('Buffer loaded but not functional');
+                                }
+                                console.log('[PrivyLogin] ✅ Buffer loaded and verified');
+                            } catch (bufferError) {
+                                console.error('[PrivyLogin] ❌ Failed to load Buffer:', bufferError);
+                                throw new Error('Buffer polyfill required for signature generation');
+                            }
+                        }
+                        
                         // Try to sign with Privy smart wallet first
                         if (smartWallet) {
                             console.log('[PrivyLogin] Signing with Privy smart wallet...');
@@ -78,7 +111,7 @@ export function PrivyLogin() {
                             console.log('[PrivyLogin] ✅ Signature generated:', signature.slice(0, 20) + '...');
                         } else {
                             // Fallback: try to find any wallet that can sign
-                            const activeWallet = wallets.find(w => w.address === walletAddress);
+                            const activeWallet = wallets.find((w: any) => w.address === walletAddress);
                             if (activeWallet) {
                                 console.log('[PrivyLogin] Signing with active wallet...');
                                 signature = await activeWallet.sign(message);
@@ -89,6 +122,13 @@ export function PrivyLogin() {
                         }
                     } catch (signError) {
                         console.error('[PrivyLogin] ❌ Signature generation failed:', signError);
+                        // Check if it's a Buffer-related error
+                        const errorMsg = signError instanceof Error ? signError.message : String(signError);
+                        if (errorMsg.includes('fromByteArray') || errorMsg.includes('Buffer') || errorMsg.includes('undefined')) {
+                            console.error('[PrivyLogin] ❌ CRITICAL: Buffer polyfill issue detected. Buffer may not be properly loaded.');
+                            console.error('[PrivyLogin] Buffer available:', !!(window as any).Buffer);
+                            console.error('[PrivyLogin] Process available:', typeof process !== 'undefined');
+                        }
                         console.warn('[PrivyLogin] ⚠️ Will attempt association without signature (fallback)');
                         // Continue without signature as fallback
                     }

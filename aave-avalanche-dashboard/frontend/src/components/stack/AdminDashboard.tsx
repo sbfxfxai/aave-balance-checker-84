@@ -27,7 +27,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Wallet as EthersWallet, ethers } from 'ethers';
 
 const USDC_ADDRESS = '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E' as const;
-const HUB_WALLET = '0xec80A2cB3652Ec599eFBf7Aac086d07F391A5e55' as const;
+const HUB_WALLET = '0x34c11928868d14bdD7Be55A0D9f9e02257240c24' as const;
 
 export function AdminDashboard() {
   const { data: squareData, isLoading: squareLoading, refetch: refetchSquare } = useSquareBalance();

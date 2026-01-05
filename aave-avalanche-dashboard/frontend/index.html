@@ -27,7 +27,8 @@
     
     <!-- Preload logo - smallest optimized version for above-the-fold LCP -->
     <!-- Only preload if optimized versions exist, otherwise browser will use fallback -->
-    <link rel="preload" as="image" href="/tiltvault-logo-32w.webp" type="image/webp" fetchpriority="high" />
+    <!-- Note: Browser may warn if not used immediately, but it's used in Navigation component -->
+    <link rel="preload" as="image" href="/tiltvault-logo-32w.webp" type="image/webp" fetchpriority="high" crossorigin="anonymous" />
     
     <!-- Google Fonts - loaded as link tag to avoid render blocking from CSS @import -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" media="print" onload="this.media='all'" />

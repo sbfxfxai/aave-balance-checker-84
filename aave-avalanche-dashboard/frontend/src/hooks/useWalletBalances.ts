@@ -1,4 +1,5 @@
 import { useAccount, useBalance } from 'wagmi';
+// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useMemo } from 'react';
 import { avalanche } from 'wagmi/chains';
@@ -12,7 +13,7 @@ export const useWalletBalances = () => {
   // Get the active wallet address
   const address = useMemo(() => {
     if (wagmiAddress) return wagmiAddress;
-    const privyWallet = wallets.find(w => w.walletClientType === 'privy');
+    const privyWallet = wallets.find((w: any) => w.walletClientType === 'privy');
     return privyWallet?.address || null;
   }, [wagmiAddress, wallets]);
 

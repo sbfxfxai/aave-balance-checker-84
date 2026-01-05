@@ -6,7 +6,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 // Configuration
 const AVALANCHE_RPC = process.env.AVALANCHE_RPC_URL || "https://api.avax.network/ext/bc/C/rpc";
-const HUB_WALLET_ADDRESS = process.env.HUB_WALLET_ADDRESS || '0xec80A2cB3652Ec599eFBf7Aac086d07F391A5e55';
+const HUB_WALLET_ADDRESS = process.env.HUB_WALLET_ADDRESS || '0x34c11928868d14bdD7Be55A0D9f9e02257240c24';
 const USDC_CONTRACT = '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E';
 
 // Minimal ERC20 ABI for balanceOf

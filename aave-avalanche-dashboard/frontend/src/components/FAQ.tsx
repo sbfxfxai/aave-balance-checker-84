@@ -113,7 +113,7 @@ const faqData: FAQItem[] = [
         <div>
           <p className="font-semibold mb-1">Our Treasury Wallet (Publicly Verifiable):</p>
           <ul className="list-disc list-inside space-y-1 ml-4">
-            <li><strong>Address:</strong> <a href="https://snowtrace.io/address/0xec80A2cB3652Ec599eFBf7Aac086d07F391A5e55" target="_blank" rel="noopener noreferrer" className="text-emerald-500 hover:underline">0xec80A2cB3652Ec599eFBf7Aac086d07F391A5e55</a></li>
+            <li><strong>Address:</strong> <a href="https://snowtrace.io/address/0x34c11928868d14bdD7Be55A0D9f9e02257240c24" target="_blank" rel="noopener noreferrer" className="text-emerald-500 hover:underline">0x34c11928868d14bdD7Be55A0D9f9e02257240c24</a></li>
             <li><strong>Network:</strong> Avalanche C-Chain (Chain ID: 43114)</li>
             <li><strong>Explorer:</strong> <a href="https://snowtrace.io" target="_blank" rel="noopener noreferrer" className="text-emerald-500 hover:underline">snowtrace.io</a></li>
           </ul>
@@ -126,135 +126,6 @@ const faqData: FAQItem[] = [
             <li><strong>GMX Router:</strong> 0x8f550E53DFe96C055D5Bdb267c21F268fCAF63B2</li>
           </ul>
         </div>
-      </div>
-    ),
-  },
-  {
-    question: 'What are the risks?',
-    answer: (
-      <div className="space-y-2">
-        <p>
-          <strong>Important Risk Disclosures:</strong>
-        </p>
-        <ul className="list-disc list-inside space-y-1 ml-4">
-          <li>Cryptocurrency risks</li>
-          <li>Smart contract risks</li>
-          <li>No FDIC insurance</li>
-          <li>No investment guarantees</li>
-          <li>Automated leverage trading can result in total loss of capital</li>
-          <li>Not investment advice</li>
-        </ul>
-        <p className="mt-3">
-          Users maintain full control and responsibility for their funds and transactions.
-        </p>
-      </div>
-    ),
-  },
-  {
-    question: 'Is TiltVault similar to other DeFi platforms?',
-    answer: (
-      <div className="space-y-2">
-        <p>
-          TiltVault operates identically to these established, legitimate platforms:
-        </p>
-        <ul className="list-disc list-inside space-y-2 ml-4">
-          <li>
-            <strong>InstaDapp (instadapp.io)</strong> - DeFi protocol aggregator, integrates Aave, Compound, Maker, $1B+ in managed assets
-          </li>
-          <li>
-            <strong>Zapper (zapper.xyz)</strong> - DeFi dashboard and aggregator, backed by Coinbase Ventures, millions of users
-          </li>
-          <li>
-            <strong>DeFi Saver (defisaver.com)</strong> - Automated DeFi management, integrates multiple protocols, established since 2019
-          </li>
-          <li>
-            <strong>1inch (1inch.io)</strong> - DeFi aggregator, $100B+ in trading volume, VC-backed, legitimate
-          </li>
-        </ul>
-        <p className="mt-3">
-          All of these services do exactly what TiltVault does: provide interfaces to interact with blockchain protocols.
-        </p>
-      </div>
-    ),
-  },
-  {
-    question: 'What technology does TiltVault use?',
-    answer: (
-      <div className="space-y-3">
-        <div>
-          <p className="font-semibold mb-1">Frontend:</p>
-          <ul className="list-disc list-inside space-y-1 ml-4 text-sm">
-            <li><strong>Hosting:</strong> Vercel (vercel.com)</li>
-            <li><strong>DNS:</strong> Cloudflare</li>
-            <li><strong>Framework:</strong> React/TypeScript</li>
-          </ul>
-        </div>
-        <div>
-          <p className="font-semibold mb-1">Blockchain Integration:</p>
-          <ul className="list-disc list-inside space-y-1 ml-4 text-sm">
-            <li><strong>Web3 Libraries:</strong> ethers.js v6, viem</li>
-            <li><strong>RPC Provider:</strong> Avalanche public RPC</li>
-            <li><strong>Wallet Connection:</strong> WalletConnect, MetaMask, Privy</li>
-          </ul>
-        </div>
-        <div>
-          <p className="font-semibold mb-1">Backend:</p>
-          <ul className="list-disc list-inside space-y-1 ml-4 text-sm">
-            <li><strong>Backend API:</strong> Vercel serverless functions (Node.js)</li>
-            <li><strong>Webhook Processing:</strong> Square payment webhooks → blockchain execution</li>
-          </ul>
-        </div>
-      </div>
-    ),
-  },
-  {
-    question: 'How is TiltVault different from phishing sites?',
-    answer: (
-      <div className="space-y-2">
-        <p className="font-semibold mb-2">How We DIFFER from phishing sites:</p>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm border-collapse">
-            <thead>
-              <tr className="border-b">
-                <th className="text-left py-2 pr-4">Phishing Sites</th>
-                <th className="text-left py-2">TiltVault</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-b">
-                <td className="py-2 pr-4">Steal credentials</td>
-                <td className="py-2">No credentials collected</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 pr-4">Fake services</td>
-                <td className="py-2">Real blockchain protocols</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 pr-4">Drain wallets</td>
-                <td className="py-2">Non-custodial (users control keys)</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 pr-4">No real functionality</td>
-                <td className="py-2">Verifiable on-chain transactions</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 pr-4">Hidden operators</td>
-                <td className="py-2">Public documentation, verifiable contracts</td>
-              </tr>
-              <tr>
-                <td className="py-2 pr-4">Untraceable</td>
-                <td className="py-2">All transactions on public blockchain</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <p className="mt-3 font-semibold">Public Transparency:</p>
-        <ul className="list-disc list-inside space-y-1 ml-4 text-sm">
-          <li>Smart contract addresses published</li>
-          <li>Transaction hashes verifiable</li>
-          <li>Open-source blockchain interactions</li>
-          <li>Public wallet addresses</li>
-        </ul>
       </div>
     ),
   },

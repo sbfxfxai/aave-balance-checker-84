@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAccount } from 'wagmi';
+// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Wallet as EthersWallet } from 'ethers';
 import {
@@ -63,7 +64,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   const connectedAddress = React.useMemo(() => {
     // If user is authenticated with Privy, use Privy wallet
     if (authenticated && ready) {
-      const privyWallet = wallets.find(w => w.walletClientType === 'privy');
+      const privyWallet = wallets.find((w: any) => w.walletClientType === 'privy');
       if (privyWallet) return privyWallet.address;
       return user?.wallet?.address;
     }

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,7 +23,7 @@ export function SessionKeyAuth() {
         setError(null);
 
         try {
-            const privyWallet = wallets.find(w => w.walletClientType === 'privy');
+            const privyWallet = wallets.find((w: any) => w.walletClientType === 'privy');
             // Allow fallback to connected wallet if no privy wallet, but ideally we want privy wallet ID
             if (!privyWallet && !user?.wallet) throw new Error('No wallet found');
 
@@ -43,7 +44,7 @@ export function SessionKeyAuth() {
             } else if (user.wallet) {
                 // How to sign with generic user.wallet? usePrivy doesn't expose sign directly on user.wallet
                 // We depend on useWallets() finding the active wallet
-                const activeWallet = wallets.find(w => w.address === user.wallet?.address);
+                const activeWallet = wallets.find((w: any) => w.address === user.wallet?.address);
                 if (activeWallet) {
                     signature = await activeWallet.sign(message);
                 } else {

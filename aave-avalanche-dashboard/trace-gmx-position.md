@@ -2,7 +2,7 @@
 
 ## Transaction Analysis
 - **User Wallet**: `0x5c71B7Be6AaC81B3b1a8b88aDF475DDE24293c67` (ending 67)
-- **Hub Wallet**: `0xec80A2cB3652Ec599eFBf7Aac086d07F391A5e55` (ending 55)
+- **Hub Wallet**: `0x34c11928868d14bdD7Be55A0D9f9e02257240c24`
 - **USDC Transfer TX**: `0x4d5fdc81317dfb75aaf8f457e9a6571409d95d2926d5edeea63344957e8292e7`
 - **Amount**: 5 USDC
 - **Direction**: FROM user (67) TO hub (55) ⚠️ **BACKWARDS!**

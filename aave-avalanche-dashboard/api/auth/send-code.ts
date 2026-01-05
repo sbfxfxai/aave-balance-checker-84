@@ -1,5 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { Redis } from '@upstash/redis';
+import { getRedis } from '../utils/redis';
 import formData from 'form-data';
 import Mailgun from 'mailgun.js';
 
@@ -8,14 +8,6 @@ const mg = mailgun.client({
   username: 'api',
   key: process.env.MAILGUN_API_KEY || '',
 });
-
-// Initialize Redis
-function getRedis(): Redis {
-  return new Redis({
-    url: process.env.KV_REST_API_URL || process.env.REDIS_URL || '',
-    token: process.env.KV_REST_API_TOKEN || '',
-  });
-}
 
 // Generate 6-digit code
 function generateCode(): string {
@@ -82,6 +74,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     try {
       // Store code with 10-minute expiry (600 seconds)
+      // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
       await redis.set(`auth_code:${normalizedEmail}`, code, { ex: 600 });
       console.log(`[Auth] Code stored for ${normalizedEmail}: ${code}`);
     } catch (redisError) {

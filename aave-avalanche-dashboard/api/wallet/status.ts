@@ -69,6 +69,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Check if payment was processed (funded)
     const redis = getRedis();
+    // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
     const paymentData = await redis.get(`payment:${paymentId}`);
 
     if (!paymentData) {

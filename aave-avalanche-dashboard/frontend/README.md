@@ -69,7 +69,7 @@ For production deployment, configure these environment variables in Vercel or yo
 - **`VITE_WALLETCONNECT_PROJECT_ID`** (Required in production)
   - Get a free project ID at https://cloud.walletconnect.com
   - Used for WalletConnect QR code wallet connections
-  - Example: `c0daaf12b05ec82413fc8c92c1635a76`
+  - Example: `392a0f60dab84b8a1d2a2773b55f3aa1`
 
 ### Optional Variables
 

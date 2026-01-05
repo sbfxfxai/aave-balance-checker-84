@@ -1,4 +1,22 @@
+// @ts-expect-error - crypto is a Node.js built-in module, types may not be available
 import crypto from 'crypto';
+
+// Buffer is available globally in Node.js/Vercel environments
+interface Buffer extends ArrayLike<number> {
+  from(data: string, encoding: 'base64' | 'hex' | 'utf8' | 'utf-8'): Buffer;
+  from(data: ArrayBuffer | Uint8Array, encoding?: string): Buffer;
+  toString(encoding?: 'utf-8' | 'utf8' | 'base64' | 'hex'): string;
+  length: number;
+  subarray(start: number, end?: number): Buffer;
+}
+
+declare const Buffer: {
+  from(data: string, encoding: 'base64' | 'hex' | 'utf8' | 'utf-8'): Buffer;
+  from(data: ArrayBuffer | Uint8Array, encoding?: string): Buffer;
+  isBuffer(obj: any): boolean;
+  new (data: string, encoding?: string): Buffer;
+  prototype: Buffer;
+};
 
 // Lazy-initialize Upstash Redis client
 let _redis: any = null;

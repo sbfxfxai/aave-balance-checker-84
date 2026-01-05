@@ -1,5 +1,19 @@
 import { AbstractSigner, Provider, TransactionRequest, TransactionResponse, TypedDataDomain, TypedDataField } from 'ethers';
 
+// Buffer is available globally in Node.js/Vercel environments
+interface Buffer {
+  toString(encoding?: 'utf-8' | 'utf8' | 'base64' | 'hex'): string;
+  length: number;
+}
+
+declare const Buffer: {
+  from(data: Uint8Array | ArrayLike<number> | ArrayBuffer, encoding?: string): Buffer;
+  from(data: string, encoding: 'base64' | 'hex' | 'utf8' | 'utf-8'): Buffer;
+  isBuffer(obj: any): boolean;
+  new (data: string, encoding?: string): Buffer;
+  prototype: Buffer;
+};
+
 // Dynamic import with error handling for PrivyClient
 let PrivyClient: any = null;
 let privyImportError: Error | null = null;

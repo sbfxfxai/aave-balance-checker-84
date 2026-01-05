@@ -11,6 +11,9 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "strict": true,
-    "forceConsistentCasingInFileNames": true
-  }
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"],
+    "typeRoots": ["./node_modules/@types"]
+  },
+  "exclude": ["node_modules", "**/node_modules/**"]
 }

@@ -1,4 +1,5 @@
 import { useAccount, useDisconnect, useReadContract } from 'wagmi';
+// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,7 +13,6 @@ import { useAavePositions } from '@/hooks/useAavePositions';
 import { useWalletBalances } from '@/hooks/useWalletBalances';
 import { GmxPositionCard } from '@/components/GmxPositionCard';
 import { ActionModal } from '@/components/ActionModal';
-import { useConnect } from 'wagmi';
 import { useState, useEffect, useMemo, useCallback, startTransition } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -30,7 +30,6 @@ export function SimpleDashboard() {
   const { authenticated, user, ready, logout, login } = usePrivy();
   const { wallets } = useWallets();
   const { disconnect: wagmiDisconnect } = useDisconnect();
-  const { connect, connectors } = useConnect();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -68,13 +67,13 @@ export function SimpleDashboard() {
       // Find Privy wallet (only iterate if wallets array exists)
       if (wallets && wallets.length > 0) {
         // Try Privy wallet first
-        const privyWallet = wallets.find(w =>
+        const privyWallet = wallets.find((w: any) =>
           w.walletClientType === 'privy' && isEthereumAddress(w.address)
         );
         if (privyWallet) return privyWallet.address;
 
         // Fallback to any Ethereum wallet
-        const ethereumWallet = wallets.find(w => isEthereumAddress(w.address));
+        const ethereumWallet = wallets.find((w: any) => isEthereumAddress(w.address));
         if (ethereumWallet) return ethereumWallet.address;
       }
     }
@@ -157,7 +156,7 @@ export function SimpleDashboard() {
     );
   }
 
-  // If no wallet is connected, show the onboarding flow with Privy and WalletConnect
+  // If no wallet is connected, show the onboarding flow with Privy
   if (!hasWallet) {
     return (
       <div className="max-w-2xl mx-auto p-8">
@@ -168,14 +167,14 @@ export function SimpleDashboard() {
               Banking that works as hard as you do
             </h1>
             <p className="text-muted-foreground text-lg">
-              Earn <span className="font-semibold text-emerald-500">5-8% APY</span> on savings. Optional managed Bitcoin exposure. Built on Aave—$70B+ secured.
+              Earn <span className="font-semibold text-emerald-500">5-8% APY</span> on savings.
             </p>
           </div>
 
           {/* Login Options */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex justify-center">
             {/* Privy Email Login */}
-            <Card className="p-6">
+            <Card className="p-6 w-full max-w-md">
               <div className="flex flex-col items-center text-center space-y-4">
                 <div className="p-3 rounded-full bg-gradient-primary">
                   <Wallet className="h-6 w-6 text-white" />
@@ -191,128 +190,6 @@ export function SimpleDashboard() {
                     size="lg"
                   >
                     Sign Up with Email
-                  </Button>
-                </div>
-              </div>
-            </Card>
-
-            {/* WalletConnect */}
-            <Card className="p-6">
-              <div className="flex flex-col items-center text-center space-y-4">
-                <div className="p-3 rounded-full bg-gradient-primary">
-                  <Wallet className="h-6 w-6 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold mb-2">Wallet Connect</h2>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Connect your existing MetaMask or other wallet
-                  </p>
-                  <Button
-                    onClick={async () => {
-                      try {
-                        console.log('[SimpleDashboard] WalletConnect button clicked');
-                        console.log('[SimpleDashboard] Available connectors:', connectors.map(c => ({ id: c.id, name: c.name })));
-                        
-                        const walletConnectConnector = connectors.find(c => c.id === 'walletConnect');
-                        console.log('[SimpleDashboard] WalletConnect connector found:', !!walletConnectConnector);
-                        
-                        if (walletConnectConnector) {
-                          console.log('[SimpleDashboard] Attempting to connect with WalletConnect...');
-                          connect({ 
-                            connector: walletConnectConnector,
-                            onError: (error) => {
-                              console.error('[SimpleDashboard] WalletConnect connection error:', error);
-                              toast.error(`Connection failed: ${error.message || 'Unknown error'}`);
-                            },
-                            onSuccess: () => {
-                              console.log('[SimpleDashboard] WalletConnect connection successful');
-                            }
-                          });
-                          
-                          // Check if modal container exists after a short delay
-                          setTimeout(() => {
-                            // Check multiple possible selectors for WalletConnect modal
-                            const selectors = [
-                              'w3m-modal',
-                              '[data-w3m-modal]',
-                              '#walletconnect-wrapper',
-                              '.walletconnect-modal',
-                              'w3m-connect-button',
-                              '[data-w3m-connect-button]',
-                              'w3m-modal-backdrop',
-                              '[id*="walletconnect"]',
-                              '[class*="walletconnect"]',
-                              '[class*="w3m"]'
-                            ];
-                            
-                            let modalContainer: Element | null = null;
-                            for (const selector of selectors) {
-                              modalContainer = document.querySelector(selector);
-                              if (modalContainer) {
-                                console.log(`[SimpleDashboard] Found modal container with selector: ${selector}`);
-                                break;
-                              }
-                            }
-                            
-                            // Also check body for any dynamically added elements
-                            const bodyChildren = Array.from(document.body.children);
-                            const walletConnectElements = bodyChildren.filter(el => 
-                              el.tagName?.toLowerCase().includes('w3m') ||
-                              el.id?.includes('walletconnect') ||
-                              el.className?.toString().includes('walletconnect') ||
-                              el.className?.toString().includes('w3m')
-                            );
-                            
-                            console.log('[SimpleDashboard] Modal container check:', {
-                              found: !!modalContainer,
-                              element: modalContainer,
-                              tagName: modalContainer?.tagName,
-                              id: modalContainer?.id,
-                              className: modalContainer?.className,
-                              styles: modalContainer ? {
-                                display: window.getComputedStyle(modalContainer as Element).display,
-                                visibility: window.getComputedStyle(modalContainer as Element).visibility,
-                                opacity: window.getComputedStyle(modalContainer as Element).opacity,
-                                zIndex: window.getComputedStyle(modalContainer as Element).zIndex,
-                                position: window.getComputedStyle(modalContainer as Element).position
-                              } : null,
-                              walletConnectElementsInBody: walletConnectElements.length,
-                              allBodyChildren: bodyChildren.map(el => ({ tag: el.tagName, id: el.id, className: el.className }))
-                            });
-                            
-                            if (!modalContainer && walletConnectElements.length === 0) {
-                              console.warn('[SimpleDashboard] ⚠️ WalletConnect modal container not found in DOM');
-                              console.warn('[SimpleDashboard] This suggests the modal failed to inject. Check CSP and network errors.');
-                              toast.error('WalletConnect modal failed to open. Check console for details.');
-                            } else if (modalContainer) {
-                              const styles = window.getComputedStyle(modalContainer as Element);
-                              if (styles.display === 'none' || styles.visibility === 'hidden' || parseFloat(styles.opacity) === 0) {
-                                console.warn('[SimpleDashboard] ⚠️ Modal container found but is hidden:', {
-                                  display: styles.display,
-                                  visibility: styles.visibility,
-                                  opacity: styles.opacity
-                                });
-                                toast.error('WalletConnect modal is hidden. This may be a CSS issue.');
-                              } else {
-                                console.log('[SimpleDashboard] ✅ Modal container found and visible');
-                              }
-                            }
-                          }, 1000); // Increased delay to 1 second
-                        } else {
-                          console.error('[SimpleDashboard] WalletConnect connector not found');
-                          toast.error('WalletConnect not available');
-                        }
-                      } catch (error) {
-                        console.error('[SimpleDashboard] Error connecting WalletConnect:', error);
-                        toast.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                      }
-                    }}
-                    className="w-full"
-                    size="lg"
-                    variant="outline"
-                  >
-                    <Wallet className="mr-2 h-4 w-4" />
-                    Connect Wallet
                   </Button>
                 </div>
               </div>

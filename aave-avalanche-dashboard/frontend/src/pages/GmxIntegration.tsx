@@ -1,6 +1,7 @@
 import { useMemo, useState, useCallback, useEffect, useRef, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAccount, usePublicClient, useWalletClient, useBalance, useSwitchChain } from 'wagmi';
+// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { ethers } from 'ethers';
 import { avalanche } from 'wagmi/chains';
@@ -210,13 +211,13 @@ export default function GmxIntegration() {
     // If user is authenticated with Privy, use Privy wallet (Ethereum only)
     if (authenticated && ready) {
       // Find Privy wallet with Ethereum address
-      const privyWallet = wallets.find(w =>
+      const privyWallet = wallets.find((w: any) =>
         w.walletClientType === 'privy' && isEthereumAddress(w.address)
       );
       if (privyWallet) return privyWallet.address as `0x${string}`;
 
       // Try to find any Ethereum wallet from Privy
-      const ethereumWallet = wallets.find(w => isEthereumAddress(w.address));
+      const ethereumWallet = wallets.find((w: any) => isEthereumAddress(w.address));
       if (ethereumWallet) return ethereumWallet.address as `0x${string}`;
     }
 
@@ -228,7 +229,7 @@ export default function GmxIntegration() {
   const isConnected = (authenticated && ready && !!address) || isWagmiConnected;
 
   // Check if using Privy wallet
-  const isPrivyWallet = authenticated && ready && wallets.some(w => w.address === address && w.walletClientType === 'privy');
+  const isPrivyWallet = authenticated && ready && wallets.some((w: any) => w.address === address && w.walletClientType === 'privy');
 
   // Market data caching
   const [marketData, setMarketData] = useState<GmxMarketData | null>(null);
@@ -374,12 +375,12 @@ export default function GmxIntegration() {
     ]);
     
     // Check if using Privy wallet
-    const isPrivyWallet = authenticated && ready && wallets.some(w => w.address === address && w.walletClientType === 'privy');
+    const isPrivyWallet = authenticated && ready && wallets.some((w: any) => w.address === address && w.walletClientType === 'privy');
     const rpcUrl = import.meta.env.VITE_AVALANCHE_RPC_URL || 'https://api.avax.network/ext/bc/C/rpc';
     
     // For Privy wallets, we need to use ethers.js provider
     if (isPrivyWallet) {
-      const privyWallet = wallets.find(w => w.address === address && w.walletClientType === 'privy');
+      const privyWallet = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
       if (!privyWallet) {
         throw new Error('Privy wallet not found');
       }
@@ -798,7 +799,7 @@ export default function GmxIntegration() {
         
         if (isPrivyWallet) {
           // Use Privy wallet for approval
-          const privyWallet = wallets.find(w => w.address === address && w.walletClientType === 'privy');
+          const privyWallet = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
           if (!privyWallet) {
             throw new Error('Privy wallet not found');
           }
@@ -980,7 +981,7 @@ export default function GmxIntegration() {
           // For Privy wallets, intercept and route through Privy provider with RPC bypass
           if (isPrivyWallet && method === 'multicall') {
             try {
-              const privyWallet = wallets.find(w => w.address === address && w.walletClientType === 'privy');
+              const privyWallet = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
               if (!privyWallet) {
                 throw new Error('Privy wallet not found');
               }

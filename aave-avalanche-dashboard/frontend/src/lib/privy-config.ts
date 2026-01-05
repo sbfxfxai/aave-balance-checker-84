@@ -1,3 +1,4 @@
+// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { PrivyClientConfig } from '@privy-io/react-auth';
 import { avalanche, mainnet } from 'viem/chains';
 

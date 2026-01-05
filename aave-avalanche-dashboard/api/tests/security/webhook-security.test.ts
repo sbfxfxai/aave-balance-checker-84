@@ -96,7 +96,7 @@ function isHubWalletAddress(address: string, hubAddress: string): boolean {
 
 describe('Webhook Security Tests', () => {
   const TEST_SIGNATURE_KEY = 'test-signature-key-12345';
-  const HUB_WALLET_ADDRESS = '0xec80A2cB3652Ec599eFBf7Aac086d07F391A5e55';
+  const HUB_WALLET_ADDRESS = '0x34c11928868d14bdD7Be55A0D9f9e02257240c24';
 
   describe('Signature Verification', () => {
     it('should verify valid signatures', () => {

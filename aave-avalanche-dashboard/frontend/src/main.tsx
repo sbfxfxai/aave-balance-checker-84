@@ -25,24 +25,58 @@ if (typeof window !== "undefined") {
   const originalError = window.onerror;
   window.onerror = (message, source, lineno, colno, error) => {
     const messageStr = String(message || '');
+    const sourceStr = String(source || '');
+    
+    // Filter out known non-critical empty errors
+    // Cloudflare Turnstile and other third-party scripts sometimes throw empty errors
+    if (!messageStr && !error) {
+      // Empty error with no source info - likely from third-party script
+      // Only log in development to avoid console spam
+      if (import.meta.env.DEV) {
+        console.debug('[TiltVault] Empty error detected (likely third-party script):', { source: sourceStr, lineno, colno });
+      }
+      return false; // Suppress empty errors
+    }
+    
+    // Filter out Cloudflare Turnstile errors (they're informational, not critical)
+    if (sourceStr.includes('challenges.cloudflare.com') || 
+        sourceStr.includes('turnstile') ||
+        messageStr.includes('Private Access Token')) {
+      // Cloudflare Turnstile informational messages - suppress
+      return false;
+    }
     
     // Check if this is a TDZ error from GMX SDK
     if (messageStr.includes("can't access lexical declaration") && 
         (messageStr.includes('before initialization') || messageStr.includes('uo'))) {
       console.error('[TiltVault] Caught GMX SDK TDZ error - likely due to SES lockdown');
-      console.error('[TiltVault] Error details:', { message, source, lineno, colno, error });
+      console.error('[TiltVault] Error details:', { message: messageStr, source: sourceStr, lineno, colno, error });
       
       // Set a flag that the GMX route can check
       (window as any).__GMX_SDK_ERROR__ = {
         type: 'TDZ_ERROR',
         message: messageStr,
-        source,
+        source: sourceStr,
         timestamp: Date.now()
       };
       
       // Don't prevent default - let it propagate but mark it as handled
       // The error boundary will catch it when the component tries to render
       return false;
+    }
+    
+    // Log other errors with context (but only if they have meaningful content)
+    if (messageStr || error) {
+      // Only log if there's actual error content
+      if (import.meta.env.DEV) {
+        console.error('[TiltVault] Unhandled error:', {
+          message: messageStr || '(no message)',
+          source: sourceStr || '(unknown)',
+          lineno: lineno || '(unknown)',
+          colno: colno || '(unknown)',
+          error: error ? (error.message || error.toString() || error) : '(no error object)'
+        });
+      }
     }
     
     // Call original error handler for other errors
@@ -55,6 +89,26 @@ if (typeof window !== "undefined") {
   // Also catch unhandled promise rejections
   window.addEventListener('unhandledrejection', (event) => {
     const reason = event.reason;
+    
+    // Filter out empty promise rejections
+    if (!reason || (typeof reason === 'object' && !reason.message && Object.keys(reason).length === 0)) {
+      // Empty rejection - likely from third-party script
+      if (import.meta.env.DEV) {
+        console.debug('[TiltVault] Empty promise rejection detected (likely third-party script)');
+      }
+      event.preventDefault(); // Suppress empty rejections
+      return;
+    }
+    
+    // Filter out Cloudflare Turnstile rejections
+    if (reason && typeof reason === 'object' && 'message' in reason) {
+      const msg = String(reason.message || '');
+      if (msg.includes('Private Access Token') || msg.includes('turnstile') || msg.includes('cloudflare')) {
+        event.preventDefault(); // Suppress Cloudflare informational rejections
+        return;
+      }
+    }
+    
     if (reason && typeof reason === 'object' && 'message' in reason) {
       const msg = String(reason.message);
       if (msg.includes("can't access lexical declaration") && 
@@ -71,6 +125,145 @@ if (typeof window !== "undefined") {
       }
     }
   });
+
+  // CRITICAL: Set up console interceptors IMMEDIATELY to catch CSS parsing errors
+  // These must run before CSS files are parsed to suppress third-party CSS warnings
+  const originalConsoleError = console.error;
+  const originalConsoleWarn = console.warn;
+  const originalConsoleLog = console.log;
+  
+  console.error = (...args: unknown[]) => {
+    const message = args[0]?.toString() || '';
+    const allArgsStr = args.map(arg => String(arg)).join(' ');
+    
+    // Suppress Privy analytics CORS errors
+    if (
+      message.includes('analytics_events') ||
+      message.includes('CORS header') ||
+      message.includes('Cross-Origin Request Blocked') ||
+      args.some(arg => String(arg).includes('analytics_events') || String(arg).includes('CORS'))
+    ) {
+      return; // Suppress Privy analytics CORS errors
+    }
+    
+    // Suppress CSS parsing errors from third-party sources (Privy, Cloudflare)
+    if (
+      message.includes('Error in parsing value') ||
+      message.includes('Unknown property') ||
+      message.includes('Declaration dropped') ||
+      allArgsStr.includes('248cf8b6147e27db.css') ||
+      allArgsStr.includes('auth.privy.io') ||
+      allArgsStr.includes('challenges.cloudflare.com') ||
+      allArgsStr.includes('-webkit-text-size-adjust') ||
+      allArgsStr.includes('-moz-column-gap') ||
+      allArgsStr.includes('normal:1:')
+    ) {
+      return; // Suppress CSS parsing errors
+    }
+    
+    originalConsoleError.apply(console, args);
+  };
+  
+  console.warn = (...args: unknown[]) => {
+    const message = args[0]?.toString() || '';
+    const allArgsStr = args.map(arg => String(arg)).join(' ');
+    
+    // Suppress Privy analytics CORS warnings
+    if (
+      message.includes('analytics_events') ||
+      message.includes('CORS header') ||
+      message.includes('Cross-Origin Request Blocked') ||
+      args.some(arg => String(arg).includes('analytics_events') || String(arg).includes('CORS'))
+    ) {
+      return; // Suppress Privy analytics CORS warnings
+    }
+    
+    // Suppress informational CSP warnings (these are expected when using nonces/hashes)
+    if (
+      message.includes('Content-Security-Policy') &&
+      (message.includes("Ignoring") || 
+       message.includes("'unsafe-inline'") ||
+       message.includes("nonce-source or hash-source specified"))
+    ) {
+      return; // Suppress CSP informational warnings
+    }
+    
+    // Suppress partitioned cookie/storage warnings (informational browser security feature)
+    if (
+      message.includes('Partitioned cookie') || 
+      message.includes('Partitioned storage') ||
+      allArgsStr.includes('Partitioned cookie') ||
+      allArgsStr.includes('Partitioned storage')
+    ) {
+      return; // Suppress informational partitioned storage messages
+    }
+    
+    // Suppress CSS parsing errors from third-party sources (Privy, Cloudflare)
+    if (
+      message.includes('Error in parsing value') ||
+      message.includes('Unknown property') ||
+      message.includes('Declaration dropped') ||
+      allArgsStr.includes('248cf8b6147e27db.css') ||
+      allArgsStr.includes('auth.privy.io') ||
+      allArgsStr.includes('challenges.cloudflare.com') ||
+      allArgsStr.includes('-webkit-text-size-adjust') ||
+      allArgsStr.includes('-moz-column-gap') ||
+      allArgsStr.includes('normal:1:')
+    ) {
+      return; // Suppress CSS parsing errors
+    }
+    
+    // Suppress preload warnings for resources that may not be used immediately
+    if (
+      message.includes('preloaded with link preload was not used') ||
+      (allArgsStr.includes('preload') && allArgsStr.includes('not used')) ||
+      message.includes('preload tag are set correctly')
+    ) {
+      return; // Suppress preload warnings (resource may be used later or conditionally)
+    }
+    
+    // Suppress OpaqueResponseBlocking warnings (usually CORS-related, informational)
+    if (
+      message.includes('OpaqueResponseBlocking') ||
+      allArgsStr.includes('OpaqueResponseBlocking') ||
+      message.includes('blocked by OpaqueResponseBlocking')
+    ) {
+      return; // Suppress OpaqueResponseBlocking warnings
+    }
+    
+    originalConsoleWarn.apply(console, args);
+  };
+  
+  // Suppress console.log messages for partitioned cookies and preload warnings
+  console.log = (...args: unknown[]) => {
+    const message = args[0]?.toString() || '';
+    const allArgsStr = args.map(arg => String(arg)).join(' ');
+    
+    // Suppress partitioned cookie/storage access messages (informational browser security feature)
+    if (message.includes('Partitioned cookie') || message.includes('Partitioned storage')) {
+      return; // Suppress informational partitioned storage messages
+    }
+    
+    // Suppress preload warnings for resources that may not be used immediately
+    if (
+      message.includes('preloaded with link preload was not used') ||
+      (allArgsStr.includes('preload') && allArgsStr.includes('not used')) ||
+      message.includes('preload tag are set correctly')
+    ) {
+      return; // Suppress preload warnings (resource may be used later or conditionally)
+    }
+    
+    // Suppress OpaqueResponseBlocking warnings (usually CORS-related, informational)
+    if (
+      message.includes('OpaqueResponseBlocking') ||
+      allArgsStr.includes('OpaqueResponseBlocking') ||
+      message.includes('blocked by OpaqueResponseBlocking')
+    ) {
+      return; // Suppress OpaqueResponseBlocking warnings
+    }
+    
+    originalConsoleLog.apply(console, args);
+  };
 }
 
 // CRITICAL: React is now bundled WITH web3-vendor, so it will be available
@@ -186,61 +379,7 @@ if (typeof window !== 'undefined') {
       }
       return;
     }
-    return originalXHRSend.apply(this, args);
-  };
-
-  // Suppress console errors for CORS, analytics, and informational CSP warnings
-  const originalError = console.error;
-  const originalWarn = console.warn;
-  
-  console.error = (...args: unknown[]) => {
-    const message = args[0]?.toString() || '';
-    // Filter out WalletConnect session_request warnings
-    if (message.includes('emitting session_request') && message.includes('without any listeners')) {
-      return; // Suppress this specific warning
-    }
-    // Suppress Privy analytics CORS errors
-    if (
-      message.includes('analytics_events') ||
-      message.includes('CORS header') ||
-      message.includes('Cross-Origin Request Blocked') ||
-      args.some(arg => String(arg).includes('analytics_events') || String(arg).includes('CORS'))
-    ) {
-      return; // Suppress Privy analytics CORS errors
-    }
-    originalError.apply(console, args);
-  };
-  
-  console.warn = (...args: unknown[]) => {
-    const message = args[0]?.toString() || '';
-    // Suppress Privy analytics CORS warnings
-    if (
-      message.includes('analytics_events') ||
-      message.includes('CORS header') ||
-      message.includes('Cross-Origin Request Blocked') ||
-      args.some(arg => String(arg).includes('analytics_events') || String(arg).includes('CORS'))
-    ) {
-      return; // Suppress Privy analytics CORS warnings
-    }
-    // Suppress informational CSP warnings (these are expected when using nonces/hashes)
-    if (
-      message.includes('Content-Security-Policy') &&
-      (message.includes("Ignoring") || message.includes("'unsafe-inline'"))
-    ) {
-      return; // Suppress CSP informational warnings
-    }
-    originalWarn.apply(console, args);
-  };
-  
-  // Suppress console.log messages for partitioned cookies (informational browser security messages)
-  const originalLog = console.log;
-  console.log = (...args: unknown[]) => {
-    const message = args[0]?.toString() || '';
-    // Suppress partitioned cookie/storage access messages (informational browser security feature)
-    if (message.includes('Partitioned cookie') || message.includes('Partitioned storage')) {
-      return; // Suppress informational partitioned storage messages
-    }
-    originalLog.apply(console, args);
+    return originalXHRSend.apply(this, args as any);
   };
   };
 
@@ -252,6 +391,7 @@ if (typeof window !== 'undefined') {
     setTimeout(setupInterceptors, 0);
   }
 }
+  
 
 // Hide the initial loading shell once React app mounts
 console.log('[TiltVault] Starting app initialization...');
@@ -287,7 +427,7 @@ try {
 } catch (error) {
   console.error('[TiltVault] Failed to mount React app:', error);
   // Show error message
-  const loadingText = document.querySelector('.tv-initial-loading');
+  const loadingText = document.querySelector('.tv-initial-loading') as HTMLElement | null;
   if (loadingText) {
     loadingText.textContent = 'Error loading app. Please refresh the page.';
     loadingText.style.color = '#ef4444';

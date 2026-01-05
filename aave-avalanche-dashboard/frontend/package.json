@@ -79,11 +79,11 @@
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.8.3",
     "vaul": "^0.9.9",
-    "viem": "^2.40.3",
+    "viem": "^2.43.5",
     "vite": "^5.4.19",
-    "wagmi": "^2.19.5",
-    "zod": "^3.25.76",
-    "vite-plugin-node-polyfills": "^0.24.0"
+    "vite-plugin-node-polyfills": "^0.24.0",
+    "wagmi": "^3.1.4",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",

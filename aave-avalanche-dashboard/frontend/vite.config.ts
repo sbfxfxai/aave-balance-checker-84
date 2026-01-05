@@ -1,8 +1,52 @@
-import { defineConfig } from "vite";
+import { defineConfig, Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
+
+// Plugin to handle GMX SDK's broken internal dependencies
+// The GMX SDK has broken relative imports that reference non-existent files
+// Since we lazy-load the SDK at runtime, we provide stubs during build
+const gmxSdkPlugin = (): Plugin => ({
+  name: 'gmx-sdk-resolver',
+  resolveId(id, importer) {
+    // Handle GMX SDK's broken relative imports
+    if (importer?.includes('@gmx-io/sdk') && (id.startsWith('../../configs/') || id.startsWith('../configs/'))) {
+      // Mark as resolved with a virtual ID
+      return `\0gmx-sdk-config-${id}`;
+    }
+    return null;
+  },
+  load(id) {
+    // Provide empty stubs for missing GMX SDK config files
+    if (id.startsWith('\0gmx-sdk-config-')) {
+      // Return an empty export object - the actual configs are loaded at runtime
+      return 'export default {};';
+    }
+    return null;
+  },
+});
+
+// Plugin to handle ox package resolution
+// Only resolve the main 'ox' import to ESM - let Vite handle subpaths via package.json exports
+// This preserves proper export resolution for namespace exports like SignatureErc6492
+const oxResolverPlugin = (): Plugin => ({
+  name: 'ox-resolver',
+  enforce: 'pre', // Must run before commonjs resolver
+  resolveId(id) {
+    // Only handle ox package main import - let Vite handle subpaths via package.json exports
+    // This ensures namespace exports and other complex exports work correctly
+    if (id === 'ox') {
+      // Resolve to ESM version directly
+      return path.resolve(__dirname, 'node_modules/ox/_esm/index.js');
+    }
+    // For subpaths (ox/erc6492, ox/erc8010, etc.), return null to let Vite
+    // handle them through package.json exports field, which properly resolves
+    // namespace exports and other complex export patterns
+    return null;
+  },
+});
+
 
 // https://vitejs.dev/config/
 // Updated: Force rebuild for env vars
@@ -13,6 +57,10 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [
     react(),
+    // Handle ox package resolution (must be before other resolvers)
+    oxResolverPlugin(),
+    // Handle GMX SDK's broken internal dependencies
+    gmxSdkPlugin(),
     // CRITICAL: Use node polyfills plugin to properly handle Buffer without breaking it
     // This plugin handles Buffer polyfill correctly without breaking internal dependencies
     nodePolyfills({
@@ -26,14 +74,10 @@ export default defineConfig(({ mode }) => ({
       },
       // Use protocol imports for better compatibility
       protocolImports: true,
-      // Ensure Buffer is available as a global
-      polyfills: {
-        buffer: true,
-      },
     }),
     mode === "development" && componentTagger()
   ].filter(Boolean),
-  resolve: {
+    resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
       // Don't alias buffer - let vite-plugin-node-polyfills handle it
@@ -45,6 +89,9 @@ export default defineConfig(({ mode }) => ({
       "react-dom",
       "scheduler" // Ensure single scheduler instance
     ],
+    // Force ESM resolution for packages that have both CJS and ESM
+    // This ensures 'ox' and other packages use their ESM versions
+    conditions: ['import', 'module', 'browser', 'default'],
   },
   define: {
     global: "globalThis",
@@ -95,7 +142,8 @@ export default defineConfig(({ mode }) => ({
   optimizeDeps: {
     // CRITICAL: Exclude buffer from optimization - it breaks when optimized/bundled
     // Buffer must be loaded as-is to prevent "fromByteArray" errors
-    exclude: ["@noble/curves", "buffer"],
+    // Exclude GMX SDK - it has broken internal dependencies and is lazy-loaded at runtime
+    exclude: ["@noble/curves", "buffer", "@gmx-io/sdk"],
     include: [
       // CRITICAL: React and ReactDOM must be pre-bundled and available first
       "react",
@@ -105,6 +153,7 @@ export default defineConfig(({ mode }) => ({
       "@privy-io/react-auth", // Privy depends on React, so include it after React
       "viem", // Pre-bundle viem to resolve circular deps
       "wagmi" // Pre-bundle wagmi (depends on viem)
+      // NOTE: ox is handled by oxResolverPlugin to force ESM resolution
       // NOTE: buffer is excluded - it must be loaded as-is to prevent bundling issues
     ],
     esbuildOptions: {

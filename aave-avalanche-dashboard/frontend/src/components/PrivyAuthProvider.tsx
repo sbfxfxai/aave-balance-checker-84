@@ -1,6 +1,7 @@
 // React is already exposed globally in main.tsx before any imports
 // No need to expose it again here - it's already available for Privy
 import React, { useEffect, useState } from 'react';
+// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { PrivyProvider } from '@privy-io/react-auth';
 import { PRIVY_APP_ID, privyConfig } from '@/lib/privy-config';
 

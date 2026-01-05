@@ -2,7 +2,7 @@
  * Verification script to check if GMX position was created for user wallet
  * 
  * User wallet: 0x5c71B7Be6AaC81B3b1a8b88aDF475DDE24293c67 (ending 67)
- * Hub wallet: 0xec80A2cB3652Ec599eFBf7Aac086d07F391A5e55 (ending 55)
+ * Hub wallet: 0x34c11928868d14bdD7Be55A0D9f9e02257240c24
  * 
  * Transaction hash: 0x4d5fdc81317dfb75aaf8f457e9a6571409d95d2926d5edeea63344957e8292e7
  */
@@ -11,7 +11,7 @@ import { createPublicClient, http, formatUnits } from 'viem';
 import { avalanche } from 'viem/chains';
 
 const USER_WALLET = '0x5c71B7Be6AaC81B3b1a8b88aDF475DDE24293c67' as const;
-const HUB_WALLET = '0xec80A2cB3652Ec599eFBf7Aac086d07F391A5e55' as const;
+const HUB_WALLET = '0x34c11928868d14bdD7Be55A0D9f9e02257240c24' as const;
 const USDC_TRANSFER_TX = '0x4d5fdc81317dfb75aaf8f457e9a6571409d95d2926d5edeea63344957e8292e7' as const;
 
 const SYNTHETICS_READER = '0x62Cb8740E6986B29dC671B2EB596676f60590A5B' as const;

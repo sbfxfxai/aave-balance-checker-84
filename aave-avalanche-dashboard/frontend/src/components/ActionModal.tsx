@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { Card } from '@/components/ui/card';
+// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -153,13 +154,13 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
     // If user is authenticated with Privy, use Privy wallet (Ethereum only)
     if (authenticated && ready) {
       // Find Privy wallet with Ethereum address
-      const privyWallet = wallets.find(w =>
+      const privyWallet = wallets.find((w: any) =>
         w.walletClientType === 'privy' && isEthereumAddress(w.address)
       );
       if (privyWallet) return privyWallet.address as `0x${string}` | undefined;
 
       // Try to find any Ethereum wallet from Privy
-      const ethereumWallet = wallets.find(w => isEthereumAddress(w.address));
+      const ethereumWallet = wallets.find((w: any) => isEthereumAddress(w.address));
       if (ethereumWallet) return ethereumWallet.address as `0x${string}` | undefined;
     }
 
@@ -172,7 +173,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
   const activeChainId = React.useMemo(() => {
     // If using Privy wallet, Privy smart wallets are always on Avalanche (configured in privy-config)
     if (authenticated && ready && address) {
-      const privyWallet = wallets.find(w => w.address === address);
+      const privyWallet = wallets.find((w: any) => w.address === address);
       if (privyWallet && privyWallet.walletClientType === 'privy') {
         // Privy smart wallets are configured for Avalanche, return it directly
         return avalanche.id;
@@ -341,7 +342,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
     }
 
     // Network guard: Skip for Privy smart wallets (always on Avalanche)
-    const isPrivyWallet = authenticated && ready && wallets.some(w => w.address === address && w.walletClientType === 'privy');
+    const isPrivyWallet = authenticated && ready && wallets.some((w: any) => w.address === address && w.walletClientType === 'privy');
     if (!isPrivyWallet && activeChainId !== undefined && activeChainId !== avalanche.id) {
       toast.error('Please switch to Avalanche C-Chain to perform this action', {
         duration: 8000,
@@ -434,7 +435,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
       }
 
       // Get appropriate gas parameters based on wallet type
-      const privyWallet = wallets.find(w => w.address === address && w.walletClientType === 'privy');
+      const privyWallet = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
       const isPrivyWallet = authenticated && !!privyWallet;
       const gasParams = await getGasParameters(isPrivyWallet);
 
@@ -868,7 +869,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
     // Network guard: Ensure user is on Avalanche C-Chain
     // Skip check for Privy smart wallets (they're always on Avalanche)
-    const isPrivyWallet = authenticated && ready && wallets.some(w => w.address === address && w.walletClientType === 'privy');
+    const isPrivyWallet = authenticated && ready && wallets.some((w: any) => w.address === address && w.walletClientType === 'privy');
 
     if (!isPrivyWallet && activeChainId !== undefined && activeChainId !== avalanche.id) {
       // Only check network for external wallets (wagmi)
@@ -1075,7 +1076,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           let swapHash: Hex | undefined;
           
           // Check if using Privy wallet - wagmi doesn't recognize Privy's embedded wallet
-          const privyWallet = wallets.find(w => w.address === address && w.walletClientType === 'privy');
+          const privyWallet = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
           
           if (privyWallet) {
             console.log('[ActionModal] Executing swap via Privy (intercepting fetch to bypass Privy RPC)...');
@@ -1291,6 +1292,14 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
             };
             
             try {
+              // Ensure Buffer is available before Privy operations
+              if (typeof window !== "undefined" && !(window as any).Buffer) {
+                const { Buffer } = await import("buffer");
+                (window as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
+                (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
+                console.log('[ActionModal] Buffer polyfill loaded for swap');
+              }
+              
               const ethersProvider = new ethers.BrowserProvider(privyProvider);
               const signer = await ethersProvider.getSigner();
               
@@ -1550,7 +1559,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
               let approveHash: Hex;
 
               // Check if using Privy wallet
-              const privyWallet = wallets.find(w => w.address === address && w.walletClientType === 'privy');
+              const privyWallet = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
 
               if (authenticated && privyWallet) {
                 console.log('[ActionModal] Approving USDC via Privy smart wallet');
@@ -1687,7 +1696,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           let withdrawHash: Hex;
 
           // Check if using Privy wallet
-          const privyWallet = wallets.find(w => w.address === address && w.walletClientType === 'privy');
+          const privyWallet = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
 
           if (authenticated && privyWallet) {
             console.log('[ActionModal] Withdrawing via Privy smart wallet');
@@ -2083,7 +2092,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           let borrowHash: Hex;
 
           // Check if using Privy wallet
-          const privyWallet = wallets.find(w => w.address === address && w.walletClientType === 'privy');
+          const privyWallet = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
 
           if (authenticated && privyWallet) {
             console.log('[ActionModal] Borrowing via Privy smart wallet (intercepting to bypass Privy RPC)...');
@@ -2509,7 +2518,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
               try {
                 // Check if using Privy wallet for wrapping
-                const privyWalletForWrap = wallets.find(w => w.address === address && w.walletClientType === 'privy');
+                const privyWalletForWrap = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
                 let wrapHash: Hex;
                 
                 if (authenticated && privyWalletForWrap) {
@@ -2792,7 +2801,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
               try {
                 // Check if using Privy wallet for wrapping
-                const privyWalletForWrap = wallets.find(w => w.address === address && w.walletClientType === 'privy');
+                const privyWalletForWrap = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
                 let wrapHash: Hex;
                 
                 if (authenticated && privyWalletForWrap) {
@@ -3052,7 +3061,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
             toast.info('Approving WAVAX for repayment...');
 
             // Check if using Privy wallet for approval
-            const privyWalletForApproval = wallets.find(w => w.address === address && w.walletClientType === 'privy');
+            const privyWalletForApproval = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
             
             const maxApproval = MAX_UINT256;
             let approveHash: Hex;
@@ -3171,7 +3180,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           let repayHash: Hex;
 
           // Check if using Privy wallet
-          const privyWallet = wallets.find(w => w.address === address && w.walletClientType === 'privy');
+          const privyWallet = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
 
           if (authenticated && privyWallet) {
             console.log('[ActionModal] Repaying via Privy smart wallet (intercepting to bypass Privy RPC)...');
@@ -3591,7 +3600,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           let sendHash: Hex | undefined;
 
           // Detect if using Privy wallet
-          const privyWallet = wallets.find(w => w.walletClientType === 'privy');
+          const privyWallet = wallets.find((w: any) => w.walletClientType === 'privy');
 
           if (authenticated && privyWallet) {
             console.log('[ActionModal] Transferring USDC via Privy smart wallet (intercepting to bypass Privy RPC)...');

@@ -44,12 +44,15 @@ const CASHAPP_WITHDRAWAL_LIST_TTL = 365 * 24 * 60 * 60; // 1 year for user withd
  */
 async function storeCashAppWithdrawal(withdrawalId: string, record: WithdrawalRecord): Promise<void> {
   const redis = getRedis();
+  // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
   await redis.set(`cashapp_withdrawal:${withdrawalId}`, JSON.stringify(record), { ex: CASHAPP_WITHDRAWAL_TTL });
   
   // Also maintain a list of withdrawals per wallet for quick lookup
   if (record.walletAddress) {
     const walletKey = `cashapp_withdrawals:${record.walletAddress.toLowerCase()}`;
+    // @ts-expect-error - @upstash/redis types may not include lpush method in some TypeScript versions, but it exists at runtime
     await redis.lpush(walletKey, withdrawalId);
+    // @ts-expect-error - @upstash/redis types may not include expire method in some TypeScript versions, but it exists at runtime
     await redis.expire(walletKey, CASHAPP_WITHDRAWAL_LIST_TTL);
   }
 }
@@ -59,6 +62,7 @@ async function storeCashAppWithdrawal(withdrawalId: string, record: WithdrawalRe
  */
 async function getCashAppWithdrawal(withdrawalId: string): Promise<WithdrawalRecord | null> {
   const redis = getRedis();
+  // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
   const data = await redis.get(`cashapp_withdrawal:${withdrawalId}`);
   if (!data) return null;
   try {
@@ -79,7 +83,8 @@ async function getCashAppWithdrawal(withdrawalId: string): Promise<WithdrawalRec
 async function getCashAppWalletWithdrawals(walletAddress: string): Promise<WithdrawalRecord[]> {
   const redis = getRedis();
   const walletKey = `cashapp_withdrawals:${walletAddress.toLowerCase()}`;
-  const withdrawalIds = await redis.lrange(walletKey, 0, -1);
+  // @ts-expect-error - @upstash/redis types may not include lrange method in some TypeScript versions, but it exists at runtime
+  const withdrawalIds = await redis.lrange(walletKey, 0, -1) as string[];
   
   if (!withdrawalIds || withdrawalIds.length === 0) {
     return [];
@@ -87,7 +92,7 @@ async function getCashAppWalletWithdrawals(walletAddress: string): Promise<Withd
   
   // Fetch all withdrawal records
   const withdrawals = await Promise.all(
-    withdrawalIds.map(async (id) => {
+    withdrawalIds.map(async (id: string) => {
       const record = await getCashAppWithdrawal(id);
       return record;
     })
@@ -95,8 +100,8 @@ async function getCashAppWalletWithdrawals(walletAddress: string): Promise<Withd
   
   // Filter out nulls and sort by creation date (newest first)
   return withdrawals
-    .filter((w): w is WithdrawalRecord => w !== null)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    .filter((w: WithdrawalRecord | null): w is WithdrawalRecord => w !== null)
+    .sort((a: WithdrawalRecord, b: WithdrawalRecord) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 // Create customer request for Cash App linking

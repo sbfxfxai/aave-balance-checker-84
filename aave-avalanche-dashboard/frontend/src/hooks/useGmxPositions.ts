@@ -3,10 +3,11 @@ import { useAccount, usePublicClient } from 'wagmi';
 import { formatUnits } from 'viem';
 
 export interface GmxPositionData {
+  // Core fields
   id: string;
   account: string;
   market: string;
-  marketInfo?: { name: string; indexToken: string };
+  marketInfo?: { name: string; indexToken: string; marketToken?: string };
   collateralToken: string;
   sizeInUsd: string;
   sizeInTokens: string;
@@ -14,12 +15,46 @@ export interface GmxPositionData {
   entryPrice: string;
   leverage: number;
   isLong: boolean;
-  // Additional fields from contract
-  borrowingFactor: string;
-  fundingFeeAmountPerSize: string;
-  claimableFundingAmount: string;
-  increasedAtTime: number;
-  decreasedAtTime: number;
+  
+  // Price and value fields
+  markPrice?: string;
+  netValue?: string;
+  
+  // Enhanced PnL fields
+  pnl?: string; // Unrealized PnL in USD
+  pnlPercentage?: number; // PnL as percentage
+  pnlAfterFees?: string; // PnL after deducting fees
+  
+  // Risk metrics
+  liquidationPrice?: string; // Critical for risk management
+  healthFactor?: number; // Distance from liquidation (higher = safer)
+  hasLowCollateral?: boolean; // Warning flag
+  
+  // Fees
+  fundingFeeAmount?: string; // Accumulated funding fees
+  fundingFeeAmountPerSize?: string; // Per-size funding fee
+  borrowingFeeAmount?: string; // Accumulated borrowing fees
+  borrowingFactor?: string; // Borrowing factor
+  positionFeeAmount?: string; // Position fees
+  totalFees?: string; // Sum of all fees
+  claimableFundingAmount?: string; // Claimable funding
+  
+  // Additional metrics
+  remainingCollateralUsd?: string; // Collateral minus losses
+  
+  // Time-based
+  increasedAtTime?: number; // Timestamp when position was increased
+  decreasedAtTime?: number; // Timestamp when position was decreased
+  createdAt?: number; // Timestamp when position was created
+  positionAge?: string; // Human-readable age
+  
+  // Market data
+  indexTokenPriceMin?: string; // Min oracle price
+  indexTokenPriceMax?: string; // Max oracle price
+  
+  // Liquidity
+  canBeClosed?: boolean; // Whether there's enough liquidity
+  maxSizeIncrease?: string; // Max additional size that can be added
 }
 
 const MARKET_INFO: Record<string, { name: string; indexToken: string }> = {
@@ -30,6 +65,7 @@ const MARKET_INFO: Record<string, { name: string; indexToken: string }> = {
 
 const SYNTHETICS_READER = '0x62Cb8740E6986B29dC671B2EB596676f60590A5B' as const;
 const DATA_STORE = '0x2F0b22339414ADeD7D5F06f9D604c7fF5b2fe3f6' as const;
+const GMX_AVALANCHE_API = 'https://avalanche-api.gmxinfra.io';
 
 const READER_ABI = [
   {
@@ -166,48 +202,255 @@ export function useGmxPositions(overrideAddress?: string | null) {
             entryPrice: entryPrice.toFixed(2),
             leverage: parseFloat(leverage.toFixed(2)),
             isLong,
-            // Additional fields
+            // Additional fields from contract
             borrowingFactor: borrowingFactorValue.toString(),
             fundingFeeAmountPerSize: formatUnits(pos.numbers.fundingFeeAmountPerSize, 30),
             claimableFundingAmount: totalClaimableFunding.toFixed(4),
             increasedAtTime: increasedAt,
             decreasedAtTime: decreasedAt,
+            // Calculate funding fee amount (per-size * size in tokens)
+            fundingFeeAmount: (totalClaimableFunding).toFixed(4),
+            // Borrowing fee is calculated from borrowing factor over time
+            borrowingFeeAmount: '0', // Would need time-based calculation
+            totalFees: totalClaimableFunding.toFixed(4),
           };
         };
 
-        // For small arrays, process synchronously
+        // Process positions
+        let processedPositions: GmxPositionData[];
         if (positions.length <= 10) {
-          return positions.map(processPosition).filter(p => parseFloat(p.sizeInUsd) > 0);
+          processedPositions = positions.map(processPosition).filter((p: GmxPositionData) => parseFloat(p.sizeInUsd) > 0);
+        } else {
+          // For larger arrays, process in batches to yield to main thread
+          const results: any[] = [];
+          const batchSize = 5;
+          
+          for (let i = 0; i < positions.length; i += batchSize) {
+            const batch = positions.slice(i, i + batchSize);
+            const batchResults = batch.map((pos: any, batchIndex: number) => processPosition(pos, i + batchIndex));
+            results.push(...batchResults);
+            
+            // Yield to main thread after each batch (except the last)
+            if (i + batchSize < positions.length) {
+              await new Promise(resolve => setTimeout(resolve, 0));
+            }
+          }
+          
+          processedPositions = results.filter(p => parseFloat(p.sizeInUsd) > 0);
         }
 
-        // For larger arrays, process in batches to yield to main thread
-        const results: any[] = [];
-        const batchSize = 5;
-        
-        for (let i = 0; i < positions.length; i += batchSize) {
-          const batch = positions.slice(i, i + batchSize);
-          const batchResults = batch.map((pos, batchIndex) => processPosition(pos, i + batchIndex));
-          results.push(...batchResults);
+        // Fetch mark prices - use CoinGecko for BTC (most reliable) and try GMX API for others
+        try {
+          // For BTC positions, use CoinGecko as primary source
+          const btcPositions = processedPositions.filter(p => 
+            MARKET_INFO[p.market.toLowerCase()]?.indexToken === 'BTC'
+          );
           
-          // Yield to main thread after each batch (except the last)
-          if (i + batchSize < positions.length) {
-            await new Promise(resolve => setTimeout(resolve, 0));
+          let btcPrice: number | undefined;
+          if (btcPositions.length > 0) {
+            try {
+              console.log('[GMX] Fetching BTC price from CoinGecko...');
+              const btcResponse = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd', {
+                signal: AbortSignal.timeout(5000),
+              });
+              console.log('[GMX] CoinGecko response status:', btcResponse.status);
+              if (btcResponse.ok) {
+                const btcData = await btcResponse.json();
+                btcPrice = btcData.bitcoin?.usd;
+                if (btcPrice) {
+                  console.log(`[GMX] ✅ Successfully fetched BTC price from CoinGecko: $${btcPrice.toFixed(2)}`);
+                } else {
+                  console.error('[GMX] ❌ CoinGecko response missing bitcoin.usd:', btcData);
+                }
+              } else {
+                console.error('[GMX] ❌ CoinGecko API error:', btcResponse.status, btcResponse.statusText);
+              }
+            } catch (e) {
+              console.error('[GMX] ❌ Failed to fetch BTC price from CoinGecko:', e);
+            }
+          } else {
+            console.log('[GMX] No BTC positions found, skipping CoinGecko fetch');
+          }
+          
+          // Try GMX markets endpoint for other tokens or as fallback
+          let marketsData: any = null;
+          try {
+            const marketsRes = await fetch(`${GMX_AVALANCHE_API}/markets`);
+            if (marketsRes.ok) {
+              marketsData = await marketsRes.json();
+            }
+          } catch (e) {
+            console.warn('[GMX] Failed to fetch markets:', e);
+          }
+          
+          // Update positions with mark price and net value
+          processedPositions = processedPositions.map((position) => {
+            const marketInfo = MARKET_INFO[position.market.toLowerCase()];
+            if (!marketInfo) {
+              return {
+                ...position,
+                markPrice: position.entryPrice,
+                netValue: position.collateralAmount,
+              };
+            }
+            
+            let markPrice: number | undefined;
+            
+            // For BTC, use CoinGecko price (MUST be different from entry price)
+            if (marketInfo.indexToken === 'BTC') {
+              if (btcPrice && btcPrice > 0) {
+                markPrice = btcPrice;
+                console.log(`[GMX] ✅ Using CoinGecko BTC price: $${btcPrice.toFixed(2)} for ${marketInfo.name}`);
+              } else {
+                console.error(`[GMX] ❌ BTC price from CoinGecko is invalid: ${btcPrice}`);
+              }
+            }
+            
+            // Try to get from markets data if available (for non-BTC or as fallback)
+            if (!markPrice && marketsData?.markets) {
+              const matchingMarket = marketsData.markets.find((m: any) => {
+                // Try to match by market address or index token
+                return m.marketToken?.toLowerCase() === position.market.toLowerCase() ||
+                       m.indexToken?.toLowerCase() === position.market.toLowerCase();
+              });
+              
+              // Markets might have price data in different formats
+              if (matchingMarket) {
+                // Try different price field names
+                markPrice = matchingMarket.markPrice 
+                  ? parseFloat(matchingMarket.markPrice)
+                  : matchingMarket.price
+                  ? parseFloat(matchingMarket.price)
+                  : matchingMarket.indexTokenPrice
+                  ? parseFloat(matchingMarket.indexTokenPrice)
+                  : undefined;
+              }
+            }
+            
+            // Last resort: use entry price (but log warning)
+            if (!markPrice || markPrice === 0 || isNaN(markPrice)) {
+              console.error(`[GMX] ❌ Could not fetch mark price for ${marketInfo.name}, using entry price as fallback`);
+              markPrice = parseFloat(position.entryPrice);
+            } else {
+              const entryPriceNum = parseFloat(position.entryPrice);
+              const priceDiff = markPrice - entryPriceNum;
+              const priceDiffPercent = ((priceDiff / entryPriceNum) * 100).toFixed(4);
+              console.log(`[GMX] ✅ Mark price for ${marketInfo.name}: $${markPrice.toFixed(2)} (entry: $${entryPriceNum.toFixed(2)}, diff: $${priceDiff.toFixed(2)} / ${priceDiffPercent}%)`);
+            }
+
+            // Calculate net value: collateral + unrealized PnL
+            const entryPrice = parseFloat(position.entryPrice);
+            const sizeInUsd = parseFloat(position.sizeInUsd);
+            const collateral = parseFloat(position.collateralAmount);
+            
+            // Always calculate PnL (will be 0 if markPrice === entryPrice)
+            let unrealizedPnL = 0;
+            if (markPrice && entryPrice > 0 && sizeInUsd > 0) {
+              if (position.isLong) {
+                unrealizedPnL = ((markPrice - entryPrice) / entryPrice) * sizeInUsd;
+              } else {
+                unrealizedPnL = ((entryPrice - markPrice) / entryPrice) * sizeInUsd;
+              }
+            }
+            
+            const netValue = collateral + unrealizedPnL;
+            
+            // Log detailed calculation for debugging
+            console.log(`[GMX] Position ${marketInfo.name} calculation:`, {
+              entryPrice: entryPrice.toFixed(2),
+              markPrice: markPrice.toFixed(2),
+              priceDiff: (markPrice - entryPrice).toFixed(2),
+              sizeInUsd: sizeInUsd.toFixed(2),
+              collateral: collateral.toFixed(2),
+              unrealizedPnL: unrealizedPnL.toFixed(2),
+              netValue: netValue.toFixed(2),
+              isLong: position.isLong,
+            });
+
+            return {
+              ...position,
+              markPrice: markPrice.toFixed(2),
+              netValue: netValue.toFixed(2),
+            };
+          });
+        } catch (error) {
+          console.error('[GMX] Error fetching mark prices:', error);
+          // Fallback: try to get prices from tokens endpoint
+          try {
+            const tokensRes = await fetch(`${GMX_AVALANCHE_API}/tokens`);
+            if (tokensRes.ok) {
+              const tokensData = await tokensRes.json();
+              const tokenPriceMap = new Map<string, number>();
+              
+              if (tokensData?.tokens) {
+                tokensData.tokens.forEach((token: any) => {
+                  if (token.symbol && token.price) {
+                    tokenPriceMap.set(token.symbol.toUpperCase(), parseFloat(token.price));
+                  }
+                });
+              }
+              
+              processedPositions = processedPositions.map((position) => {
+                const marketInfo = MARKET_INFO[position.market.toLowerCase()];
+                if (!marketInfo) {
+                  return {
+                    ...position,
+                    markPrice: position.entryPrice,
+                    netValue: position.collateralAmount,
+                  };
+                }
+                
+                let markPrice = tokenPriceMap.get(marketInfo.indexToken.toUpperCase());
+                if (!markPrice || markPrice === 0 || isNaN(markPrice)) {
+                  markPrice = parseFloat(position.entryPrice);
+                }
+                
+                const entryPrice = parseFloat(position.entryPrice);
+                const sizeInUsd = parseFloat(position.sizeInUsd);
+                const collateral = parseFloat(position.collateralAmount);
+                
+                let unrealizedPnL = 0;
+                if (markPrice && entryPrice > 0 && sizeInUsd > 0 && markPrice !== entryPrice) {
+                  if (position.isLong) {
+                    unrealizedPnL = ((markPrice - entryPrice) / entryPrice) * sizeInUsd;
+                  } else {
+                    unrealizedPnL = ((entryPrice - markPrice) / entryPrice) * sizeInUsd;
+                  }
+                }
+                
+                const netValue = collateral + unrealizedPnL;
+                
+                return {
+                  ...position,
+                  markPrice: markPrice.toFixed(2),
+                  netValue: netValue.toFixed(2),
+                };
+              });
+            }
+          } catch (fallbackError) {
+            console.error('[GMX] Fallback price fetch also failed:', fallbackError);
+            // Final fallback: use entry price
+            processedPositions = processedPositions.map((position) => ({
+              ...position,
+              markPrice: position.entryPrice,
+              netValue: position.collateralAmount,
+            }));
           }
         }
-        
-        return results.filter(p => parseFloat(p.sizeInUsd) > 0);
+
+        return processedPositions;
       } catch (error) {
         console.error('[GMX] Error fetching positions:', error);
         return [];
       }
     },
     enabled: hasAddress && !!publicClient,
-    refetchInterval: 15000,
-    staleTime: 12000,
+    refetchInterval: 10000, // Update every 10 seconds for real-time prices
+    staleTime: 5000,
     gcTime: 60000,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-    refetchOnReconnect: false,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchOnReconnect: true,
   });
 
   return {
