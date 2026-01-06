@@ -246,11 +246,35 @@ Run audits:
 5. **Re-run audit** to verify fixes
 6. **Set up CI/CD** for automated audits
 
+## Additional Security Tools
+
+### Mythril (Symbolic Execution)
+
+Mythril performs deep symbolic execution analysis. See `MYTHRIL_SETUP.md` for details.
+
+**Quick start:**
+```bash
+pip install mythril
+cd contracts
+npm run compile
+npm run audit:mythril
+```
+
+### Combining Tools
+
+For comprehensive security analysis, use multiple tools:
+- **Aderyn**: Quick static analysis
+- **Mythril**: Deep symbolic execution (see MYTHRIL_SETUP.md)
+- **Slither**: Comprehensive static analysis
+- **Manual review**: Human expertise
+
 ## Resources
 
 - [Aderyn GitHub](https://github.com/Cyfrin/aderyn)
 - [Aderyn Documentation](https://github.com/Cyfrin/aderyn#readme)
 - [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=Cyfrin.aderyn)
+- [Mythril Documentation](https://mythril-classic.readthedocs.io/)
+- [Mythril GitHub](https://github.com/ConsenSys/mythril)
 
 ## Notes
 
