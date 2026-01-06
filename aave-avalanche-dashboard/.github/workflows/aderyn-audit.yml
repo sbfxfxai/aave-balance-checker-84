@@ -1,0 +1,72 @@
+name: Aderyn Static Analysis
+
+on:
+  push:
+    branches: [ main, staging, development ]
+    paths:
+      - 'contracts/**/*.sol'
+      - 'contracts/**/*.js'
+  pull_request:
+    branches: [ main, staging ]
+    paths:
+      - 'contracts/**/*.sol'
+      - 'contracts/**/*.js'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  audit:
+    name: Run Aderyn Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install Aderyn
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/cyfrin/aderyn/releases/latest/download/aderyn-installer.sh | bash
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      
+      - name: Verify Aderyn installation
+        run: aderyn --version
+      
+      - name: Run Aderyn audit
+        working-directory: ./contracts
+        run: aderyn
+        continue-on-error: true # Don't fail on findings, just report
+      
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aderyn-report
+          path: contracts/report.md
+          retention-days: 30
+      
+      - name: Comment PR with findings
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            try {
+              const reportPath = path.join('contracts', 'report.md');
+              if (fs.existsSync(reportPath)) {
+                const report = fs.readFileSync(reportPath, 'utf8');
+                
+                // Extract summary (first 1000 chars or until first detector)
+                const summary = report.split('## Detectors')[0] || report.substring(0, 1000);
+                
+                github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: `## 🔍 Aderyn Audit Results\n\n${summary}\n\n[View full report](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`
+                });
+              }
+            } catch (error) {
+              console.log('Could not read report or comment PR:', error.message);
+            }
+
