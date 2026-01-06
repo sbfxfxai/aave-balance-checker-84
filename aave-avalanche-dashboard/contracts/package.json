@@ -11,7 +11,9 @@
     "deploy:upgradeable:fuji": "hardhat run scripts/deploy-upgradeable.js --network avalancheFuji",
     "upgrade:avalanche": "hardhat run scripts/upgrade.js --network avalanche",
     "upgrade:fuji": "hardhat run scripts/upgrade.js --network avalancheFuji",
-    "verify": "hardhat verify --network avalanche"
+    "verify": "hardhat verify --network avalanche",
+    "audit:mythril": "node scripts/run-mythril.js",
+    "audit:all": "npm run audit:mythril"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",

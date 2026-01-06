@@ -1,0 +1,4 @@
+# Security Audit Tools
+mythril>=0.24.0
+slither-analyzer>=0.10.0
+
