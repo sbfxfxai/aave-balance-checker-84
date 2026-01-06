@@ -6,6 +6,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { DepositModal } from '@/components/stack/DepositModal';
+import { ValueDiagram } from '@/components/stack/ValueDiagram';
 import { Footer } from '@/components/Footer';
 import { Link } from 'react-router-dom';
 import { OptimizedLogo } from '@/components/OptimizedLogo';
@@ -273,6 +274,9 @@ const StackApp = () => {
               </Button>
             </div>
           )}
+
+          {/* Value Diagram - Shows ERGC savings impact */}
+          <ValueDiagram aaveAPY={aaveAPY} />
         </div>
       </main>
 
