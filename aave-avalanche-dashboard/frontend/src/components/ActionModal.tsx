@@ -233,15 +233,28 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
   });
 
   // Get native USDC balance for supply action (Aave V3 uses native USDC, not USDC.e)
-  const { data: usdcBalance, refetch: refetchUsdcBalance } = useBalance({
-    address,
-    token: action === 'supply' ? (CONTRACTS.USDC as `0x${string}`) : undefined,
-    chainId: avalanche.id,
+  // Use useReadContract instead of useBalance with token (not supported in current Wagmi version)
+  const { data: usdcBalanceRaw, refetch: refetchUsdcBalance } = useReadContract({
+    address: action === 'supply' ? (CONTRACTS.USDC as `0x${string}`) : undefined,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
     query: {
       enabled: isConnected && !!address && action === 'supply',
       refetchInterval: 15_000, // Reduced from 5s to 15s
     },
   });
+
+  // Format USDC balance (6 decimals)
+  const usdcBalance = React.useMemo(() => {
+    if (!usdcBalanceRaw) return null;
+    return {
+      value: usdcBalanceRaw as bigint,
+      formatted: formatUnits(usdcBalanceRaw as bigint, 6),
+      decimals: 6,
+      symbol: 'USDC',
+    };
+  }, [usdcBalanceRaw]);
 
   // Get Aave positions to refresh after supply
   const positions = useAavePositions();
@@ -4224,7 +4237,15 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                 <div>Pool: {poolAddress.slice(0, 8)}...{poolAddress.slice(-6)}</div>
                 <div>Token: {CONTRACTS.USDC.slice(0, 8)}...{CONTRACTS.USDC.slice(-6)} (Native USDC)</div>
                 {allowance !== undefined && (
-                  <div>Allowance: {formatUnits(allowance, 6)} USDC</div>
+                  <div>Allowance: {(() => {
+                    const allowanceValue = allowance as bigint;
+                    const formatted = formatUnits(allowanceValue, 6);
+                    // If allowance is very large (essentially unlimited), show it as "Unlimited"
+                    if (allowanceValue > 1000000000000000n) { // > 1 billion USDC
+                      return 'Unlimited';
+                    }
+                    return parseFloat(formatted).toFixed(2) + ' USDC';
+                  })()}</div>
                 )}
                 <div className="mt-0.5 text-muted-foreground">Current Step: {step}</div>
               </AlertDescription>
