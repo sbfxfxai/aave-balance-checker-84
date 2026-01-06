@@ -1355,6 +1355,14 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                       interceptedTxHash = hashMatch[0];
                       return;
                     }
+                    // Check for CSP errors - these should fail fast
+                    if (errorMessage.includes('Content-Security-Policy') || 
+                        errorMessage.includes('CSP') ||
+                        errorMessage.includes('blocked') ||
+                        errorMessage.includes('mainnet.rpc.privy.systems')) {
+                      console.error('[ActionModal] ❌ CSP error detected - transaction blocked by Content Security Policy');
+                      throw new Error('Transaction blocked by browser security policy. Please refresh the page and try again.');
+                    }
                     // Don't throw here - let the timeout handle it
                     console.warn('[ActionModal] Transaction promise rejected, but will wait for interception');
                   }
