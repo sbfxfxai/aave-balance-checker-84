@@ -10,9 +10,12 @@ Mythril is an open-source symbolic execution tool for EVM bytecode that detects 
 
 - Python 3.8 or higher
 - pip (Python package manager)
+- **Windows**: Visual C++ Build Tools (for pyethash dependency)
+  - Download: https://visualstudio.microsoft.com/visual-cpp-build-tools/
 
 ### Install Mythril
 
+**Linux/macOS:**
 ```bash
 # Install Mythril
 pip install mythril
@@ -21,6 +24,18 @@ pip install mythril
 cd contracts
 pip install -r requirements-audit.txt
 ```
+
+**Windows:**
+```bash
+# First install Visual C++ Build Tools (see prerequisites)
+# Then install Mythril
+pip install mythril
+```
+
+**Alternative for Windows:**
+- Use WSL (Windows Subsystem for Linux)
+- Use GitHub Actions (automated)
+- Use Docker
 
 ### Verify Installation
 
