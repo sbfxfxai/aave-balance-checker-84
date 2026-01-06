@@ -17,6 +17,7 @@ export function PrivyLogin() {
     const navigate = useNavigate();
     const location = useLocation();
     const hasRedirectedRef = useRef(false);
+    const associationCompletedRef = useRef(false);
 
     // Get the user's Privy smart wallet address (Ethereum only, filter out Solana)
     const isEthereumAddress = (addr: string | undefined | null): boolean => {
@@ -47,7 +48,8 @@ export function PrivyLogin() {
     // Associate user with wallet on successful authentication (WITH SIGNATURE)
     // CRITICAL: Wait for wallet to be ready before attempting association
     React.useEffect(() => {
-        if (authenticated && user && walletAddress && ready) {
+        // Only attempt association if not already completed
+        if (authenticated && user && walletAddress && ready && !associationCompletedRef.current) {
             // CRITICAL: Validate wallet address is NOT hub wallet
             const HUB_WALLET_ADDRESS = '0x34c11928868d14bdD7Be55A0D9f9e02257240c24';
             if (walletAddress.toLowerCase() === HUB_WALLET_ADDRESS.toLowerCase()) {
@@ -173,10 +175,20 @@ export function PrivyLogin() {
                             console.log('[PrivyLogin] Wallet:', walletAddress);
                             console.log('[PrivyLogin] Privy User ID:', user.id);
                             
-                            // Redirect to /stack on successful login (only once, only if on root path)
-                            if (!hasRedirectedRef.current && location.pathname === '/') {
+                            // Mark association as completed
+                            associationCompletedRef.current = true;
+                            
+                            // Only redirect on initial login (first time association completes), not on subsequent visits
+                            // Check if this is a fresh association by checking if we've redirected before
+                            const hasRedirectedBefore = sessionStorage.getItem('privy_initial_login_redirected');
+                            if (!hasRedirectedRef.current && !hasRedirectedBefore && location.pathname === '/') {
+                                // Mark that we've done the initial redirect
                                 hasRedirectedRef.current = true;
-                                navigate('/stack', { replace: true });
+                                sessionStorage.setItem('privy_initial_login_redirected', 'true');
+                                // Small delay to ensure association is complete
+                                setTimeout(() => {
+                                    navigate('/stack', { replace: true });
+                                }, 500);
                             }
                         } else {
                             console.error('[PrivyLogin] ❌ Association failed - backend returned success:false');
