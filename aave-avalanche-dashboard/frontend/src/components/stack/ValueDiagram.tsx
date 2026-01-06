@@ -67,7 +67,6 @@ const calculateExample = (depositAmount: number, aaveAPY: number): DepositExampl
 };
 
 export function ValueDiagram({ aaveAPY }: ValueDiagramProps) {
-  const example100 = calculateExample(100, aaveAPY);
   const example1000 = calculateExample(1000, aaveAPY);
 
   const formatCurrency = (value: number) => {
@@ -96,51 +95,6 @@ export function ValueDiagram({ aaveAPY }: ValueDiagramProps) {
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
-          {/* $100 Example */}
-          <div className="border rounded-lg p-4 bg-muted/30">
-            <div className="flex items-center gap-2 mb-4">
-              <DollarSign className="h-5 w-5 text-emerald-500" />
-              <h3 className="text-lg font-semibold">$100 Deposit Example</h3>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Deposit Amount */}
-              <div className="space-y-2">
-                <div className="text-sm font-medium text-muted-foreground">Deposit Amount</div>
-                <div className="text-2xl font-bold">{formatCurrency(example100.depositAmount)}</div>
-              </div>
-              
-              {/* ERGC Savings */}
-              <div className="space-y-2">
-                <div className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                  <Zap className="h-3.5 w-3.5 text-purple-500" />
-                  ERGC Savings
-                </div>
-                <div className="text-2xl font-bold text-purple-500">
-                  {formatCurrency(example100.savings)}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {formatPercent(example100.feeWithoutErgc / example100.depositAmount)} → {formatPercent(example100.feeWithErgc / example100.depositAmount)} fee
-                </div>
-              </div>
-              
-              {/* 1 Year Balance */}
-              <div className="space-y-2">
-                <div className="text-sm font-medium text-muted-foreground">1 Year Balance</div>
-                <div className="space-y-1">
-                  <div className="text-lg font-semibold text-muted-foreground line-through">
-                    {formatCurrency(example100.oneYearBalanceWithoutErgc)}
-                  </div>
-                  <div className="text-2xl font-bold text-emerald-500">
-                    {formatCurrency(example100.oneYearBalanceWithErgc)}
-                  </div>
-                  <div className="text-xs text-emerald-600 font-medium">
-                    +{formatCurrency(example100.totalSavings)} total savings
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* $1000 Example */}
           <div className="border rounded-lg p-4 bg-muted/30">
             <div className="flex items-center gap-2 mb-4">
@@ -161,10 +115,10 @@ export function ValueDiagram({ aaveAPY }: ValueDiagramProps) {
                   ERGC Savings
                 </div>
                 <div className="text-2xl font-bold text-purple-500">
-                  {formatCurrency(example1000.savings)}
+                  {formatPercent(example1000.feeWithoutErgc / example1000.depositAmount)} → {formatPercent(example1000.feeWithErgc / example1000.depositAmount)}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {formatPercent(example1000.feeWithoutErgc / example1000.depositAmount)} → {formatPercent(example1000.feeWithErgc / example1000.depositAmount)} fee
+                  Fee rate with 100+ ERGC
                 </div>
               </div>
               
