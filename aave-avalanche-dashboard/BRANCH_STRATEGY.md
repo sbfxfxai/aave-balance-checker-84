@@ -6,20 +6,20 @@ This document outlines the Git branch strategy for TiltVault production deployme
 
 ### Main Branches
 
-#### `production` (Primary Production Branch)
+#### `main` (Production Branch)
 - **Purpose**: What's live in production, always deployable
 - **Status**: Protected - only merges from `staging` after thorough testing
 - **Deployment**: Auto-deploys to production environment
 - **Rules**:
-  - Never commit directly to `production`
-  - Only merge from `staging` via pull requests
+  - Never commit directly to `main`
+  - Only merge from `staging` via pull requests after thorough testing
   - All merges require code review
   - Tag releases (e.g., `v11-live`, `v12-live`) from this branch
 
-#### `main` (Legacy/Alternative Production)
-- **Purpose**: Historical main branch (kept for compatibility)
-- **Status**: May be used as alternative production branch
-- **Note**: Consider `production` as the primary production branch going forward
+#### `production` (Alternative Production Branch)
+- **Purpose**: Alternative production tracking branch
+- **Status**: Synced with current production code
+- **Note**: `main` is the primary production branch for the standard workflow
 
 #### `staging` (Pre-Production Testing)
 - **Purpose**: Pre-production testing environment
@@ -51,56 +51,73 @@ This document outlines the Git branch strategy for TiltVault production deployme
 ### Feature Development Flow
 
 ```
-Feature Branch → development → staging → production
+Feature Branch → development → staging → main
 ```
 
-1. **Create Feature Branch**
+1. **Create Feature Branch from Development**
    ```bash
    git checkout development
    git pull origin development
    git checkout -b feature/your-feature-name
    ```
+   Example: `feature/new-swap-ui`, `feature/user-dashboard`, `feature/payment-integration`
 
 2. **Develop & Commit**
    - Make changes
    - Commit with clear messages
    - Push to remote
+   ```bash
+   git add .
+   git commit -m "feat: add new swap UI component"
+   git push origin feature/your-feature-name
+   ```
 
-3. **Merge to Development**
+3. **Merge to Development** (when feature is ready)
    ```bash
    git checkout development
+   git pull origin development
    git merge feature/your-feature-name
    git push origin development
    ```
+   - Feature is now integrated into development
+   - Run basic tests before merging
 
-4. **Merge to Staging** (when ready for testing)
+4. **Merge to Staging** (for testing environment)
    ```bash
    git checkout staging
+   git pull origin staging
    git merge development
    git push origin staging
    ```
+   - Deploys to staging environment
+   - Run thorough testing here
+   - QA validation happens in staging
 
-5. **Merge to Production** (after testing passes)
+5. **Merge to Main** (only after thorough testing passes)
    ```bash
-   git checkout production
+   git checkout main
+   git pull origin main
    git merge staging
-   git push origin production
+   git push origin main
    git tag v12-live  # Tag the release
    git push origin v12-live
    ```
+   - **Only merge after thorough testing in staging**
+   - This deploys to production
+   - Tag releases from this branch
 
 ### Hotfix Flow
 
 For urgent production fixes:
 
 ```
-Hotfix Branch → production → staging → development
+Hotfix Branch → main → staging → development
 ```
 
-1. **Create Hotfix Branch from Production**
+1. **Create Hotfix Branch from Main**
    ```bash
-   git checkout production
-   git pull origin production
+   git checkout main
+   git pull origin main
    git checkout -b hotfix/urgent-fix-name
    ```
 
@@ -109,11 +126,11 @@ Hotfix Branch → production → staging → development
    - Test thoroughly
    - Commit and push
 
-3. **Merge to Production**
+3. **Merge to Main** (urgent production fix)
    ```bash
-   git checkout production
+   git checkout main
    git merge hotfix/urgent-fix-name
-   git push origin production
+   git push origin main
    git tag v11.1-hotfix
    git push origin v11.1-hotfix
    ```
@@ -121,11 +138,11 @@ Hotfix Branch → production → staging → development
 4. **Backport to Staging & Development**
    ```bash
    git checkout staging
-   git merge production
+   git merge main
    git push origin staging
    
    git checkout development
-   git merge production
+   git merge main
    git push origin development
    ```
 
@@ -133,7 +150,7 @@ Hotfix Branch → production → staging → development
 
 Set up branch protection on GitHub for:
 
-### `production`
+### `main`
 - Require pull request reviews (1+ reviewer)
 - Require status checks to pass
 - Require branches to be up to date
@@ -156,19 +173,19 @@ Set up branch protection on GitHub for:
 
 ### Production Releases
 - Format: `v{version}-live` (e.g., `v11-live`, `v12-live`)
-- Created from: `production` branch
+- Created from: `main` branch
 - Purpose: Mark stable production releases
 
 ### Hotfixes
 - Format: `v{version}.{patch}-hotfix` (e.g., `v11.1-hotfix`)
-- Created from: `production` branch
+- Created from: `main` branch
 - Purpose: Mark urgent production fixes
 
 ## Environment Mapping
 
 | Branch      | Environment | URL                    | Purpose           |
 |-------------|-------------|------------------------|-------------------|
-| `production`| Production  | https://www.tiltvault.com | Live user-facing |
+| `main`      | Production  | https://www.tiltvault.com | Live user-facing |
 | `staging`   | Staging     | https://staging.tiltvault.com | Pre-production testing |
 | `development`| Development | https://dev.tiltvault.com | Feature integration |
 
@@ -207,29 +224,32 @@ Set up branch protection on GitHub for:
 ## Quick Reference Commands
 
 ```bash
-# Switch to production
-git checkout production
-git pull origin production
+# Switch to main (production)
+git checkout main
+git pull origin main
 
-# Create feature branch
+# Create feature branch from development
 git checkout development
 git pull origin development
 git checkout -b feature/new-feature
 
 # Merge feature to development
 git checkout development
+git pull origin development
 git merge feature/new-feature
 git push origin development
 
-# Promote to staging
+# Promote to staging (for testing)
 git checkout staging
+git pull origin staging
 git merge development
 git push origin staging
 
-# Promote to production
-git checkout production
+# Promote to main (after thorough testing)
+git checkout main
+git pull origin main
 git merge staging
-git push origin production
+git push origin main
 git tag v12-live
 git push origin v12-live
 ```
@@ -237,7 +257,19 @@ git push origin v12-live
 ## Migration Notes
 
 - `exact-deployed-version` branch contains the current production code
-- `production` branch has been synced with `exact-deployed-version`
-- Going forward, use `production` as the primary production branch
-- Consider deprecating `exact-deployed-version` after confirming `production` is working correctly
+- `main` branch is the primary production branch
+- `production` branch exists as an alternative tracking branch
+- Going forward, use `main` as the primary production branch in the workflow
+- Consider deprecating `exact-deployed-version` after confirming `main` is working correctly
+
+## Feature Workflow Summary
+
+**Standard Feature Development:**
+1. Create feature branch from `development` (e.g., `feature/new-swap-ui`)
+2. Develop and commit changes
+3. Merge to `development` when ready
+4. Merge to `staging` for testing environment
+5. **Only merge to `main` after thorough testing passes**
+
+**Key Principle:** Never merge to `main` without thorough testing in `staging` first.
 
