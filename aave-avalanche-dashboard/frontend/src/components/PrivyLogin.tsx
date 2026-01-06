@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 // @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,9 @@ import { toast } from 'sonner';
 export function PrivyLogin() {
     const { login, authenticated, ready, user, logout } = usePrivy();
     const { wallets } = useWallets();
+    const navigate = useNavigate();
+    const location = useLocation();
+    const hasRedirectedRef = useRef(false);
 
     // Get the user's Privy smart wallet address (Ethereum only, filter out Solana)
     const isEthereumAddress = (addr: string | undefined | null): boolean => {
@@ -168,6 +172,12 @@ export function PrivyLogin() {
                             console.log('[PrivyLogin] ✅ Wallet association stored in Redis');
                             console.log('[PrivyLogin] Wallet:', walletAddress);
                             console.log('[PrivyLogin] Privy User ID:', user.id);
+                            
+                            // Redirect to /stack on successful login (only once, only if on root path)
+                            if (!hasRedirectedRef.current && location.pathname === '/') {
+                                hasRedirectedRef.current = true;
+                                navigate('/stack', { replace: true });
+                            }
                         } else {
                             console.error('[PrivyLogin] ❌ Association failed - backend returned success:false');
                             console.error('[PrivyLogin] Result:', result);
