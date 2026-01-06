@@ -37,9 +37,137 @@ export function Footer() {
           <p className="text-center text-xs text-muted-foreground">
             High-yield savings via Aave • 2.5x leveraged Bitcoin positions • Simple, secure, designed for US users
           </p>
-          <p className="text-center text-xs text-muted-foreground">
-            Powered by Aave V3 • GMX • Avalanche C-Chain
-          </p>
+          {/* Powered By Section with Logos */}
+          <div className="flex flex-col items-center gap-3 pt-4 border-t border-border/30">
+            <p className="text-xs text-muted-foreground mb-2">Powered by</p>
+            <div className="flex flex-wrap items-center justify-center gap-4 md:gap-6">
+              {/* Square */}
+              <a
+                href="https://squareup.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="opacity-70 hover:opacity-100 transition-opacity flex items-center"
+                title="Square - Payment Processing"
+              >
+                <img
+                  src="https://developer.squareup.com/static/img/square-logo.svg"
+                  alt="Square"
+                  className="h-5 w-auto max-w-[60px]"
+                  onError={(e) => {
+                    e.currentTarget.outerHTML = '<span class="text-xs text-muted-foreground">Square</span>';
+                  }}
+                />
+              </a>
+              
+              {/* Aave */}
+              <a
+                href="https://aave.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="opacity-70 hover:opacity-100 transition-opacity flex items-center"
+                title="Aave - DeFi Lending"
+              >
+                <img
+                  src="https://aave.com/favicon32.png"
+                  alt="Aave"
+                  className="h-5 w-auto max-w-[60px]"
+                  onError={(e) => {
+                    e.currentTarget.outerHTML = '<span class="text-xs text-muted-foreground">Aave</span>';
+                  }}
+                />
+              </a>
+              
+              {/* GMX */}
+              <a
+                href="https://gmx.io"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="opacity-70 hover:opacity-100 transition-opacity flex items-center"
+                title="GMX - Decentralized Trading"
+              >
+                <img
+                  src="https://app.gmx.io/favicon.ico"
+                  alt="GMX"
+                  className="h-5 w-auto max-w-[60px]"
+                  onError={(e) => {
+                    e.currentTarget.outerHTML = '<span class="text-xs text-muted-foreground">GMX</span>';
+                  }}
+                />
+              </a>
+              
+              {/* Avalanche */}
+              <a
+                href="https://avax.network"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="opacity-70 hover:opacity-100 transition-opacity flex items-center"
+                title="Avalanche - Blockchain Network"
+              >
+                <img
+                  src="https://avax.network/favicon.ico"
+                  alt="Avalanche"
+                  className="h-5 w-auto max-w-[60px]"
+                  onError={(e) => {
+                    e.currentTarget.outerHTML = '<span class="text-xs text-muted-foreground">Avalanche</span>';
+                  }}
+                />
+              </a>
+              
+              {/* Privy */}
+              <a
+                href="https://privy.io"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="opacity-70 hover:opacity-100 transition-opacity flex items-center"
+                title="Privy - Wallet Infrastructure"
+              >
+                <img
+                  src="https://privy.io/favicon.ico"
+                  alt="Privy"
+                  className="h-5 w-auto max-w-[60px]"
+                  onError={(e) => {
+                    e.currentTarget.outerHTML = '<span class="text-xs text-muted-foreground">Privy</span>';
+                  }}
+                />
+              </a>
+              
+              {/* Trader Joe */}
+              <a
+                href="https://traderjoexyz.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="opacity-70 hover:opacity-100 transition-opacity flex items-center"
+                title="Trader Joe - DEX"
+              >
+                <img
+                  src="https://traderjoexyz.com/favicon.ico"
+                  alt="Trader Joe"
+                  className="h-5 w-auto max-w-[60px]"
+                  onError={(e) => {
+                    e.currentTarget.outerHTML = '<span class="text-xs text-muted-foreground">Trader Joe</span>';
+                  }}
+                />
+              </a>
+              
+              {/* CoinGecko */}
+              <a
+                href="https://coingecko.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="opacity-70 hover:opacity-100 transition-opacity flex items-center"
+                title="CoinGecko - Price Data"
+              >
+                <img
+                  src="https://coingecko.com/favicon.ico"
+                  alt="CoinGecko"
+                  className="h-5 w-auto max-w-[60px]"
+                  onError={(e) => {
+                    e.currentTarget.outerHTML = '<span class="text-xs text-muted-foreground">CoinGecko</span>';
+                  }}
+                />
+              </a>
+            </div>
+          </div>
           <p className="text-center text-xs text-muted-foreground">
             ⚠️ This product involves risk. Automated leverage trading can result in total loss of capital. Not investment advice.
           </p>
