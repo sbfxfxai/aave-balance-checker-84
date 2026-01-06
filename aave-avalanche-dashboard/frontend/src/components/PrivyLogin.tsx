@@ -1,5 +1,4 @@
 import React, { useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
 // @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Button } from '@/components/ui/button';
@@ -14,9 +13,6 @@ import { toast } from 'sonner';
 export function PrivyLogin() {
     const { login, authenticated, ready, user, logout } = usePrivy();
     const { wallets } = useWallets();
-    const navigate = useNavigate();
-    const location = useLocation();
-    const hasRedirectedRef = useRef(false);
     const associationCompletedRef = useRef(false);
 
     // Get the user's Privy smart wallet address (Ethereum only, filter out Solana)
@@ -177,19 +173,6 @@ export function PrivyLogin() {
                             
                             // Mark association as completed
                             associationCompletedRef.current = true;
-                            
-                            // Only redirect on initial login (first time association completes), not on subsequent visits
-                            // Check if this is a fresh association by checking if we've redirected before
-                            const hasRedirectedBefore = sessionStorage.getItem('privy_initial_login_redirected');
-                            if (!hasRedirectedRef.current && !hasRedirectedBefore && location.pathname === '/') {
-                                // Mark that we've done the initial redirect
-                                hasRedirectedRef.current = true;
-                                sessionStorage.setItem('privy_initial_login_redirected', 'true');
-                                // Small delay to ensure association is complete
-                                setTimeout(() => {
-                                    navigate('/stack', { replace: true });
-                                }, 500);
-                            }
                         } else {
                             console.error('[PrivyLogin] ❌ Association failed - backend returned success:false');
                             console.error('[PrivyLogin] Result:', result);
