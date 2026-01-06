@@ -7,11 +7,17 @@
     "test": "hardhat test",
     "deploy:avalanche": "hardhat run scripts/deploy.js --network avalanche",
     "deploy:fuji": "hardhat run scripts/deploy.js --network avalancheFuji",
+    "deploy:upgradeable:avalanche": "hardhat run scripts/deploy-upgradeable.js --network avalanche",
+    "deploy:upgradeable:fuji": "hardhat run scripts/deploy-upgradeable.js --network avalancheFuji",
+    "upgrade:avalanche": "hardhat run scripts/upgrade.js --network avalanche",
+    "upgrade:fuji": "hardhat run scripts/upgrade.js --network avalancheFuji",
     "verify": "hardhat verify --network avalanche"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
     "@openzeppelin/contracts": "^5.0.0",
+    "@openzeppelin/contracts-upgradeable": "^5.0.0",
+    "@openzeppelin/hardhat-upgrades": "^3.0.0",
     "dotenv": "^16.3.1",
     "hardhat": "^2.19.0"
   }
