@@ -37,26 +37,19 @@ export function Footer() {
           <p className="text-center text-xs text-muted-foreground">
             High-yield savings via Aave • 2.5x leveraged Bitcoin positions • Simple, secure, designed for US users
           </p>
-          {/* Powered By Section with Logos */}
+          {/* Powered By Section with Brand Names */}
           <div className="flex flex-col items-center gap-3 pt-4 border-t border-border/30">
-            <p className="text-xs text-muted-foreground mb-2">Powered by</p>
-            <div className="flex flex-wrap items-center justify-center gap-3 md:gap-4">
+            <p className="text-xs text-muted-foreground mb-3">Powered by</p>
+            <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3">
               {/* Square */}
               <a
                 href="https://squareup.com"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center h-8 px-3 rounded-md bg-white/90 hover:bg-white transition-colors"
+                className="flex items-center justify-center h-9 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
                 title="Square - Payment Processing"
               >
-                <img
-                  src="https://developer.squareup.com/static/img/square-logo.svg"
-                  alt="Square"
-                  className="h-4 w-auto max-w-[50px]"
-                  onError={(e) => {
-                    e.currentTarget.outerHTML = '<span class="text-xs text-foreground font-medium">Square</span>';
-                  }}
-                />
+                <span className="text-xs font-semibold text-gray-800">Square</span>
               </a>
               
               {/* Aave */}
@@ -64,17 +57,10 @@ export function Footer() {
                 href="https://aave.com"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center h-8 px-3 rounded-md bg-white/90 hover:bg-white transition-colors"
+                className="flex items-center justify-center h-9 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
                 title="Aave - DeFi Lending"
               >
-                <img
-                  src="https://aave.com/favicon32.png"
-                  alt="Aave"
-                  className="h-5 w-auto max-w-[50px]"
-                  onError={(e) => {
-                    e.currentTarget.outerHTML = '<span class="text-xs text-foreground font-medium">Aave</span>';
-                  }}
-                />
+                <span className="text-xs font-semibold text-gray-800">Aave</span>
               </a>
               
               {/* GMX */}
@@ -82,17 +68,10 @@ export function Footer() {
                 href="https://gmx.io"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center h-8 px-3 rounded-md bg-white/90 hover:bg-white transition-colors"
+                className="flex items-center justify-center h-9 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
                 title="GMX - Decentralized Trading"
               >
-                <img
-                  src="https://app.gmx.io/favicon.ico"
-                  alt="GMX"
-                  className="h-5 w-auto max-w-[50px]"
-                  onError={(e) => {
-                    e.currentTarget.outerHTML = '<span class="text-xs text-foreground font-medium">GMX</span>';
-                  }}
-                />
+                <span className="text-xs font-semibold text-gray-800">GMX</span>
               </a>
               
               {/* Avalanche */}
@@ -100,17 +79,10 @@ export function Footer() {
                 href="https://avax.network"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center h-8 px-3 rounded-md bg-white/90 hover:bg-white transition-colors"
+                className="flex items-center justify-center h-9 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
                 title="Avalanche - Blockchain Network"
               >
-                <img
-                  src="https://avax.network/favicon.ico"
-                  alt="Avalanche"
-                  className="h-5 w-auto max-w-[50px]"
-                  onError={(e) => {
-                    e.currentTarget.outerHTML = '<span class="text-xs text-foreground font-medium">Avalanche</span>';
-                  }}
-                />
+                <span className="text-xs font-semibold text-gray-800">Avalanche</span>
               </a>
               
               {/* Privy */}
@@ -118,17 +90,10 @@ export function Footer() {
                 href="https://privy.io"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center h-8 px-3 rounded-md bg-white/90 hover:bg-white transition-colors"
+                className="flex items-center justify-center h-9 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
                 title="Privy - Wallet Infrastructure"
               >
-                <img
-                  src="https://privy.io/favicon.ico"
-                  alt="Privy"
-                  className="h-5 w-auto max-w-[50px]"
-                  onError={(e) => {
-                    e.currentTarget.outerHTML = '<span class="text-xs text-foreground font-medium">Privy</span>';
-                  }}
-                />
+                <span className="text-xs font-semibold text-gray-800">Privy</span>
               </a>
               
               {/* Trader Joe */}
@@ -136,17 +101,10 @@ export function Footer() {
                 href="https://traderjoexyz.com"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center h-8 px-3 rounded-md bg-white/90 hover:bg-white transition-colors"
+                className="flex items-center justify-center h-9 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
                 title="Trader Joe - DEX"
               >
-                <img
-                  src="https://traderjoexyz.com/favicon.ico"
-                  alt="Trader Joe"
-                  className="h-5 w-auto max-w-[50px]"
-                  onError={(e) => {
-                    e.currentTarget.outerHTML = '<span class="text-xs text-foreground font-medium">Trader Joe</span>';
-                  }}
-                />
+                <span className="text-xs font-semibold text-gray-800">Trader Joe</span>
               </a>
               
               {/* CoinGecko */}
@@ -154,17 +112,10 @@ export function Footer() {
                 href="https://coingecko.com"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center h-8 px-3 rounded-md bg-white/90 hover:bg-white transition-colors"
+                className="flex items-center justify-center h-9 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
                 title="CoinGecko - Price Data"
               >
-                <img
-                  src="https://coingecko.com/favicon.ico"
-                  alt="CoinGecko"
-                  className="h-5 w-auto max-w-[50px]"
-                  onError={(e) => {
-                    e.currentTarget.outerHTML = '<span class="text-xs text-foreground font-medium">CoinGecko</span>';
-                  }}
-                />
+                <span className="text-xs font-semibold text-gray-800">CoinGecko</span>
               </a>
             </div>
           </div>
