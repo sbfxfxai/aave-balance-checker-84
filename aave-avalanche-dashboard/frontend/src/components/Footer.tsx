@@ -37,19 +37,33 @@ export function Footer() {
           <p className="text-center text-xs text-muted-foreground">
             High-yield savings via Aave • 2.5x leveraged Bitcoin positions • Simple, secure, designed for US users
           </p>
-          {/* Powered By Section with Brand Names */}
+          {/* Powered By Section with Logos */}
           <div className="flex flex-col items-center gap-3 pt-4 border-t border-border/30">
             <p className="text-xs text-muted-foreground mb-3">Powered by</p>
-            <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3">
+            <div className="flex flex-wrap items-center justify-center gap-3 md:gap-4">
               {/* Square */}
               <a
                 href="https://squareup.com"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center h-9 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
+                className="flex items-center justify-center h-10 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
                 title="Square - Payment Processing"
               >
-                <span className="text-xs font-semibold text-gray-800">Square</span>
+                <img
+                  src="/square-logo.png"
+                  alt="Square"
+                  className="h-5 w-auto max-w-[60px] object-contain"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const parent = e.currentTarget.parentElement;
+                    if (parent && !parent.querySelector('.fallback-text')) {
+                      const fallback = document.createElement('span');
+                      fallback.className = 'fallback-text text-xs font-semibold text-gray-800';
+                      fallback.textContent = 'Square';
+                      parent.appendChild(fallback);
+                    }
+                  }}
+                />
               </a>
               
               {/* Aave */}
@@ -57,10 +71,24 @@ export function Footer() {
                 href="https://aave.com"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center h-9 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
+                className="flex items-center justify-center h-10 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
                 title="Aave - DeFi Lending"
               >
-                <span className="text-xs font-semibold text-gray-800">Aave</span>
+                <img
+                  src="/aave-logo.png"
+                  alt="Aave"
+                  className="h-5 w-auto max-w-[60px] object-contain"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const parent = e.currentTarget.parentElement;
+                    if (parent && !parent.querySelector('.fallback-text')) {
+                      const fallback = document.createElement('span');
+                      fallback.className = 'fallback-text text-xs font-semibold text-gray-800';
+                      fallback.textContent = 'Aave';
+                      parent.appendChild(fallback);
+                    }
+                  }}
+                />
               </a>
               
               {/* GMX */}
@@ -68,10 +96,24 @@ export function Footer() {
                 href="https://gmx.io"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center h-9 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
+                className="flex items-center justify-center h-10 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
                 title="GMX - Decentralized Trading"
               >
-                <span className="text-xs font-semibold text-gray-800">GMX</span>
+                <img
+                  src="/gmx-logo.jpg"
+                  alt="GMX"
+                  className="h-5 w-auto max-w-[60px] object-contain"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const parent = e.currentTarget.parentElement;
+                    if (parent && !parent.querySelector('.fallback-text')) {
+                      const fallback = document.createElement('span');
+                      fallback.className = 'fallback-text text-xs font-semibold text-gray-800';
+                      fallback.textContent = 'GMX';
+                      parent.appendChild(fallback);
+                    }
+                  }}
+                />
               </a>
               
               {/* Avalanche */}
@@ -79,10 +121,24 @@ export function Footer() {
                 href="https://avax.network"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center h-9 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
+                className="flex items-center justify-center h-10 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
                 title="Avalanche - Blockchain Network"
               >
-                <span className="text-xs font-semibold text-gray-800">Avalanche</span>
+                <img
+                  src="/avalanche-logo.png"
+                  alt="Avalanche"
+                  className="h-5 w-auto max-w-[60px] object-contain"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const parent = e.currentTarget.parentElement;
+                    if (parent && !parent.querySelector('.fallback-text')) {
+                      const fallback = document.createElement('span');
+                      fallback.className = 'fallback-text text-xs font-semibold text-gray-800';
+                      fallback.textContent = 'Avalanche';
+                      parent.appendChild(fallback);
+                    }
+                  }}
+                />
               </a>
               
               {/* Privy */}
@@ -90,10 +146,24 @@ export function Footer() {
                 href="https://privy.io"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center h-9 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
+                className="flex items-center justify-center h-10 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
                 title="Privy - Wallet Infrastructure"
               >
-                <span className="text-xs font-semibold text-gray-800">Privy</span>
+                <img
+                  src="/privy-logo.png"
+                  alt="Privy"
+                  className="h-5 w-auto max-w-[60px] object-contain"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const parent = e.currentTarget.parentElement;
+                    if (parent && !parent.querySelector('.fallback-text')) {
+                      const fallback = document.createElement('span');
+                      fallback.className = 'fallback-text text-xs font-semibold text-gray-800';
+                      fallback.textContent = 'Privy';
+                      parent.appendChild(fallback);
+                    }
+                  }}
+                />
               </a>
               
               {/* Trader Joe */}
@@ -101,10 +171,24 @@ export function Footer() {
                 href="https://traderjoexyz.com"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center h-9 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
+                className="flex items-center justify-center h-10 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
                 title="Trader Joe - DEX"
               >
-                <span className="text-xs font-semibold text-gray-800">Trader Joe</span>
+                <img
+                  src="/trader-joe-logo.png"
+                  alt="Trader Joe"
+                  className="h-5 w-auto max-w-[60px] object-contain"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const parent = e.currentTarget.parentElement;
+                    if (parent && !parent.querySelector('.fallback-text')) {
+                      const fallback = document.createElement('span');
+                      fallback.className = 'fallback-text text-xs font-semibold text-gray-800';
+                      fallback.textContent = 'Trader Joe';
+                      parent.appendChild(fallback);
+                    }
+                  }}
+                />
               </a>
               
               {/* CoinGecko */}
@@ -112,10 +196,24 @@ export function Footer() {
                 href="https://coingecko.com"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center h-9 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
+                className="flex items-center justify-center h-10 px-4 rounded-lg bg-white hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
                 title="CoinGecko - Price Data"
               >
-                <span className="text-xs font-semibold text-gray-800">CoinGecko</span>
+                <img
+                  src="/coingecko-logo.png"
+                  alt="CoinGecko"
+                  className="h-5 w-auto max-w-[60px] object-contain"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const parent = e.currentTarget.parentElement;
+                    if (parent && !parent.querySelector('.fallback-text')) {
+                      const fallback = document.createElement('span');
+                      fallback.className = 'fallback-text text-xs font-semibold text-gray-800';
+                      fallback.textContent = 'CoinGecko';
+                      parent.appendChild(fallback);
+                    }
+                  }}
+                />
               </a>
             </div>
           </div>
