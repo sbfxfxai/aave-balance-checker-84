@@ -1,7 +1,10 @@
+import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { SimpleDashboard } from '@/components/SimpleDashboard';
 import { NetworkGuard } from '@/components/NetworkGuard';
 import { Footer } from '@/components/Footer';
 import { useAccount } from 'wagmi';
+import { usePrivy } from '@privy-io/react-auth';
 import { TrendingUp, Zap, Bitcoin } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -13,6 +16,15 @@ import { OptimizedLogo } from '@/components/OptimizedLogo';
 
 function DashboardContent() {
   const { isConnected } = useAccount();
+  const { authenticated, ready } = usePrivy();
+  const navigate = useNavigate();
+
+  // Redirect authenticated users to /stack
+  useEffect(() => {
+    if (ready && (authenticated || isConnected)) {
+      navigate('/stack', { replace: true });
+    }
+  }, [ready, authenticated, isConnected, navigate]);
 
   return (
     <div className="min-h-screen bg-gradient-subtle">
