@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Zap, TrendingDown, Check, Info } from 'lucide-react';
+import { Zap, TrendingDown, Check, Info, ExternalLink } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useErgcDiscount } from '@/hooks/useErgcDiscount';
@@ -162,6 +162,21 @@ export function ErgcDiscountWidget({ address, onPurchaseClick, compact = false }
             >
               Buy {tokensNeeded.toFixed(0)} ERGC for ${(tokensNeeded * ERGC_DISCOUNT.PRICE_USD).toFixed(2)}
             </Button>
+            
+            <a
+              href="https://app.uniswap.org/explore/pools/avalanche/0x3c83d0058e9d1652534be264dba75cfcc2e1d48a3ff1d2c3611a194a361a16ee"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full px-4 py-2 rounded-lg bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500/20 hover:border-purple-500/50 transition-colors text-sm font-medium text-purple-400 hover:text-purple-300"
+            >
+              <Zap className="h-4 w-4" />
+              <span>Get ERGC on Uniswap (AVAX → ERGC)</span>
+              <ExternalLink className="h-4 w-4" />
+            </a>
+            
+            <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-2 text-xs text-center">
+              <span className="font-medium text-purple-400">Fee Discount:</span> Holding 100+ ERGC = <span className="font-bold text-purple-300">56% discount</span> on TiltVault platform fees
+            </div>
             
             <button
               onClick={() => setShowDetails(!showDetails)}
