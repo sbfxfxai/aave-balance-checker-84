@@ -50,7 +50,7 @@ export function Footer() {
           {/* Account Recovery Link */}
           <div className="flex justify-center pt-2">
             <a
-              href="https://auth.privy.io/apps/cmjr7fmh401r3lb0cwy6fmhhb/embedded-wallets"
+              href="https://dashboard.privy.io/"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 text-xs text-muted-foreground hover:text-emerald-500 transition-colors"
