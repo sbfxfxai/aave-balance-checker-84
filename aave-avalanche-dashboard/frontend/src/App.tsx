@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PrivyAuthProvider } from "@/components/PrivyAuthProvider";
+import { GoogleAnalytics } from "@/components/GoogleAnalytics";
 
 // Lazy load routes for code splitting
 const DashboardWithWeb3 = lazy(() => import("./pages/DashboardWithWeb3"));
@@ -92,6 +93,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <GoogleAnalytics />
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route 
