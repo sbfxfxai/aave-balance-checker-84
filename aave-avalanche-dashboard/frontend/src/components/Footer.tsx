@@ -1,5 +1,5 @@
 import React from 'react';
-import { Zap, ExternalLink } from 'lucide-react';
+import { Zap, ExternalLink, KeyRound } from 'lucide-react';
 import { FAQ } from './FAQ';
 
 export function Footer() {
@@ -46,6 +46,21 @@ export function Footer() {
           <p className="text-center text-xs sm:text-sm text-muted-foreground">
             Support: <a href="mailto:support@tiltvault.com" className="text-emerald-500 hover:underline">support@tiltvault.com</a>
           </p>
+          
+          {/* Account Recovery Link */}
+          <div className="flex justify-center pt-2">
+            <a
+              href="https://auth.privy.io/apps/cmjr7fmh401r3lb0cwy6fmhhb/embedded-wallets"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-xs text-muted-foreground hover:text-emerald-500 transition-colors"
+              title="Access your Privy account recovery, export keys, and troubleshoot wallet issues"
+            >
+              <KeyRound className="h-3.5 w-3.5" />
+              <span>Account Recovery & Wallet Keys</span>
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
         </div>
       </div>
     </footer>
