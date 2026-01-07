@@ -83,7 +83,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     // Store with 24 hour TTL (matches payment processing window)
-    // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
     await redis.set(`payment_info:${paymentId}`, JSON.stringify(paymentInfo), {
       ex: 24 * 60 * 60, // 24 hours
     });
@@ -91,10 +91,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Also update email->wallet mapping if email provided
     if (userEmail) {
       const emailWalletKey = `email_wallet:${normalizedEmail}`;
-      // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
       const existingWallet = await redis.get(emailWalletKey);
       if (!existingWallet) {
-        // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+        // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
         await redis.set(emailWalletKey, normalizedWallet, { ex: 365 * 24 * 60 * 60 }); // 1 year
       }
     }

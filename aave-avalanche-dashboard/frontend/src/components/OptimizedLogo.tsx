@@ -30,46 +30,16 @@ export function OptimizedLogo({
   const fetchPriority = loading === 'eager' ? 'high' : 'auto';
   
   return (
-    <picture>
-      {/* AVIF - Best compression, modern browsers */}
-      <source
-        srcSet="/tiltvault-logo-32w.avif 32w, /tiltvault-logo-64w.avif 64w, /tiltvault-logo-128w.avif 128w"
-        sizes="(max-width: 640px) 32px, 40px"
-        type="image/avif"
-      />
-      {/* WebP - Good compression, wide browser support */}
-      <source
-        srcSet="/tiltvault-logo-32w.webp 32w, /tiltvault-logo-64w.webp 64w, /tiltvault-logo-128w.webp 128w"
-        sizes="(max-width: 640px) 32px, 40px"
-        type="image/webp"
-      />
-      {/* PNG fallback - Optimized smaller versions */}
-      <source
-        srcSet="/tiltvault-logo-32w.png 32w, /tiltvault-logo-64w.png 64w, /tiltvault-logo-128w.png 128w"
-        sizes="(max-width: 640px) 32px, 40px"
-        type="image/png"
-      />
-      {/* Final fallback - Start with smallest optimized version */}
-      <img
-        src="/tiltvault-logo-32w.webp"
-        alt="TiltVault"
-        className={className}
-        width={width}
-        height={height}
-        loading={loading}
-        decoding="async"
-        {...(fetchPriority === 'high' && { fetchPriority: 'high' as const })}
-        onError={(e) => {
-          // Fallback chain: optimized webp -> optimized png -> original
-          const target = e.target as HTMLImageElement;
-          if (target.src.includes('tiltvault-logo-32w.webp')) {
-            target.src = '/tiltvault-logo-32w.png';
-          } else if (target.src.includes('tiltvault-logo-32w.png')) {
-            target.src = '/tiltvault-logo.png';
-          }
-        }}
-      />
-    </picture>
+    <img
+      src="/tiltvault-logo.webp"
+      alt="TiltVault"
+      className={className}
+      width={width}
+      height={height}
+      loading={loading}
+      decoding="async"
+      {...(fetchPriority === 'high' && { fetchPriority: 'high' as const })}
+    />
   );
 }
 

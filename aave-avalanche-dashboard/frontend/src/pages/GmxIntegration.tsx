@@ -1,7 +1,7 @@
 import { useMemo, useState, useCallback, useEffect, useRef, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAccount, usePublicClient, useWalletClient, useBalance, useSwitchChain } from 'wagmi';
-// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
+// @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { ethers } from 'ethers';
 import { avalanche } from 'wagmi/chains';
@@ -1387,7 +1387,6 @@ export default function GmxIntegration() {
                   <div className="text-sm font-medium">Detected balances</div>
                   <div className="text-sm text-muted-foreground">AVAX: {isConnected ? (avaxValue > 0n ? 'OK' : '0') : '—'}</div>
                   <div className="text-sm text-muted-foreground">USDC: {isConnected ? usdcBalance : '—'}</div>
-                  <div className="text-sm text-muted-foreground">USDC.e: {isConnected ? (usdcEBalance || '0') : '—'}</div>
                   {needsMigration && (
                     <div className="text-xs text-destructive font-medium p-2 bg-destructive/10 rounded">
                       ⚠️ Action Required: You have USDC.e but no native USDC. 
@@ -1406,7 +1405,7 @@ export default function GmxIntegration() {
                     disabled={isExecuting || isChecking}
                   />
                   <label htmlFor="confirmLiveTrade" className="text-sm leading-tight">
-                    I understand this will place a <span className="font-medium">live GMX</span> BTC long order on Avalanche using my USDC and AVAX for fees.
+                    A <span className="font-medium">live GMX</span> BTC long order will be placed on Avalanche.
                   </label>
                 </div>
               </div>

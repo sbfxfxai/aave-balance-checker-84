@@ -1,5 +1,5 @@
 import { useAccount, useDisconnect, useReadContract } from 'wagmi';
-// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
+// @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -245,13 +245,11 @@ export function SimpleDashboard() {
               </p>
             )}
           </div>
-          {parseFloat(ergcBalance || '0') > 0 && (
-            <div className="p-4 rounded-lg bg-purple-500/5 border border-purple-500/20">
-              <p className="font-medium text-purple-500">ERGC</p>
-              <p className="text-2xl font-bold">{balanceLoading ? '...' : parseFloat(ergcBalance).toFixed(2)}</p>
-              <p className="text-sm text-gray-600">EnergyCoin tokens</p>
-            </div>
-          )}
+          <div className="p-4 rounded-lg bg-purple-500/5 border border-purple-500/20">
+            <p className="font-medium text-purple-500">ERGC</p>
+            <p className="text-2xl font-bold">{balanceLoading ? '...' : parseFloat(ergcBalance || '0').toFixed(2)}</p>
+            <p className="text-sm text-gray-600">EnergyCoin tokens</p>
+          </div>
         </div>
       </Card>
 

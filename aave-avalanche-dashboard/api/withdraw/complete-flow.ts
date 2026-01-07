@@ -159,15 +159,15 @@ const WITHDRAWAL_LIST_TTL = 365 * 24 * 60 * 60; // 1 year for user withdrawal li
  */
 async function storeWithdrawal(withdrawalId: string, record: any): Promise<void> {
   const redis = getRedis();
-  // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+  // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
   await redis.set(`withdrawal:${withdrawalId}`, JSON.stringify(record), { ex: WITHDRAWAL_TTL });
   
   // Also maintain a list of withdrawals per wallet for quick lookup
   if (record.walletAddress) {
     const walletKey = `withdrawals:${record.walletAddress.toLowerCase()}`;
-    // @ts-expect-error - @upstash/redis types may not include lpush method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include lpush method in some TypeScript versions, but it exists at runtime
     await redis.lpush(walletKey, withdrawalId);
-    // @ts-expect-error - @upstash/redis types may not include expire method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include expire method in some TypeScript versions, but it exists at runtime
     await redis.expire(walletKey, WITHDRAWAL_LIST_TTL);
   }
 }
@@ -177,7 +177,7 @@ async function storeWithdrawal(withdrawalId: string, record: any): Promise<void>
  */
 async function getWithdrawal(withdrawalId: string): Promise<any | null> {
   const redis = getRedis();
-  // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+  // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
   const data = await redis.get(`withdrawal:${withdrawalId}`);
   if (!data) return null;
   return typeof data === 'string' ? JSON.parse(data) : data;
@@ -189,7 +189,7 @@ async function getWithdrawal(withdrawalId: string): Promise<any | null> {
 async function getWalletWithdrawals(walletAddress: string): Promise<any[]> {
   const redis = getRedis();
   const walletKey = `withdrawals:${walletAddress.toLowerCase()}`;
-  // @ts-expect-error - @upstash/redis types may not include lrange method in some TypeScript versions, but it exists at runtime
+  // @ts-ignore - @upstash/redis types may not include lrange method in some TypeScript versions, but it exists at runtime
   const withdrawalIds = await redis.lrange(walletKey, 0, -1) as string[];
   
   if (!withdrawalIds || withdrawalIds.length === 0) {

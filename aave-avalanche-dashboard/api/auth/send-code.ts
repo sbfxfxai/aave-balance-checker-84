@@ -74,7 +74,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     try {
       // Store code with 10-minute expiry (600 seconds)
-      // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
       await redis.set(`auth_code:${normalizedEmail}`, code, { ex: 600 });
       console.log(`[Auth] Code stored for ${normalizedEmail}: ${code}`);
     } catch (redisError) {

@@ -54,14 +54,14 @@ export async function checkRateLimit(
   const rateLimitKey = `rate_limit:${config.endpoint}:${clientId}`;
   
   // Get current count
-  // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+  // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
   const current = await redis.get(rateLimitKey);
   const count = current ? parseInt(current as string, 10) : 0;
   
   // Check if limit exceeded
   if (count >= config.maxRequests) {
     // Get TTL to calculate reset time
-    // @ts-expect-error - @upstash/redis types may not include ttl method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include ttl method in some TypeScript versions, but it exists at runtime
     const ttl = await redis.ttl(rateLimitKey);
     const resetAt = Date.now() + (ttl * 1000);
     
@@ -76,11 +76,11 @@ export async function checkRateLimit(
   // Increment counter
   if (count === 0) {
     // First request - set with expiry
-    // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
     await redis.set(rateLimitKey, '1', { ex: config.windowSeconds });
   } else {
     // Increment existing counter
-    // @ts-expect-error - @upstash/redis types may not include incr method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include incr method in some TypeScript versions, but it exists at runtime
     await redis.incr(rateLimitKey);
   }
   

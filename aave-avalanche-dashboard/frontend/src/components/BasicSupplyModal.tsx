@@ -4,34 +4,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useAccount, useBalance } from 'wagmi';
+import { useAccount, useReadContract } from 'wagmi';
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { parseUnits } from 'viem';
-import { CONTRACTS } from '@/config/contracts';
+import { parseUnits, formatUnits } from 'viem';
+import { CONTRACTS, ERC20_ABI } from '@/config/contracts';
 import { toast } from 'sonner';
 import { ArrowDownUp } from 'lucide-react';
 import { useAaveRates } from '@/hooks/useAaveRates';
-
-// Simple ERC20 ABI for USDC
-const ERC20_ABI = [
-  {
-    name: 'approve',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'spender', type: 'address' },
-      { name: 'amount', type: 'uint256' }
-    ],
-    outputs: []
-  },
-  {
-    name: 'balanceOf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'account', type: 'address' }],
-    outputs: [{ name: '', type: 'uint256' }]
-  }
-] as const;
 
 // Aave Pool ABI
 const AAVE_POOL_ABI = [
@@ -60,14 +39,30 @@ export function BasicSupplyModal({ isOpen, onClose }: BasicSupplyModalProps) {
   const { supplyAPY } = useAaveRates();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
   
-  // Get USDC balance
-  const { data: usdcBalance } = useBalance({
-    address: address,
-    token: CONTRACTS.USDC as `0x${string}`,
+  // Get USDC balance using readContract (same method as other ERC20 balances)
+  const { data: usdcBalanceRaw } = useReadContract({
+    address: CONTRACTS?.USDC as `0x${string}` | undefined,
+    abi: ERC20_ABI || [],
+    functionName: 'balanceOf',
+    args: address && CONTRACTS?.USDC ? [address as `0x${string}`] : undefined,
     query: {
-      enabled: !!address,
+      enabled: !!address && !!CONTRACTS?.USDC && !!ERC20_ABI,
+      refetchInterval: 15_000,
     },
   });
+
+  // Format USDC balance (6 decimals)
+  const usdcBalance = usdcBalanceRaw 
+    ? {
+        value: typeof usdcBalanceRaw === 'bigint' ? usdcBalanceRaw : BigInt(String(usdcBalanceRaw)),
+        formatted: formatUnits(
+          typeof usdcBalanceRaw === 'bigint' ? usdcBalanceRaw : BigInt(String(usdcBalanceRaw)),
+          6
+        ),
+        decimals: 6,
+        symbol: 'USDC',
+      }
+    : undefined;
 
   const [amount, setAmount] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);

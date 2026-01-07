@@ -3,7 +3,7 @@ import { ethers } from 'ethers';
 import { Redis } from '@upstash/redis';
 
 // Node.js built-in modules are available in Vercel environments
-// @ts-expect-error - crypto is a Node.js built-in module, types may not be available
+// @ts-ignore - crypto is a Node.js built-in module, types may not be available
 import crypto from 'crypto';
 
 // Buffer is available globally in Node.js/Vercel environments
@@ -83,18 +83,18 @@ interface UserPosition {
 
 async function savePosition(position: UserPosition): Promise<void> {
   const redis = getRedis();
-  // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+  // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
   await redis.set(`position:${position.id}`, JSON.stringify(position), { ex: 7 * 24 * 60 * 60 }); // 7 days
 }
 
 async function updatePosition(id: string, updates: Partial<UserPosition>): Promise<void> {
   const redis = getRedis();
-  // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+  // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
   const existing = await redis.get(`position:${id}`);
   if (existing) {
     const position = JSON.parse(existing as string);
     Object.assign(position, updates);
-    // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
     await redis.set(`position:${id}`, JSON.stringify(position), { ex: 7 * 24 * 60 * 60 });
   }
 }
@@ -173,7 +173,7 @@ const PAYMENT_CACHE_TTL = 24 * 60 * 60; // 24 hours in seconds
 
 async function isPaymentProcessed(paymentId: string): Promise<{ processed: boolean; error?: string }> {
   const redis = getRedis();
-  // @ts-expect-error - @upstash/redis types may not include exists method in some TypeScript versions, but it exists at runtime
+  // @ts-ignore - @upstash/redis types may not include exists method in some TypeScript versions, but it exists at runtime
   const exists = await redis.exists(`payment:${paymentId}`);
   console.log(`[Webhook] Redis check for ${paymentId}: exists=${exists}`);
   return { processed: exists > 0 };
@@ -182,7 +182,7 @@ async function isPaymentProcessed(paymentId: string): Promise<{ processed: boole
 async function markPaymentProcessed(paymentId: string, txHash?: string): Promise<boolean> {
   try {
     const redis = getRedis();
-    // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
     await redis.set(`payment:${paymentId}`, JSON.stringify({ 
       txHash, 
       processedAt: new Date().toISOString() 
@@ -232,7 +232,7 @@ const GMX_BTC_MARKET = '0xFb02132333A79C8B5Bd0b64E3AbccA5f7fAf2937'; // BTC/USD 
 // GMX minimum requirements
 const GMX_MIN_COLLATERAL_USD = 5;
 const GMX_MIN_POSITION_SIZE_USD = 10;
-const AAVE_MIN_SUPPLY_USD = 1; // TEMPORARY: Set to $1 for testing, will revert to 0.5 after verification
+const AAVE_MIN_SUPPLY_USD = 10; // Minimum $10 deposit required
 
 // Fee and gas settings
 const AVAX_TO_SEND_FOR_GMX = ethers.parseEther('0.06'); // 0.06 AVAX sent to user for GMX execution (balanced/aggressive)
@@ -272,7 +272,7 @@ class PaymentStateManager {
 
   async acquireLock(paymentId: string, ttl: number = 300): Promise<boolean> {
     const lockKey = `payment_lock:${paymentId}`;
-    // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
     const result = await this.redis.set(lockKey, 'processing', {
       ex: ttl,
       nx: true,
@@ -281,18 +281,18 @@ class PaymentStateManager {
   }
 
   async releaseLock(paymentId: string): Promise<void> {
-    // @ts-expect-error - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
     await this.redis.del(`payment_lock:${paymentId}`);
   }
 
   async getState(paymentId: string): Promise<PaymentState | null> {
-    // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
     const state = await this.redis.get(`payment_state:${paymentId}`);
     return state as PaymentState | null;
   }
 
   async setState(paymentId: string, state: PaymentState, ttl: number = 86400): Promise<void> {
-    // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
     await this.redis.set(`payment_state:${paymentId}`, state, { ex: ttl });
   }
 
@@ -309,7 +309,7 @@ class PaymentStateManager {
 
   async getPaymentInfo(paymentId: string): Promise<any | null> {
     const redis = getRedis();
-    // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
     const data = await redis.get(`payment_info:${paymentId}`);
     if (!data) return null;
     return typeof data === 'string' ? JSON.parse(data) : data;
@@ -1751,6 +1751,7 @@ async function executeGmxFromHubWallet(
       console.log('[GMX Hub] Approving USDC to Exchange Router...');
       try {
         const approveTxHash = await walletClient.writeContract({
+          account,
           address: USDC_CONTRACT as `0x${string}`,
           abi: [{ name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] }],
           functionName: 'approve',
@@ -2540,7 +2541,7 @@ async function executeStrategyFromUserWallet(
   // These are no longer stored with wallet key (redundant storage removed)
   const redis = getRedis();
   const paymentInfoKey = `payment_info:${paymentId}`;
-  // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+  // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
   const paymentInfoRaw = await redis.get(paymentInfoKey);
 
   if (!paymentInfoRaw) {
@@ -3019,7 +3020,7 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
   let foundKey = null;
   for (const key of paymentInfoKeys) {
     if (key.includes('N/A')) continue;
-    // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
     const paymentInfoRaw = await redis.get(key);
     if (paymentInfoRaw) {
       paymentInfoFound = true;
@@ -3054,7 +3055,7 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
     // Payment already processed - get the stored result
     try {
       const redis = getRedis();
-      // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
       const storedData = await redis.get(`payment:${paymentId}`);
       if (storedData && typeof storedData === 'string') {
         const parsed = JSON.parse(storedData);
@@ -3158,14 +3159,14 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
 
   const redis = getRedis();
   try {
-    // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
     const paymentIdMapping = await redis.get(`square_to_frontend:${paymentId}`) as string;
     if (paymentIdMapping) {
       frontendPaymentId = paymentIdMapping;
       console.log(`[Webhook] Found frontend paymentId mapping: ${paymentId} -> ${frontendPaymentId}`);
     } else if (notePaymentId && notePaymentId !== paymentId) {
       // Store the mapping for future lookups
-      // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
       await redis.set(`square_to_frontend:${paymentId}`, notePaymentId, { ex: 86400 * 7 }); // 7 days expiry
       frontendPaymentId = notePaymentId;
       console.log(`[Webhook] Created paymentId mapping: ${paymentId} -> ${frontendPaymentId}`);
@@ -3176,21 +3177,21 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
 
   console.log(`[Webhook] Looking up payment_info with key: payment_info:${frontendPaymentId}`);
   console.log(`[Webhook] Also checking alternative keys: payment_info:${paymentId}, payment_info:${notePaymentId || 'N/A'}`);
-  // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+  // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
   const paymentInfoRaw = await redis.get(`payment_info:${frontendPaymentId}`);
 
   // Try alternative keys if primary lookup fails
   let alternativePaymentInfo = null;
   if (!paymentInfoRaw) {
     if (notePaymentId && notePaymentId !== frontendPaymentId) {
-      // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
       alternativePaymentInfo = await redis.get(`payment_info:${notePaymentId}`);
       if (alternativePaymentInfo) {
         console.log(`[Webhook] Found payment_info using alternative key: payment_info:${notePaymentId}`);
       }
     }
     if (!alternativePaymentInfo && paymentId !== frontendPaymentId) {
-      // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
       alternativePaymentInfo = await redis.get(`payment_info:${paymentId}`);
       if (alternativePaymentInfo) {
         console.log(`[Webhook] Found payment_info using Square payment ID: payment_info:${paymentId}`);
@@ -3260,7 +3261,7 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
     // Fallback: Look up wallet from email if payment info not found
     const normalizedEmail = email.toLowerCase().trim();
     const emailWalletKey = `email_wallet:${normalizedEmail}`;
-    // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
     const storedWallet = await redis.get(emailWalletKey);
     if (storedWallet) {
       walletAddress = storedWallet as string;
@@ -3564,17 +3565,17 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
     
     // Primary lookup: Direct Redis get
     try {
-      // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
       privyUserId = await redis.get(lookupKey) as string | null;
       console.log(`[Webhook] Primary lookup result: ${privyUserId || 'NOT FOUND'}`);
       
       // Additional diagnostic: Check if key exists (even if value is null)
-      // @ts-expect-error - @upstash/redis types may not include exists method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include exists method in some TypeScript versions, but it exists at runtime
       const keyExists = await redis.exists(lookupKey);
       console.log(`[Webhook] Key exists check: ${keyExists > 0 ? 'YES' : 'NO'}`);
       
       if (keyExists > 0) {
-        // @ts-expect-error - @upstash/redis types may not include ttl method in some TypeScript versions, but it exists at runtime
+        // @ts-ignore - @upstash/redis types may not include ttl method in some TypeScript versions, but it exists at runtime
         const ttl = await redis.ttl(lookupKey);
         console.log(`[Webhook] Key TTL: ${ttl} seconds (${ttl > 0 ? Math.floor(ttl / 86400) + ' days' : 'expired'})`);
         
@@ -3591,7 +3592,7 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
     if (!privyUserId) {
       console.log(`[Webhook] Primary lookup failed, trying case-insensitive fallback...`);
       try {
-        // @ts-expect-error - @upstash/redis types may not include keys method in some TypeScript versions, but it exists at runtime
+        // @ts-ignore - @upstash/redis types may not include keys method in some TypeScript versions, but it exists at runtime
         const keys = await redis.keys(`wallet_owner:*`);
         console.log(`[Webhook] Found ${keys.length} wallet_owner keys in Redis`);
         
@@ -3605,13 +3606,13 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
             const storedWallet = key.replace('wallet_owner:', '');
             if (storedWallet.toLowerCase() === normalizedWallet) {
               console.log(`[Webhook] ⚠️ Found wallet with different casing: ${key}`);
-              // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+              // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
               privyUserId = await redis.get(key) as string | null;
               if (privyUserId) {
                 console.log(`[Webhook] ✅ Found Privy user ID via case-insensitive lookup: ${privyUserId}`);
                 // Update the correct key with the found value (fix any casing issues)
                 try {
-                  // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+                  // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
                   await redis.set(lookupKey, privyUserId, { ex: 365 * 24 * 60 * 60 });
                   console.log(`[Webhook] ✅ Fixed casing issue - stored with correct key format`);
                 } catch (fixError) {
@@ -3640,13 +3641,13 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
     // Final verification: Test Redis connectivity
     try {
       const testKey = `test:${Date.now()}`;
-      // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
       await redis.set(testKey, 'test_value');
-      // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
       const testValue = await redis.get(testKey);
       const redisWorking = testValue === 'test_value';
       console.log(`[Webhook] Redis connectivity test: ${redisWorking ? 'WORKING' : 'BROKEN'}`);
-      // @ts-expect-error - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
       await redis.del(testKey);
       
       if (!redisWorking) {
@@ -3710,20 +3711,19 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
 
   console.log(`[Webhook] ✅ Final amount to send: $${depositAmount} (validated against Square payment: $${amountUsd})`);
 
-  // CRITICAL: For GMX strategies, DO NOT send USDC - execute GMX directly from hub wallet
-  // This matches the Bitcoin page flow exactly: no USDC transfer, just execute GMX
-  if (isConnectedWallet && gmxAmount > 0) {
-    console.log(`[Webhook] ⚠️ GMX strategy detected - SKIPPING USDC transfer (matching Bitcoin page flow)`);
-    console.log(`[Webhook] GMX will execute from hub wallet using hub's USDC (exactly like Bitcoin page)`);
+  // CRITICAL: For connected wallets, DO NOT send USDC transfers
+  // - executeAaveFromHubWallet and executeGmxFromHubWallet supply directly from hub wallet
+  // - No USDC transfer needed - hub wallet executes strategies with its own USDC
+  // - Only exception: If Privy exists AND it's conservative-only (Aave only), send USDC for Privy execution
+  //   But even then, we should use hub wallet execution to avoid transfers
+  if (isConnectedWallet) {
+    // CRITICAL: Skip ALL USDC transfers for connected wallets
+    // Hub wallet execution (executeAaveFromHubWallet, executeGmxFromHubWallet) supplies directly
+    // This matches the Bitcoin page flow: no transfers, just direct execution
+    console.log(`[Webhook] ⚠️ Connected wallet detected - SKIPPING ALL USDC transfers`);
+    console.log(`[Webhook] Aave/GMX will execute from hub wallet using hub's USDC (no transfer needed)`);
+    console.log(`[Webhook] This prevents duplicate transfers - only supply transactions will occur`);
     transferResult = { success: true }; // Mark as success since we're not transferring
-  } else if (isConnectedWallet) {
-    // Connected wallet with NO GMX (conservative only): Send USDC for Aave
-    console.log(`[Webhook] Sending $${depositAmount} USDC to connected wallet ${walletAddress} for Aave...`);
-    transferResult = await sendUsdcTransfer(walletAddress, depositAmount, `${lookupPaymentId}-connected`);
-    if (!transferResult.success) {
-      return { action: 'transfer_failed', paymentId: lookupPaymentId, status, error: transferResult.error };
-    }
-    console.log(`[Webhook] ✅ USDC transferred: ${transferResult.txHash}`);
     } else {
     // Generated wallet: Send full deposit amount
     console.log(`[Webhook] Sending $${depositAmount} USDC to generated wallet ${walletAddress}...`);
@@ -3740,7 +3740,7 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
   const avaxLockKey = `avax_sending:${lookupPaymentId}`;
   
   // Check if AVAX already sent
-  // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+  // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
   const avaxAlreadySent = await redis.get(avaxSentKey);
   
   if (avaxAlreadySent) {
@@ -3748,13 +3748,13 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
     console.log(`[Webhook] Previous AVAX tx: ${avaxAlreadySent}`);
   } else {
     // Check if another request is currently sending AVAX (prevent race conditions)
-    // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
     const isSending = await redis.get(avaxLockKey);
     if (isSending) {
       console.log(`[Webhook] ⏳ AVAX sending in progress by another request, waiting...`);
       // Wait and check if it completed
       await new Promise(resolve => setTimeout(resolve, 2000));
-      // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
       const retryCheck = await redis.get(avaxSentKey);
       
       if (retryCheck) {
@@ -3763,7 +3763,7 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
         console.warn(`[Webhook] ⚠️ AVAX lock held but no result after wait - may be stale lock`);
         // Check one more time after another short wait
         await new Promise(resolve => setTimeout(resolve, 1000));
-        // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+        // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
         const finalRetryCheck = await redis.get(avaxSentKey);
         if (finalRetryCheck) {
           console.log(`[Webhook] ✅ AVAX sent by concurrent request (final retry): ${finalRetryCheck}`);
@@ -3781,22 +3781,22 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
       });
       
       // Try to set lock - if it already exists, another request got there first
-      // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
       await redis.set(avaxLockKey, lockValue, { ex: 120 });
       
       // Immediately check if we still have the lock (another request might have set it between our check and set)
-      // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
       const lockCheck = await redis.get(avaxLockKey);
       const ourLockValue = lockCheck ? JSON.parse(lockCheck as string) : null;
       
       // Verify we own the lock by checking the requestId matches
       if (lockCheck && ourLockValue && ourLockValue.requestId === JSON.parse(lockValue).requestId) {
         // We own the lock - double-check AVAX wasn't sent while we were acquiring it
-        // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+        // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
         const doubleCheck = await redis.get(avaxSentKey);
         if (doubleCheck) {
           console.log(`[Webhook] ⚠️ AVAX was sent while acquiring lock: ${doubleCheck}`);
-          // @ts-expect-error - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
+          // @ts-ignore - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
           await redis.del(avaxLockKey); // Release lock
         } else {
           // We own the lock and AVAX hasn't been sent - proceed with sending
@@ -3812,7 +3812,7 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
           // CRITICAL: Validate wallet address is NOT hub wallet before sending
           if (walletAddress.toLowerCase() === HUB_WALLET_ADDRESS.toLowerCase()) {
             console.error(`[Webhook] ❌ CRITICAL: Cannot send AVAX to hub wallet! walletAddress=${walletAddress}`);
-            // @ts-expect-error - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
+            // @ts-ignore - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
             await redis.del(avaxLockKey); // Release lock
             return {
               action: 'invalid_wallet_address',
@@ -3823,18 +3823,18 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
           }
           
           // Final check right before sending (another request might have sent it in the last millisecond)
-          // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+          // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
           const preSendCheck = await redis.get(avaxSentKey);
           if (preSendCheck) {
             console.log(`[Webhook] ⚠️ AVAX was sent by another request right before we could send: ${preSendCheck}`);
-            // @ts-expect-error - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
+            // @ts-ignore - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
             await redis.del(avaxLockKey); // Release lock
           } else {
             try {
               const avaxTransfer = await sendAvaxToUser(walletAddress, avaxAmount, avaxPurpose);
               if (avaxTransfer.success && avaxTransfer.txHash) {
                 // Mark AVAX as sent FIRST (before releasing lock) to prevent race conditions
-                // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+                // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
                 await redis.set(avaxSentKey, avaxTransfer.txHash, { ex: 86400 }); // 24 hour expiry
                 console.log(`[Webhook] ✅ AVAX sent and marked: ${avaxTransfer.txHash}`);
               } else {
@@ -3842,7 +3842,7 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
               }
             } finally {
               // Always release lock, even if transfer fails or throws
-              // @ts-expect-error - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
+              // @ts-ignore - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
               await redis.del(avaxLockKey);
             }
           }
@@ -3851,7 +3851,7 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
         // Another request got the lock first - wait and check if they sent it
         console.log(`[Webhook] ⏳ Another request acquired lock first, waiting...`);
         await new Promise(resolve => setTimeout(resolve, 2000));
-        // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+        // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
         const concurrentCheck = await redis.get(avaxSentKey);
         if (concurrentCheck) {
           console.log(`[Webhook] ✅ AVAX sent by concurrent request: ${concurrentCheck}`);
@@ -3954,20 +3954,11 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
           console.log(`[Webhook] ✅✅✅ BTC long position created for user ${walletAddress}`);
           console.log(`[Webhook] ✅✅✅ Check position at: https://snowtrace.io/tx/${gmxResult.txHash}`);
           
-          // Send remaining USDC for Aave (if any)
+          // CRITICAL: DO NOT send USDC transfer for Aave here
+          // The Aave execution code below will handle it using hub wallet directly
+          // This prevents duplicate transfers - we only need the supply transaction
           if (aaveAmount > 0) {
-            console.log(`[Webhook] Sending $${aaveAmount} USDC for Aave...`);
-            const aaveUsdcTransfer = await sendUsdcTransfer(
-              walletAddress, 
-              aaveAmount, 
-              `${lookupPaymentId}-aave`
-            );
-            
-            if (!aaveUsdcTransfer.success) {
-              console.error(`[Webhook] ⚠️ Aave USDC transfer failed (GMX succeeded): ${aaveUsdcTransfer.error}`);
-            } else {
-              console.log(`[Webhook] ✅ Aave USDC transferred: ${aaveUsdcTransfer.txHash}`);
-            }
+            console.log(`[Webhook] Aave amount remaining: $${aaveAmount} - will be executed from hub wallet (no transfer needed)`);
           }
         }
       } catch (gmxError) {
@@ -4018,10 +4009,11 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
       console.log(`[Webhook] Executing AAVE: $${aaveAmount} (after GMX)`);
       
       // CRITICAL: For conservative deposits, USDC was sent to user wallet
-      // We MUST use Privy execution (user's wallet USDC) or wait for transfer and retry
+      // We MUST use Privy execution (user's wallet USDC) if USDC was sent to user wallet
       // Only use hub wallet execution if Privy is completely unavailable AND no USDC was sent
       const isConservativeOnly = gmxAmount === 0 && aaveAmount > 0;
-      const usdcWasSentToUser = isConservativeOnly && transferResult.success;
+      // USDC was sent if transfer was successful AND it was actually sent (not skipped)
+      const usdcWasSentToUser = transferResult.success && transferResult.txHash !== undefined;
       
       try {
         if (privyUserId) {
@@ -4198,7 +4190,7 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
         // Fallback to direct Redis deletion if state manager fails
         try {
           const redis = getRedis();
-          // @ts-expect-error - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
+          // @ts-ignore - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
           await redis.del(lockKey);
         } catch (fallbackError) {
           // Ignore - lock will expire automatically after 5 minutes
@@ -4571,7 +4563,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let redisStatus = 'unknown';
       try {
         const redis = getRedis();
-        // @ts-expect-error - @upstash/redis types may not include ping method in some TypeScript versions, but it exists at runtime
+        // @ts-ignore - @upstash/redis types may not include ping method in some TypeScript versions, but it exists at runtime
         await redis.ping();
         redisStatus = 'connected';
       } catch (err) {
@@ -4799,7 +4791,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const processingLockKey = `payment_processing:${payment.id}`;
       
       // Check if payment was already successfully processed
-      // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
       const existingResult = await redis.get(idempotencyKey);
       if (existingResult) {
         logger.info('Payment already processed - duplicate event', LogCategory.WEBHOOK, {
@@ -4826,7 +4818,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Check if payment is currently being processed (prevent race conditions)
-      // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
       const isProcessing = await redis.get(processingLockKey);
       if (isProcessing) {
         logger.info('Payment currently being processed by another request', LogCategory.WEBHOOK, {
@@ -4837,7 +4829,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         
         // Wait and check again (another request might have completed)
         await new Promise(resolve => setTimeout(resolve, 2000));
-        // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+        // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
         const retryResult = await redis.get(idempotencyKey);
         
         if (retryResult) {
@@ -4870,7 +4862,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Acquire processing lock (5 minute expiry - should be enough for any processing)
-      // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
       await redis.set(processingLockKey, JSON.stringify({ 
         eventType, 
         startedAt: new Date().toISOString() 
@@ -4907,7 +4899,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.log(`[Webhook] ========================================`);
         
         // Store successful result for idempotency (24 hour expiry)
-        // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+        // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
         await redis.set(idempotencyKey, JSON.stringify({
           ...result,
           processedAt: new Date().toISOString(),
@@ -4915,7 +4907,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }), { ex: 86400 });
         
         // Release processing lock
-        // @ts-expect-error - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
+        // @ts-ignore - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
         await redis.del(processingLockKey);
         
         logger.info('Payment processing completed successfully', LogCategory.WEBHOOK, {
@@ -4935,7 +4927,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const duration = Date.now() - startTime;
         
         // Release processing lock on error (allow retry)
-        // @ts-expect-error - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
+        // @ts-ignore - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
         await redis.del(processingLockKey);
         
         // Classify error to determine if it's retryable

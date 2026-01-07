@@ -1,18 +1,15 @@
 import { SimpleDashboard } from '@/components/SimpleDashboard';
 import { NetworkGuard } from '@/components/NetworkGuard';
 import { Footer } from '@/components/Footer';
-import { useAccount } from 'wagmi';
 import { TrendingUp, Zap, Bitcoin } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Web3Providers } from '@/components/Web3Providers';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { DirectWalletConnect } from '@/components/DirectWalletConnect';
 import { PrivyLogin } from '@/components/PrivyLogin';
 import { OptimizedLogo } from '@/components/OptimizedLogo';
 
 function DashboardContent() {
-  const { isConnected } = useAccount();
 
   return (
     <div className="min-h-screen bg-gradient-subtle">
@@ -76,9 +73,7 @@ function DashboardContent() {
 export default function DashboardWithWeb3() {
   return (
     <Web3Providers>
-      <DirectWalletConnect>
-        <DashboardContent />
-      </DirectWalletConnect>
+      <DashboardContent />
     </Web3Providers>
   );
 }

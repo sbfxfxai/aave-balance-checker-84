@@ -148,15 +148,15 @@ class AlertingSystem {
       const redis = getRedis();
       
       // Add alert to Redis list (prepend for newest first)
-      // @ts-expect-error - @upstash/redis types may not include lpush method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include lpush method in some TypeScript versions, but it exists at runtime
       await redis.lpush(this.ALERT_HISTORY_KEY, JSON.stringify(alert));
       
       // Trim list to maxHistorySize
-      // @ts-expect-error - @upstash/redis types may not include ltrim method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include ltrim method in some TypeScript versions, but it exists at runtime
       await redis.ltrim(this.ALERT_HISTORY_KEY, 0, this.maxHistorySize - 1);
       
       // Set TTL on the list (refresh on each add)
-      // @ts-expect-error - @upstash/redis types may not include expire method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include expire method in some TypeScript versions, but it exists at runtime
       await redis.expire(this.ALERT_HISTORY_KEY, this.ALERT_TTL);
     } catch (error) {
       // Log error but don't fail alert processing
@@ -312,7 +312,7 @@ class AlertingSystem {
       const redis = getRedis();
       
       // Get alerts from Redis (newest first)
-      // @ts-expect-error - @upstash/redis types may not include lrange method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include lrange method in some TypeScript versions, but it exists at runtime
       const alerts = await redis.lrange(this.ALERT_HISTORY_KEY, 0, limit - 1) as string[];
       
       return alerts
@@ -341,7 +341,7 @@ class AlertingSystem {
       const redis = getRedis();
       
       // Get all alerts
-      // @ts-expect-error - @upstash/redis types may not include lrange method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include lrange method in some TypeScript versions, but it exists at runtime
       const alerts = await redis.lrange(this.ALERT_HISTORY_KEY, 0, -1) as string[];
       
       // Find and update the alert
@@ -354,7 +354,7 @@ class AlertingSystem {
             alert.resolvedAt = new Date().toISOString();
             
             // Update in Redis
-            // @ts-expect-error - @upstash/redis types may not include lset method in some TypeScript versions, but it exists at runtime
+            // @ts-ignore - @upstash/redis types may not include lset method in some TypeScript versions, but it exists at runtime
             await redis.lset(this.ALERT_HISTORY_KEY, i, JSON.stringify(alert));
             
             logger.info(`Alert resolved: ${alertId}`, LogCategory.API, { alertId });

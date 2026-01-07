@@ -11,6 +11,8 @@
     "@vercel/node": "^5.5.16",
     "@zerodev/sdk": "^5.5.7",
     "ethers": "^6.16.0",
+    "form-data": "^4.0.0",
+    "mailgun.js": "^11.0.0",
     "viem": "^2.43.3"
   },
   "devDependencies": {

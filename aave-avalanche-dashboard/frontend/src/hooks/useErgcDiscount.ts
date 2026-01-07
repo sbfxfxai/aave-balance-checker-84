@@ -1,6 +1,6 @@
-import { useBalance } from 'wagmi';
-import { avalanche } from 'wagmi/chains';
-import { CONTRACTS, ERGC_DISCOUNT } from '@/config/contracts';
+import { useReadContract } from 'wagmi';
+import { formatUnits } from 'viem';
+import { CONTRACTS, ERGC_DISCOUNT, ERC20_ABI } from '@/config/contracts';
 import { useMemo } from 'react';
 
 export interface ErgcDiscountInfo {
@@ -16,15 +16,35 @@ export interface ErgcDiscountInfo {
 }
 
 export function useErgcDiscount(address: `0x${string}` | undefined): ErgcDiscountInfo {
-  const { data: ergcBalance, isLoading } = useBalance({
-    address,
-    token: CONTRACTS.ERGC as `0x${string}`,
-    chainId: avalanche.id,
+  const { data: ergcBalanceRaw, isLoading } = useReadContract({
+    address: CONTRACTS?.ERGC as `0x${string}` | undefined,
+    abi: ERC20_ABI || [],
+    functionName: 'balanceOf',
+    args: address && CONTRACTS?.ERGC ? [address] : undefined,
+    query: {
+      enabled: !!address && !!CONTRACTS?.ERGC && !!ERC20_ABI,
+      refetchInterval: 15_000,
+    },
   });
 
   const discountInfo = useMemo(() => {
-    const balanceRaw = ergcBalance?.value ? BigInt(ergcBalance.value) : 0n;
-    const balanceFormatted = ergcBalance?.formatted || '0';
+    // Safely convert to BigInt
+    const balanceRaw = (() => {
+      try {
+        if (!ergcBalanceRaw) return 0n;
+        if (typeof ergcBalanceRaw === 'bigint') return ergcBalanceRaw;
+        const value = ergcBalanceRaw as unknown;
+        if (typeof value === 'string' || typeof value === 'number') {
+          return BigInt(value.toString());
+        }
+        return 0n;
+      } catch {
+        return 0n;
+      }
+    })();
+    
+    // ERGC has 18 decimals
+    const balanceFormatted = balanceRaw > 0n ? formatUnits(balanceRaw, 18) : '0';
     const hasDiscount = balanceRaw >= ERGC_DISCOUNT.THRESHOLD;
     
     const savingsPerTrade = ERGC_DISCOUNT.STANDARD_FEE - ERGC_DISCOUNT.DISCOUNTED_FEE;
@@ -44,7 +64,7 @@ export function useErgcDiscount(address: `0x${string}` | undefined): ErgcDiscoun
       tokensNeeded,
       isLoading,
     };
-  }, [ergcBalance, isLoading]);
+  }, [ergcBalanceRaw, isLoading]);
 
   return discountInfo;
 }

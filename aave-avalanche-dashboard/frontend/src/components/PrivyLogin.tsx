@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
+// @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -280,7 +280,15 @@ export function PrivyLogin() {
                 </div>
 
                 <Button
-                    onClick={login}
+                    onClick={() => {
+                        console.log('[PrivyLogin] Login button clicked');
+                        try {
+                            login();
+                        } catch (error) {
+                            console.error('[PrivyLogin] Login error:', error);
+                            toast.error('Failed to open login. Please try again.');
+                        }
+                    }}
                     className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-6 text-lg"
                 >
                     <Mail className="mr-2 h-5 w-5" />

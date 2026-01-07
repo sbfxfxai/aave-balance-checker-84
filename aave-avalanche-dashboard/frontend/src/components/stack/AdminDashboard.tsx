@@ -21,7 +21,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { useSquareBalance, SquarePayment } from '@/hooks/useSquareBalance';
-import { useBalance, useWalletClient } from 'wagmi';
+import { useReadContract, useWalletClient } from 'wagmi';
 import { formatUnits, parseUnits } from 'viem';
 import { useToast } from '@/hooks/use-toast';
 import { Wallet as EthersWallet, ethers } from 'ethers';
@@ -49,11 +49,34 @@ export function AdminDashboard() {
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
   const { data: walletClient } = useWalletClient();
 
-  // Get USDC balance of hub wallet
-  const { data: usdcBalance, isLoading: usdcLoading, refetch: refetchUsdc } = useBalance({
-    address: HUB_WALLET,
-    token: USDC_ADDRESS,
+  // Get USDC balance of hub wallet using useReadContract (ERC20 token)
+  const { data: usdcBalanceRaw, isLoading: usdcLoading, refetch: refetchUsdc } = useReadContract({
+    address: USDC_ADDRESS as `0x${string}`,
+    abi: [
+      {
+        name: 'balanceOf',
+        type: 'function',
+        stateMutability: 'view',
+        inputs: [{ name: 'account', type: 'address' }],
+        outputs: [{ name: '', type: 'uint256' }],
+      },
+    ],
+    functionName: 'balanceOf',
+    args: [HUB_WALLET as `0x${string}`],
   });
+
+  // Format USDC balance (6 decimals)
+  const usdcBalance = usdcBalanceRaw 
+    ? {
+        value: typeof usdcBalanceRaw === 'bigint' ? usdcBalanceRaw : BigInt(String(usdcBalanceRaw)),
+        formatted: formatUnits(
+          typeof usdcBalanceRaw === 'bigint' ? usdcBalanceRaw : BigInt(String(usdcBalanceRaw)),
+          6
+        ),
+        decimals: 6,
+        symbol: 'USDC',
+      }
+    : undefined;
 
   const handleRefresh = async () => {
     setIsRefreshing(true);

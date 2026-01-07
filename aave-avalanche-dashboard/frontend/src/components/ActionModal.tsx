@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { Card } from '@/components/ui/card';
-// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
+// @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,13 +11,11 @@ import { useAccount, useReadContract, useBalance, useSwitchChain, usePublicClien
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { parseUnits, formatUnits, encodeFunctionData, type Hex, createPublicClient, http, createWalletClient } from 'viem';
 import { avalanche } from 'wagmi/chains';
-import { readContract, waitForTransactionReceipt } from '@wagmi/core';
 import { CONTRACTS, ERC20_ABI, AAVE_DATA_PROVIDER_ABI, WAVAX_ABI } from '@/config/contracts';
 import { toast } from 'sonner';
 import { getExplorerTxLink } from '@/lib/blockchain';
 import { useAavePositions } from '@/hooks/useAavePositions';
 import { useQueryClient } from '@tanstack/react-query';
-import { config } from '@/config/wagmi';
 import { parseError, getErrorMessage } from '@/utils/errorParser';
 import { TRADER_JOE_ROUTER_ABI } from '@/lib/constants';
 
@@ -209,16 +207,30 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
     },
   });
 
-  // Get WAVAX balance for repay action
-  const { data: wavaxBalance, refetch: refetchWavaxBalance } = useBalance({
-    address,
-    token: action === 'repay' ? (CONTRACTS.WAVAX as `0x${string}`) : undefined,
-    chainId: avalanche.id,
+  // Get WAVAX balance for repay action using useReadContract (ERC20 token)
+  const { data: wavaxBalanceRaw, refetch: refetchWavaxBalance } = useReadContract({
+    address: action === 'repay' ? (CONTRACTS.WAVAX as `0x${string}`) : undefined,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: address && action === 'repay' ? [address] : undefined,
     query: {
       enabled: isConnected && !!address && action === 'repay',
       refetchInterval: 15_000,
     },
   });
+
+  // Format WAVAX balance (18 decimals)
+  const wavaxBalance = wavaxBalanceRaw 
+    ? {
+        value: typeof wavaxBalanceRaw === 'bigint' ? wavaxBalanceRaw : BigInt(String(wavaxBalanceRaw)),
+        formatted: formatUnits(
+          typeof wavaxBalanceRaw === 'bigint' ? wavaxBalanceRaw : BigInt(String(wavaxBalanceRaw)),
+          18
+        ),
+        decimals: 18,
+        symbol: 'WAVAX',
+      }
+    : undefined;
 
   // Check WAVAX allowance for repay
   const { data: wavaxAllowance, refetch: refetchWavaxAllowance } = useReadContract({
@@ -310,8 +322,11 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
   // Utility function to wait for transaction with better error handling
   const waitForTransaction = useCallback(async (txHash: Hex, description: string): Promise<boolean> => {
+    if (!publicClient) {
+      throw new Error('Public client not available');
+    }
     try {
-      const receipt = await waitForTransactionReceipt(config, {
+      const receipt = await publicClient.waitForTransactionReceipt({
         hash: txHash,
         timeout: 120_000,
         pollingInterval: 2_000,
@@ -371,7 +386,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
     let currentAllowance = allowance || 0n;
     try {
       if (poolAddress) {
-        const freshAllowance = await readContract(config, {
+        if (!publicClient) {
+          throw new Error('Public client not available');
+        }
+        const freshAllowance = await publicClient.readContract({
           address: CONTRACTS.USDC as `0x${string}`,
           abi: ERC20_ABI,
           functionName: 'allowance',
@@ -399,7 +417,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
     console.log('=== FRESH BALANCE CHECK BEFORE SUPPLY ===');
     let freshBalance: bigint;
     try {
-      freshBalance = await readContract(config, {
+      if (!publicClient) {
+        throw new Error('Public client not available');
+      }
+      freshBalance = await publicClient.readContract({
         address: CONTRACTS.USDC as `0x${string}`,
         abi: ERC20_ABI,
         functionName: 'balanceOf',
@@ -784,7 +805,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
       // If allowance is insufficient, reset to approve; otherwise stay on supply for retry
       try {
         if (poolAddress && address) {
-          const freshAllowance = await readContract(config, {
+          if (!publicClient) {
+            throw new Error('Public client not available');
+          }
+          const freshAllowance = await publicClient.readContract({
             address: CONTRACTS.USDC as `0x${string}`,
             abi: ERC20_ABI,
             functionName: 'allowance',
@@ -957,7 +981,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
       const avaxBalanceWei = BigInt(avaxBalance.value);
 
       if (avaxBalanceWei < minAvaxForGasWei) {
-        const avaxBalanceFormatted = parseFloat(avaxBalance.formatted);
+        const avaxBalanceFormatted = avaxBalance?.value ? parseFloat(formatUnits(avaxBalance.value, avaxBalance.decimals || 18)) : 0;
         toast.error(`Insufficient AVAX for gas fees. You have ${avaxBalanceFormatted.toFixed(4)} AVAX, need at least 0.01 AVAX`);
         return;
       }
@@ -1045,7 +1069,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           // Get swap quote for slippage protection
           let amountOutMin = 0n;
           try {
-            const amountsOut = await readContract(config, {
+            if (!publicClient) {
+              throw new Error('Public client not available');
+            }
+            const amountsOut = await publicClient.readContract({
               address: CONTRACTS.TRADER_JOE_ROUTER as `0x${string}`,
               abi: TRADER_JOE_ROUTER_ABI,
               functionName: 'getAmountsOut',
@@ -1466,7 +1493,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           await new Promise(resolve => setTimeout(resolve, 3000));
 
           try {
-            const receipt = await waitForTransactionReceipt(config, {
+            if (!publicClient) {
+              throw new Error('Public client not available');
+            }
+            const receipt = await publicClient.waitForTransactionReceipt({
               hash: swapHash,
               timeout: 120_000,
               pollingInterval: 2_000,
@@ -2047,7 +2077,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           await new Promise(resolve => setTimeout(resolve, 3000));
 
           try {
-            const receipt = await waitForTransactionReceipt(config, {
+            if (!publicClient) {
+              throw new Error('Public client not available');
+            }
+            const receipt = await publicClient.waitForTransactionReceipt({
               hash: withdrawHash,
               timeout: 120_000,
               pollingInterval: 2_000,
@@ -2384,7 +2417,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           await new Promise(resolve => setTimeout(resolve, 3000));
 
           try {
-            const receipt = await waitForTransactionReceipt(config, {
+            if (!publicClient) {
+              throw new Error('Public client not available');
+            }
+            const receipt = await publicClient.waitForTransactionReceipt({
               hash: borrowHash,
               timeout: 120_000,
               pollingInterval: 2_000,
@@ -2403,7 +2439,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
               // Try to read updated borrow amount directly
               try {
-                const updatedWavaxReserveData = await readContract(config, {
+                const updatedWavaxReserveData = await publicClient.readContract({
                   address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
                   abi: AAVE_DATA_PROVIDER_ABI,
                   functionName: 'getUserReserveData',
@@ -2460,7 +2496,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
               // Try to read updated borrow amount
               try {
-                const updatedWavaxReserveData = await readContract(config, {
+                if (!publicClient) {
+                  throw new Error('Public client not available');
+                }
+                const updatedWavaxReserveData = await publicClient.readContract({
                   address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
                   abi: AAVE_DATA_PROVIDER_ABI,
                   functionName: 'getUserReserveData',
@@ -2533,7 +2572,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
             if (avaxBalanceWei >= neededAvaxWei) {
               // User has AVAX, offer to wrap it
-              toast.info(`You need ${formatUnits(neededWavaxWei, 18)} WAVAX but only have ${wavaxBalance ? wavaxBalance.formatted : '0'} WAVAX. Wrapping AVAX to WAVAX...`, {
+              toast.info(`You need ${formatUnits(neededWavaxWei, 18)} WAVAX but only have ${wavaxBalance?.formatted || '0'} WAVAX. Wrapping AVAX to WAVAX...`, {
                 duration: 10000,
               });
 
@@ -2676,7 +2715,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                       });
                       
                       await new Promise(resolve => setTimeout(resolve, 3000));
-                      const receipt = await waitForTransactionReceipt(config, {
+                      if (!publicClient) {
+                        throw new Error('Public client not available');
+                      }
+                      const receipt = await publicClient.waitForTransactionReceipt({
                         hash: wrapHash,
                         timeout: 120_000,
                         pollingInterval: 2_000,
@@ -2717,7 +2759,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                   // Wait for wrap confirmation
                   await new Promise(resolve => setTimeout(resolve, 3000));
 
-                  const wrapReceipt = await waitForTransactionReceipt(config, {
+                  if (!publicClient) {
+                    throw new Error('Public client not available');
+                  }
+                  const wrapReceipt = await publicClient.waitForTransactionReceipt({
                     hash: wrapHash as Hex,
                     timeout: 120_000,
                     pollingInterval: 2_000,
@@ -2732,7 +2777,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                 await refetchWavaxBalance();
 
                 // Refetch balance to get updated WAVAX amount
-                const updatedBalance = await readContract(config, {
+                const updatedBalance = await publicClient.readContract({
                   address: CONTRACTS.WAVAX as `0x${string}`,
                   abi: ERC20_ABI,
                   functionName: 'balanceOf',
@@ -2754,7 +2799,9 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
               }
             } else {
               // Not enough AVAX either
-              toast.error(`Insufficient balance. You have ${wavaxBalance ? wavaxBalance.formatted : '0'} WAVAX and ${avaxBalance.formatted} AVAX, need ${formatUnits(repayAmountWei, 18)} WAVAX total (including gas)`);
+              const wavaxFormatted = wavaxBalance?.formatted || '0';
+              const avaxFormatted = avaxBalance?.value ? formatUnits(avaxBalance.value, avaxBalance.decimals || 18) : '0';
+              toast.error(`Insufficient balance. You have ${wavaxFormatted} WAVAX and ${avaxFormatted} AVAX, need ${formatUnits(repayAmountWei, 18)} WAVAX total (including gas)`);
               setIsProcessing(false);
               return;
             }
@@ -2764,7 +2811,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           // Get current AVAX debt to validate repay amount
           let currentAvaxDebt = 0n;
           try {
-            const wavaxUserReserveData = await readContract(config, {
+            if (!publicClient) {
+              throw new Error('Public client not available');
+            }
+            const wavaxUserReserveData = await publicClient.readContract({
               address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
               abi: AAVE_DATA_PROVIDER_ABI,
               functionName: 'getUserReserveData',
@@ -2959,7 +3009,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                       });
                       
                       await new Promise(resolve => setTimeout(resolve, 3000));
-                      const receipt = await waitForTransactionReceipt(config, {
+                      if (!publicClient) {
+                        throw new Error('Public client not available');
+                      }
+                      const receipt = await publicClient.waitForTransactionReceipt({
                         hash: wrapHash,
                         timeout: 120_000,
                         pollingInterval: 2_000,
@@ -2973,7 +3026,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                       await refetchWavaxBalance();
                       
                       // Refetch balance to get updated WAVAX amount
-                      const updatedBalance = await readContract(config, {
+                      if (!publicClient) {
+                        throw new Error('Public client not available');
+                      }
+                      const updatedBalance = await publicClient.readContract({
                         address: CONTRACTS.WAVAX as `0x${string}`,
                         abi: ERC20_ABI,
                         functionName: 'balanceOf',
@@ -3017,7 +3073,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                   // Wait for wrap confirmation
                   await new Promise(resolve => setTimeout(resolve, 3000));
 
-                  const wrapReceipt = await waitForTransactionReceipt(config, {
+                  if (!publicClient) {
+                    throw new Error('Public client not available');
+                  }
+                  const wrapReceipt = await publicClient.waitForTransactionReceipt({
                     hash: wrapHash as Hex,
                     timeout: 120_000,
                     pollingInterval: 2_000,
@@ -3031,7 +3090,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                   await refetchWavaxBalance();
 
                   // Refetch balance to get updated WAVAX amount
-                  const updatedBalance = await readContract(config, {
+                  if (!publicClient) {
+                    throw new Error('Public client not available');
+                  }
+                  const updatedBalance = await publicClient.readContract({
                     address: CONTRACTS.WAVAX as `0x${string}`,
                     abi: ERC20_ABI,
                     functionName: 'balanceOf',
@@ -3053,7 +3115,9 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
             } else {
               // Not enough AVAX either
               const requiredFormatted = formatUnits(requiredWavax, 18);
-              toast.error(`Insufficient balance. You have ${wavaxBalance ? wavaxBalance.formatted : '0'} WAVAX and ${avaxBalance.formatted} AVAX, need ${requiredFormatted} WAVAX total (including gas).`, {
+              const wavaxFormatted = wavaxBalance?.value ? formatUnits(wavaxBalance.value, wavaxBalance.decimals || 18) : '0';
+              const avaxFormatted = avaxBalance?.value ? formatUnits(avaxBalance.value, avaxBalance.decimals || 18) : '0';
+              toast.error(`Insufficient balance. You have ${wavaxFormatted} WAVAX and ${avaxFormatted} AVAX, need ${requiredFormatted} WAVAX total (including gas).`, {
                 duration: 10000,
               });
               setIsProcessing(false);
@@ -3153,7 +3217,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
               await new Promise(resolve => setTimeout(resolve, 3000));
 
               try {
-                const approveReceipt = await waitForTransactionReceipt(config, {
+                if (!publicClient) {
+                  throw new Error('Public client not available');
+                }
+                const approveReceipt = await publicClient.waitForTransactionReceipt({
                   hash: approveHash,
                   timeout: 120_000,
                   pollingInterval: 2_000,
@@ -3492,7 +3559,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           await new Promise(resolve => setTimeout(resolve, 3000));
 
           try {
-            const receipt = await waitForTransactionReceipt(config, {
+            const receipt = await publicClient.waitForTransactionReceipt({
               hash: repayHash,
               timeout: 120_000,
               pollingInterval: 2_000,
@@ -3506,7 +3573,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
               // Explicitly refetch WAVAX user reserve data to get updated debt
               try {
-                const updatedWavaxReserveData = await readContract(config, {
+                const updatedWavaxReserveData = await publicClient.readContract({
                   address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
                   abi: AAVE_DATA_PROVIDER_ABI,
                   functionName: 'getUserReserveData',
@@ -3575,7 +3642,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
               // Try to fetch updated debt
               try {
-                const updatedWavaxReserveData = await readContract(config, {
+                const updatedWavaxReserveData = await publicClient.readContract({
                   address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
                   abi: AAVE_DATA_PROVIDER_ABI,
                   functionName: 'getUserReserveData',
@@ -3905,7 +3972,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
           // Wait for confirmation
           await new Promise(resolve => setTimeout(resolve, 3000));
-          const receipt = await waitForTransactionReceipt(config, { hash: sendHash as Hex });
+          if (!publicClient) {
+            throw new Error('Public client not available');
+          }
+          const receipt = await publicClient.waitForTransactionReceipt({ hash: sendHash as Hex });
 
           if (receipt.status === 'success') {
             toast.success(`Successfully sent ${amount} USDC to ${recipientAddress.slice(0, 6)}...${recipientAddress.slice(-4)}`);
@@ -4009,10 +4079,10 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                     <div>
                       <div className="text-xs text-muted-foreground">WAVAX Balance</div>
                       <div className="text-base font-semibold text-orange-700">
-                        {parseFloat(wavaxBalance.formatted).toFixed(4)} WAVAX
+                        {wavaxBalance?.value ? parseFloat(formatUnits(wavaxBalance.value, wavaxBalance.decimals || 18)).toFixed(4) : '0.0000'} WAVAX
                       </div>
                     </div>
-                    {avaxBalance && parseFloat(avaxBalance.formatted) > 0.01 && (
+                    {avaxBalance?.value !== undefined && avaxBalance.value > 0n && parseFloat(formatUnits(avaxBalance.value, avaxBalance.decimals || 18)) > 0.01 && (
                       <Button
                         type="button"
                         variant="outline"
@@ -4020,7 +4090,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                         onClick={async () => {
                           try {
                             setIsProcessing(true);
-                            const wrapAmount = parseFloat(avaxBalance.formatted) - 0.01; // Leave 0.01 for gas
+                            const wrapAmount = avaxBalance?.value ? parseFloat(formatUnits(avaxBalance.value, avaxBalance.decimals || 18)) - 0.01 : 0; // Leave 0.01 for gas
                             const wrapAmountWei = parseUnits(wrapAmount.toFixed(4), 18);
 
                             const wrapHash = await writeContractAsync({
@@ -4039,7 +4109,13 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                               },
                             });
 
-                            await waitForTransactionReceipt(config, {
+                            if (!publicClient) {
+                              throw new Error('Public client not available');
+                            }
+                            if (!publicClient) {
+                              throw new Error('Public client not available');
+                            }
+                            await publicClient.waitForTransactionReceipt({
                               hash: wrapHash as `0x${string}`,
                               timeout: 120_000,
                               pollingInterval: 2_000,

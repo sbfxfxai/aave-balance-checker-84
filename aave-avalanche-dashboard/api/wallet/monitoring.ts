@@ -29,32 +29,32 @@ export async function logEvent(event: MonitoringEvent): Promise<void> {
     const eventKey = `monitor:${event.endpoint}:${Date.now()}`;
     
     // Store event with 7 day TTL
-    // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
     await redis.set(eventKey, JSON.stringify(event), {
       ex: 7 * 24 * 60 * 60, // 7 days
     });
     
     // Update endpoint statistics
     const statsKey = `stats:${event.endpoint}`;
-    // @ts-expect-error - @upstash/redis types may not include incr method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include incr method in some TypeScript versions, but it exists at runtime
     await redis.incr(`${statsKey}:total`);
     
     if (event.statusCode >= 400) {
-      // @ts-expect-error - @upstash/redis types may not include incr method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include incr method in some TypeScript versions, but it exists at runtime
       await redis.incr(`${statsKey}:errors`);
     }
     
     if (event.statusCode >= 500) {
-      // @ts-expect-error - @upstash/redis types may not include incr method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include incr method in some TypeScript versions, but it exists at runtime
       await redis.incr(`${statsKey}:server_errors`);
     }
     
     // Set expiry on stats keys (30 days)
-    // @ts-expect-error - @upstash/redis types may not include expire method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include expire method in some TypeScript versions, but it exists at runtime
     await redis.expire(`${statsKey}:total`, 30 * 24 * 60 * 60);
-    // @ts-expect-error - @upstash/redis types may not include expire method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include expire method in some TypeScript versions, but it exists at runtime
     await redis.expire(`${statsKey}:errors`, 30 * 24 * 60 * 60);
-    // @ts-expect-error - @upstash/redis types may not include expire method in some TypeScript versions, but it exists at runtime
+    // @ts-ignore - @upstash/redis types may not include expire method in some TypeScript versions, but it exists at runtime
     await redis.expire(`${statsKey}:server_errors`, 30 * 24 * 60 * 60);
     
   } catch (error) {
@@ -141,11 +141,11 @@ export async function getEndpointStats(endpoint: string): Promise<{
     const statsKey = `stats:${endpoint}`;
     
     const [total, errors, serverErrors] = await Promise.all([
-      // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
       redis.get(`${statsKey}:total`),
-      // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
       redis.get(`${statsKey}:errors`),
-      // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+      // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
       redis.get(`${statsKey}:server_errors`),
     ]);
     

@@ -24,7 +24,15 @@ export const privyConfig: PrivyClientConfig = {
         logo: '/tiltvault-logo.png',
         walletList: [], // Hide wallet options since we use smart wallets
         walletChainType: 'ethereum-only', // Disable Solana to avoid connector warnings
+        // Disable injected wallet detection to prevent conflicts with Web3 connection
+        showWalletLoginFirst: false, // Don't show wallet login first
     },
+    
+    // Disable injected wallet connectors to prevent auto-detection conflicts
+    // We handle Web3 wallet connection separately via wagmi
+    // This prevents Privy from trying to auto-connect to MetaMask
+    // @ts-expect-error - Privy internal option to disable injected wallet detection
+    disableInjectedWalletAutoConnect: true,
 
     // Set Avalanche as default chain
     // NOTE: Including mainnet in supportedChains as workaround for Privy's chain detection

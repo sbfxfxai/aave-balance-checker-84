@@ -1,6 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
-import { readContract } from '@wagmi/core';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract, usePublicClient } from 'wagmi';
 import { parseEther, formatEther, parseUnits, formatUnits } from 'viem';
 import { avalanche } from 'wagmi/chains';
 import { CONTRACTS, ERC20_ABI, AAVE_POOL_ABI, AAVE_POOL_ADDRESSES_PROVIDER_ABI } from '@/config/contracts';
@@ -17,7 +16,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { config } from '@/config/wagmi';
 import { getExplorerTxLink } from '@/lib/blockchain';
 import { TRADER_JOE_ROUTER_ABI } from '@/lib/constants';
 import { parseError, getErrorMessage } from '@/utils/errorParser';
@@ -29,6 +27,7 @@ export function DepositModal() {
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<`0x${string}` | null>(null);
   const { address, chainId } = useAccount();
+  const publicClient = usePublicClient({ chainId: avalanche.id });
   const [usdcBalance, setUsdcBalance] = useState<bigint>(0n);
   const [allowance, setAllowance] = useState<bigint>(0n);
   const [isLoading, setIsLoading] = useState(false);
@@ -122,9 +121,9 @@ export function DepositModal() {
 
   // Fetch USDC balance
   const fetchUsdcBalance = useCallback(async () => {
-    if (!address) return;
+    if (!address || !publicClient) return;
     try {
-      const balance = await readContract(config, {
+      const balance = await publicClient.readContract({
         address: CONTRACTS.USDC as `0x${string}`, // Native USDC for Aave V3
         abi: ERC20_ABI,
         functionName: 'balanceOf',
@@ -135,20 +134,20 @@ export function DepositModal() {
       console.error('Error fetching USDC balance:', error);
       setError('Failed to fetch USDC balance');
     }
-  }, [address]);
+  }, [address, publicClient]);
 
   // Fetch allowance
   const fetchAllowance = useCallback(async () => {
-    if (!address) return;
+    if (!address || !publicClient) return;
     try {
       // Get the dynamic Pool address first
-      const poolAddress = await readContract(config, {
+      const poolAddress = await publicClient.readContract({
         address: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER as `0x${string}`,
         abi: AAVE_POOL_ADDRESSES_PROVIDER_ABI,
         functionName: 'getPool',
       }) as `0x${string}`;
 
-      const allowance = await readContract(config, {
+      const allowance = await publicClient.readContract({
         address: CONTRACTS.USDC as `0x${string}`, // Native USDC for Aave V3
         abi: ERC20_ABI,
         functionName: 'allowance',
@@ -180,10 +179,10 @@ export function DepositModal() {
   const [hasUndepositedUsdc, setHasUndepositedUsdc] = useState(false);
   
   const checkForUndepositedUsdc = useCallback(async () => {
-    if (!address) return false;
+    if (!address || !publicClient) return false;
     
     try {
-      const balance = await readContract(config, {
+      const balance = await publicClient.readContract({
         address: CONTRACTS.USDC as `0x${string}`, // Native USDC for Aave V3
         abi: ERC20_ABI,
         functionName: 'balanceOf',
@@ -363,12 +362,17 @@ export function DepositModal() {
       return;
     }
 
+    if (!publicClient) {
+      setError('Public client not available');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
       // Get the dynamic Pool address
-      const poolAddress = await readContract(config, {
+      const poolAddress = await publicClient.readContract({
         address: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER as `0x${string}`,
         abi: AAVE_POOL_ADDRESSES_PROVIDER_ABI,
         functionName: 'getPool',
@@ -416,12 +420,17 @@ export function DepositModal() {
       return;
     }
 
+    if (!publicClient) {
+      setError('Public client not available');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
       // Get the dynamic Pool address
-      const poolAddress = await readContract(config, {
+      const poolAddress = await publicClient.readContract({
         address: CONTRACTS.AAVE_POOL_ADDRESSES_PROVIDER as `0x${string}`,
         abi: AAVE_POOL_ADDRESSES_PROVIDER_ABI,
         functionName: 'getPool',

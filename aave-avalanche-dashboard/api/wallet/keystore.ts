@@ -1,4 +1,3 @@
-// @ts-expect-error - crypto is a Node.js built-in module, types may not be available
 import crypto from 'crypto';
 
 // Buffer is available globally in Node.js/Vercel environments

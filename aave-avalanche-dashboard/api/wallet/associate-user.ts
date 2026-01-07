@@ -92,17 +92,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         
         try {
             // Store primary mapping
-            // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+            // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
             await redis.set(walletKey, privyUserId, { ex: oneYearInSeconds });
             console.log(`[AssociateUser] ✅ Primary mapping stored: ${walletKey} -> ${privyUserId}`);
 
             // Store reverse mapping
-            // @ts-expect-error - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+            // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
             await redis.set(userKey, walletAddress.toLowerCase(), { ex: oneYearInSeconds });
             console.log(`[AssociateUser] ✅ Reverse mapping stored: ${userKey} -> ${walletAddress.toLowerCase()}`);
             
             // CRITICAL: Verify the write succeeded - fail if verification fails
-            // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+            // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
             const verifyValue = await redis.get(walletKey);
             if (verifyValue !== privyUserId) {
                 const errorMsg = `Redis write verification failed! Expected: ${privyUserId}, Got: ${verifyValue}`;
@@ -121,7 +121,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
             
             // Double-check: Try reading it back immediately
-            // @ts-expect-error - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+            // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
             const doubleCheck = await redis.get(walletKey);
             if (doubleCheck !== privyUserId) {
                 const errorMsg = `Redis double-check failed! Expected: ${privyUserId}, Got: ${doubleCheck}`;
@@ -137,7 +137,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
             
             // Verify TTL is set correctly
-            // @ts-expect-error - @upstash/redis types may not include ttl method in some TypeScript versions, but it exists at runtime
+            // @ts-ignore - @upstash/redis types may not include ttl method in some TypeScript versions, but it exists at runtime
             const ttl = await redis.ttl(walletKey);
             if (ttl <= 0) {
                 const errorMsg = `Redis TTL not set correctly! TTL: ${ttl} seconds`;

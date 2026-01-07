@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { useAccount } from 'wagmi';
-// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
+// @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy } from '@privy-io/react-auth';
 import { Navigation } from './Navigation';
 import { Loader2, Wallet } from 'lucide-react';

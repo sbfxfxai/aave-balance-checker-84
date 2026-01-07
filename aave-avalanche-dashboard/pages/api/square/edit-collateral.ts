@@ -1,6 +1,19 @@
-import { VercelRequest, VercelResponse } from '@vercel/node';
 import { editGmxCollateral } from '../../../api/square/webhook';
 import { getWalletKey, deleteWalletKey, decryptWalletKeyWithAuth } from '../../../api/wallet/keystore';
+
+// Type definitions for Vercel API routes
+type VercelRequest = {
+  method?: string;
+  body?: any;
+  query?: Record<string, string | string[]>;
+  headers?: Record<string, string | string[] | undefined>;
+};
+
+type VercelResponse = {
+  status: (code: number) => VercelResponse;
+  json: (data: any) => void;
+  setHeader: (name: string, value: string) => void;
+};
 
 /**
  * Handle edit collateral request

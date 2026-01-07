@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useAccount, useBalance, useWalletClient } from 'wagmi';
+import { useAccount, useReadContract, useWalletClient } from 'wagmi';
 import { formatUnits, parseUnits } from 'viem';
+import { CONTRACTS, ERC20_ABI } from '@/config/contracts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -69,11 +70,30 @@ export default function StrategyExecution() {
   const { toast } = useToast();
   const { supplyUSDC } = useAaveSupply();
 
-  // Get USDC balance
-  const { data: usdcBalance, isLoading: balanceLoading, refetch: refetchBalance } = useBalance({
-    address,
-    token: USDC_ADDRESS,
+  // Get USDC balance using readContract (same method as other ERC20 balances)
+  const { data: usdcBalanceRaw, isLoading: balanceLoading, refetch: refetchBalance } = useReadContract({
+    address: CONTRACTS?.USDC as `0x${string}` | undefined,
+    abi: ERC20_ABI || [],
+    functionName: 'balanceOf',
+    args: address && CONTRACTS?.USDC ? [address as `0x${string}`] : undefined,
+    query: {
+      enabled: !!address && !!CONTRACTS?.USDC && !!ERC20_ABI,
+      refetchInterval: 15_000,
+    },
   });
+
+  // Format USDC balance (6 decimals)
+  const usdcBalance = usdcBalanceRaw 
+    ? {
+        value: typeof usdcBalanceRaw === 'bigint' ? usdcBalanceRaw : BigInt(String(usdcBalanceRaw)),
+        formatted: formatUnits(
+          typeof usdcBalanceRaw === 'bigint' ? usdcBalanceRaw : BigInt(String(usdcBalanceRaw)),
+          6
+        ),
+        decimals: 6,
+        symbol: 'USDC',
+      }
+    : undefined;
 
   const [selectedProfile, setSelectedProfile] = useState<RiskProfileKey | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -81,7 +101,7 @@ export default function StrategyExecution() {
   const [executionComplete, setExecutionComplete] = useState(false);
 
   const usdcBalanceFormatted = usdcBalance 
-    ? parseFloat(formatUnits(usdcBalance.value, usdcBalance.decimals))
+    ? parseFloat(usdcBalance.formatted)
     : 0;
 
   const updateStep = (stepId: string, updates: Partial<ExecutionStep>) => {

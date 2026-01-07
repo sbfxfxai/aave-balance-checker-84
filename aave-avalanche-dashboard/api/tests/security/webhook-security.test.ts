@@ -11,7 +11,10 @@
  */
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import crypto from 'crypto';
+import { Buffer } from 'buffer';
+
+// Use require for Node.js built-in crypto module
+const crypto = require('crypto');
 
 // Mock the signature verification function
 function verifySignature(payload: string, signature: string, signatureKey: string): boolean {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAccount } from 'wagmi';
-// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
+// @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Wallet as EthersWallet } from 'ethers';
 import {
@@ -318,10 +318,10 @@ export const DepositModal: React.FC<DepositModalProps> = ({
     const depositAmount = parseFloat(amount);
     
     // Validate minimum and maximum limits
-    if (depositAmount < 1) {
+    if (depositAmount < 10) {
       toast({
         title: 'Minimum deposit required',
-        description: 'Minimum deposit amount is $1',
+        description: 'Minimum deposit amount is $10',
         variant: 'destructive',
       });
       return;
@@ -597,12 +597,12 @@ export const DepositModal: React.FC<DepositModalProps> = ({
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 disabled={isProcessing || isLoadingHubBalance}
-                min={1}
+                min={10}
                 max={maxDepositAmount}
                 step={0.01}
               />
               <p className="text-xs text-muted-foreground">
-                Min: $1 · Max: ${maxDepositAmount.toLocaleString()}
+                Min: $10 · Max: ${maxDepositAmount.toLocaleString()}
                 {isLoadingHubBalance && ' (loading...)'}
               </p>
               {cooldownTime > 0 && (
