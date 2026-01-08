@@ -3035,11 +3035,16 @@ export async function executeMorphoFromHubWallet(
     // Get balance before deposit to calculate shares received (non-blocking)
     let eurcSharesBefore: bigint | null = null;
     try {
+      console.log(`[MORPHO] Calling balanceOf on EURC vault at ${MORPHO_EURC_VAULT} for wallet ${walletAddress}...`);
       eurcSharesBefore = await eurcVault.balanceOf(walletAddress);
       console.log(`[MORPHO] EURC shares before deposit: ${eurcSharesBefore.toString()}`);
     } catch (balanceError: any) {
-      console.warn(`[MORPHO] ⚠️ Could not get EURC shares before deposit (non-blocking): ${balanceError?.message || String(balanceError)}`);
-      console.log(`[MORPHO] Proceeding with deposit (shares verification will be skipped)...`);
+      const errorMsg = balanceError?.message || String(balanceError);
+      const errorCode = balanceError?.code || 'UNKNOWN';
+      console.error(`[MORPHO] ❌ balanceOf failed for EURC vault: ${errorMsg} (code: ${errorCode})`);
+      console.error(`[MORPHO] Vault address: ${MORPHO_EURC_VAULT}, Wallet: ${walletAddress}`);
+      console.warn(`[MORPHO] ⚠️ Could not get EURC shares before deposit (non-blocking) - proceeding anyway...`);
+      eurcSharesBefore = null;
     }
     
     // Deposit to EURC vault (Morpho V2 ERC-4626: deposit assets, receive shares)
@@ -3101,11 +3106,16 @@ export async function executeMorphoFromHubWallet(
     // Get balance before deposit to calculate shares received (non-blocking)
     let daiSharesBefore: bigint | null = null;
     try {
+      console.log(`[MORPHO] Calling balanceOf on DAI vault at ${MORPHO_DAI_VAULT} for wallet ${walletAddress}...`);
       daiSharesBefore = await daiVault.balanceOf(walletAddress);
       console.log(`[MORPHO] DAI shares before deposit: ${daiSharesBefore.toString()}`);
     } catch (balanceError: any) {
-      console.warn(`[MORPHO] ⚠️ Could not get DAI shares before deposit (non-blocking): ${balanceError?.message || String(balanceError)}`);
-      console.log(`[MORPHO] Proceeding with deposit (shares verification will be skipped)...`);
+      const errorMsg = balanceError?.message || String(balanceError);
+      const errorCode = balanceError?.code || 'UNKNOWN';
+      console.error(`[MORPHO] ❌ balanceOf failed for DAI vault: ${errorMsg} (code: ${errorCode})`);
+      console.error(`[MORPHO] Vault address: ${MORPHO_DAI_VAULT}, Wallet: ${walletAddress}`);
+      console.warn(`[MORPHO] ⚠️ Could not get DAI shares before deposit (non-blocking) - proceeding anyway...`);
+      daiSharesBefore = null;
     }
     
     // Deposit to DAI vault (Morpho V2 ERC-4626: deposit assets, receive shares)
