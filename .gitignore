@@ -1,2 +1,22 @@
 .vercel
+Wallet did not respond to eth_accounts. Defaulting to prefetched accounts. Error: Exceeded max attempts before resolving function
+    Fte https://www.tiltvault.com/assets/index-BmJ2q8lw.js:347
+    Fte https://www.tiltvault.com/assets/index-BmJ2q8lw.js:347
+    syncAccounts https://www.tiltvault.com/assets/index-BmJ2q8lw.js:347
+    initialize https://www.tiltvault.com/assets/index-BmJ2q8lw.js:657
+    addWalletConnector https://www.tiltvault.com/assets/index-BmJ2q8lw.js:657
+    createEthereumWalletConnector https://www.tiltvault.com/assets/index-BmJ2q8lw.js:657
+    n https://www.tiltvault.com/assets/index-BmJ2q8lw.js:657
+    n https://www.tiltvault.com/assets/index-BmJ2q8lw.js:657
+    promise callback*initialize https://www.tiltvault.com/assets/index-BmJ2q8lw.js:657
+    in https://www.tiltvault.com/assets/index-BmJ2q8lw.js:657
+    in https://www.tiltvault.com/assets/index-BmJ2q8lw.js:657
+    AW https://www.tiltvault.com/assets/index-BmJ2q8lw.js:45
+    bw https://www.tiltvault.com/assets/index-BmJ2q8lw.js:45
+    zst https://www.tiltvault.com/assets/index-BmJ2q8lw.js:45
+    A https://www.tiltvault.com/assets/index-BmJ2q8lw.js:30
+    L https://www.tiltvault.com/assets/index-BmJ2q8lw.js:30
+    EventHandlerNonNull* https://www.tiltvault.com/assets/index-BmJ2q8lw.js:30
+    <anonymous> https://www.tiltvault.com/assets/index-BmJ2q8lw.js:30
+index-BmJ2q8lw.js:347:37455
 node_modules

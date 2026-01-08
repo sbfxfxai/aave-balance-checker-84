@@ -162,24 +162,77 @@ const StackApp = () => {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-12">
-        <div className="max-w-4xl mx-auto">
-          {/* Welcome Section */}
-          <div className="text-center mb-8 sm:mb-12 px-2">
-            <h2 className="text-2xl sm:text-4xl font-bold mb-3 sm:mb-4 bg-gradient-primary bg-clip-text text-transparent">
-              Deposit USD, Earn DeFi Returns
-            </h2>
-            <p className="text-base sm:text-xl text-muted-foreground mb-2">
-              Use your debit card for instant access—hold 100 ERGC for zero fees
-            </p>
-          </div>
+      <main className="relative min-h-screen">
+        {/* Background glow effects */}
+        <div className="absolute inset-0 bg-gradient-glow opacity-50" />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-success/10 rounded-full blur-3xl" />
+        
+        <div className="container mx-auto px-4 py-12 relative z-10">
+          <div className="max-w-4xl mx-auto">
+            {/* Hero Section */}
+            <section className="text-center mb-12 sm:mb-16 px-2">
+              {/* Badge */}
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary border border-border mb-8 animate-fade-in">
+                <Zap className="w-4 h-4 text-primary" />
+                <span className="text-sm text-muted-foreground">Automated Investing</span>
+              </div>
+
+              {/* Main heading */}
+              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-6 animate-fade-in" style={{ animationDelay: '0.1s' }}>
+                Deposit USD,{" "}
+                <span className="text-gradient-primary">Earn DeFi Returns</span>
+              </h1>
+
+              {/* Subtitle */}
+              <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 animate-fade-in" style={{ animationDelay: '0.2s' }}>
+                Use your debit card for instant access—hold 100 ERGC for zero fees
+              </p>
+
+              {/* Key features */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto mb-12 animate-fade-in" style={{ animationDelay: '0.4s' }}>
+                <div className="flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-card border border-border">
+                <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
+                  <DollarSign className="w-5 h-5 text-primary" />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-medium">High-Yield</p>
+                  <p className="text-xs text-muted-foreground">via Aave</p>
+                </div>
+                </div>
+
+                <div className="flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-card border border-border">
+                <div className="w-10 h-10 rounded-lg bg-success/20 flex items-center justify-center">
+                  <Zap className="w-5 h-5 text-success" />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-medium">2.5x Leverage</p>
+                  <p className="text-xs text-muted-foreground">Bitcoin positions</p>
+                </div>
+                </div>
+
+                <div className="flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-card border border-border">
+                <div className="w-10 h-10 rounded-lg bg-warning/20 flex items-center justify-center">
+                  <Shield className="w-5 h-5 text-warning" />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-medium">US Designed</p>
+                  <p className="text-xs text-muted-foreground">Simple & Secure</p>
+                </div>
+                </div>
+              </div>
+            </section>
 
           {/* Deposit Type Selection */}
-          <Card className="mb-8">
+          <Card className="mb-8 card-gradient border-border animate-fade-in" style={{ animationDelay: '0.5s' }}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Zap className="h-5 w-5" />
+                Select Deposit Method
               </CardTitle>
+              <CardDescription>
+                Step 1: Choose how you want to deposit funds
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 gap-4">
@@ -200,7 +253,7 @@ const StackApp = () => {
 
           {/* Risk Profile Selection */}
           {selectedDepositType && (
-            <Card className="mb-8">
+            <Card className="mb-8 card-gradient border-border animate-fade-in" style={{ animationDelay: '0.6s' }}>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Shield className="h-5 w-5" />
@@ -256,7 +309,7 @@ const StackApp = () => {
 
           {/* Continue Button */}
           {selectedDepositType && selectedRiskProfile && (
-            <div className="flex justify-center mt-8">
+            <div className="flex justify-center mt-8 animate-fade-in" style={{ animationDelay: '0.7s' }}>
               <Button
                 size="lg"
                 className="px-12 py-8 text-xl font-bold shadow-xl hover:scale-105 transition-transform"
@@ -270,6 +323,7 @@ const StackApp = () => {
 
           {/* Value Diagram - Shows ERGC savings impact */}
           <ValueDiagram aaveAPY={aaveAPY} />
+          </div>
         </div>
       </main>
 

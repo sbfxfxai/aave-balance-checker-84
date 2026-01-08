@@ -597,13 +597,13 @@ function verifySignature(payload: string, signature: string, notificationUrl?: s
       for (const payloadVariant of payloadVariants) {
         attemptCount++;
         // Square signs: notification_url + body (concatenated as strings)
-        const hmac = crypto.createHmac('sha256', SQUARE_WEBHOOK_SIGNATURE_KEY);
+    const hmac = crypto.createHmac('sha256', SQUARE_WEBHOOK_SIGNATURE_KEY);
         hmac.update(url + payloadVariant.value);
-        const expectedSignature = hmac.digest('base64');
+    const expectedSignature = hmac.digest('base64');
 
         try {
-          const signatureBuffer = Buffer.from(signatureBase64, 'base64');
-          const expectedBuffer = Buffer.from(expectedSignature, 'base64');
+    const signatureBuffer = Buffer.from(signatureBase64, 'base64');
+    const expectedBuffer = Buffer.from(expectedSignature, 'base64');
 
           if (signatureBuffer.length === expectedBuffer.length) {
             const isValid = crypto.timingSafeEqual(
@@ -642,10 +642,10 @@ function verifySignature(payload: string, signature: string, notificationUrl?: s
         const expectedBuffer = Buffer.from(expectedSignature, 'base64');
 
         if (signatureBuffer.length === expectedBuffer.length) {
-          const isValid = crypto.timingSafeEqual(
-            new Uint8Array(signatureBuffer),
-            new Uint8Array(expectedBuffer)
-          );
+    const isValid = crypto.timingSafeEqual(
+      new Uint8Array(signatureBuffer),
+      new Uint8Array(expectedBuffer)
+    );
 
           if (isValid) {
             console.log(`[Webhook] ✅ Signature verified without URL! Payload format: ${payloadVariant.name}`);
@@ -4958,12 +4958,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           if (previousResult) {
-            return res.status(200).json({ 
-              success: true, 
-              ...previousResult,
-              idempotent: true,
-              message: 'Payment already processed - duplicate event ignored'
-            });
+          return res.status(200).json({ 
+            success: true, 
+            ...previousResult,
+            idempotent: true,
+            message: 'Payment already processed - duplicate event ignored'
+          });
           }
         } catch (parseError) {
           logger.warn('Failed to parse cached payment result, reprocessing', LogCategory.WEBHOOK, {
@@ -5015,12 +5015,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
             
             if (previousResult) {
-              return res.status(200).json({ 
-                success: true, 
-                ...previousResult,
-                idempotent: true,
-                message: 'Payment processed by concurrent request'
-              });
+            return res.status(200).json({ 
+              success: true, 
+              ...previousResult,
+              idempotent: true,
+              message: 'Payment processed by concurrent request'
+            });
             }
           } catch {
             // Continue if we can't parse

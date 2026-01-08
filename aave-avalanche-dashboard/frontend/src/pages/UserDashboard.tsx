@@ -11,6 +11,7 @@ import { useAaveSupply } from '@/hooks/useAaveSupply';
 import { useAavePositions } from '@/hooks/useAavePositions';
 import { useGmxPositions } from '@/hooks/useGmxPositions';
 import { useMorphoPositions } from '@/hooks/useMorphoPositions';
+import { useWalletBalances } from '@/hooks/useWalletBalances';
 import { CONTRACTS } from '@/config/contracts';
 import { 
   Loader2, 
@@ -21,7 +22,11 @@ import {
   Wallet,
   RefreshCw,
   ExternalLink,
-  AlertCircle
+  AlertCircle,
+  DollarSign,
+  Coins,
+  PiggyBank,
+  Landmark
 } from 'lucide-react';
 
 // USDC contract on Avalanche
@@ -115,6 +120,7 @@ export default function UserDashboard() {
   const aaveData = useAavePositions();
   const { positions: gmxPositions, isLoading: gmxLoading, refetch: refetchGmx } = useGmxPositions();
   const morphoData = useMorphoPositions();
+  const walletBalances = useWalletBalances();
 
   // Get USDC balance using readContract for ERC20 token
   const { data: usdcBalanceRaw, isLoading: balanceLoading, refetch: refetchBalance } = useReadContract({
@@ -394,36 +400,29 @@ export default function UserDashboard() {
 
   const ProfileIcon = profile.icon;
 
+  // Calculate total savings (AAVE + Morpho)
+  const totalSavings = parseFloat(aaveData.usdcSupply || '0') + parseFloat(morphoData.totalUsdValue || '0');
+  const totalLoanBalance = parseFloat(aaveData.avaxBorrowed || '0');
+  const ergcBalance = parseFloat(walletBalances.ergc || '0');
+  const truncatedAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : '';
+
   return (
-    <div className="min-h-screen bg-gradient-subtle">
-      {/* Header */}
-      <header className="border-b border-border/50 backdrop-blur-sm bg-background/80 sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-gradient-primary">
-                <TrendingUp className="h-6 w-6 text-white" />
+    <div className="min-h-screen bg-background">
+      {/* Header - matching reference */}
+      <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-background/80 backdrop-blur-xl">
+        <div className="container flex h-16 items-center justify-between">
+          <div className="flex items-center gap-8">
+            <a href="/" className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+                <span className="text-lg font-bold text-primary-foreground">T</span>
               </div>
-              <div>
-                <h1 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-                  TiltVault
-                </h1>
-                <p className="text-sm text-muted-foreground">Your Portfolio Dashboard</p>
-              </div>
-            </div>
-            {isConnected && (
-              <div className="flex items-center gap-2">
-                <div className={`px-3 py-1 rounded-full text-sm ${profile.bgColor} ${profile.color}`}>
-                  <ProfileIcon className="h-4 w-4 inline mr-1" />
-                  {profile.name}
-                </div>
-              </div>
-            )}
+              <span className="text-xl font-bold text-foreground">TiltVault</span>
+            </a>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8 max-w-4xl">
+      <main>
         {/* Connecting State */}
         {dashboardState === 'connecting' && (
           <Card className="text-center py-12">
@@ -528,195 +527,183 @@ export default function UserDashboard() {
           </Card>
         )}
 
-        {/* Completed State - Show Positions */}
+        {/* Completed State - Show Positions - Matching reference layout */}
         {dashboardState === 'completed' && (
           <>
-            {/* Summary Card */}
-            <Card className="mb-6 border-green-500/20 bg-green-500/5">
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-4">
-                  <CheckCircle2 className="h-12 w-12 text-green-500" />
-                  <div>
-                    <h2 className="text-xl font-bold">Strategy Active</h2>
-                    <p className="text-muted-foreground">{profile.name} - {profile.description}</p>
+            {/* Your Account Section - matching reference */}
+            <div className="border-t border-border">
+              <h2 className="container pt-12 text-2xl font-bold text-foreground">Your Account</h2>
+              <section className="py-12">
+                <div className="container">
+                  <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                    {/* External Wallet */}
+                    <Card className="card-gradient border-border">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                          <Wallet className="h-4 w-4" />
+                          External Wallet
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-sm text-foreground">{truncatedAddress}</span>
+                          <a 
+                            href={`https://snowtrace.io/address/${address}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="cursor-pointer hover:text-primary transition-colors"
+                          >
+                            <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                          </a>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Available Cash */}
+                    <Card className="card-gradient border-border">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                          Available Cash
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-1">
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-xs text-muted-foreground">AVAX</span>
+                            <span className="text-2xl font-bold text-foreground">
+                              {avaxBalance ? parseFloat(formatUnits(avaxBalance.value, 18)).toFixed(4) : '0.0100'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">For network fees</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* USD Balance */}
+                    <Card className="card-gradient border-border">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                          <DollarSign className="h-4 w-4" />
+                          USD Balance
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-1">
+                          <span className="text-2xl font-bold text-foreground">${usdcBalanceFormatted.toFixed(2)}</span>
+                          <p className="text-xs text-muted-foreground">Ready to invest</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* ERGC */}
+                    <Card className="card-gradient border-border">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                          <Coins className="h-4 w-4" />
+                          ERGC
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-1">
+                          <span className="text-2xl font-bold text-foreground">{ergcBalance.toFixed(2)}</span>
+                          <p className="text-xs text-muted-foreground">EnergyCoin tokens</p>
+                        </div>
+                      </CardContent>
+                    </Card>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </section>
+            </div>
 
-            {/* AAVE Positions */}
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Shield className="h-5 w-5 text-blue-500" />
-                  AAVE Positions
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {aaveData.isLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : hasAavePosition ? (
-                  <div className="space-y-3">
-                    {parseFloat(aaveData.usdcSupply || '0') > 0 && (
-                      <div className="p-4 rounded-lg bg-muted flex justify-between items-center">
-                        <div>
-                          <p className="font-medium">USDC Supply</p>
-                          <p className="text-sm text-muted-foreground">Earning yield</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-mono">${parseFloat(aaveData.usdcSupply || '0').toFixed(2)}</p>
-                          <p className="text-sm text-green-500">+{aaveData.usdcSupplyApy?.toFixed(2) || '3.2'}% APY</p>
-                        </div>
-                      </div>
-                    )}
-                    {parseFloat(aaveData.avaxSupply || '0') > 0 && (
-                      <div className="p-4 rounded-lg bg-muted flex justify-between items-center">
-                        <div>
-                          <p className="font-medium">AVAX Supply</p>
-                          <p className="text-sm text-muted-foreground">Earning yield</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-mono">{parseFloat(aaveData.avaxSupply || '0').toFixed(4)} AVAX</p>
-                          <p className="text-sm text-green-500">+{aaveData.avaxSupplyApy?.toFixed(2) || '2.5'}% APY</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground text-center py-4">No AAVE positions</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* GMX Positions */}
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-purple-500" />
-                  GMX Positions
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {gmxLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : gmxPositions && gmxPositions.length > 0 ? (
-                  <div className="space-y-3">
-                    {gmxPositions.map((pos, i: number) => (
-                      <div key={i} className="p-4 rounded-lg bg-muted">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="font-medium">
-                            {pos.marketInfo?.name || 'Market'} {pos.isLong ? 'Long' : 'Short'}
-                          </span>
-                          <span className="text-sm text-muted-foreground">
-                            Entry ${parseFloat(pos.entryPrice || '0').toFixed(2)}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-3 gap-4 text-sm">
-                          <div>
-                            <p className="text-muted-foreground">Size</p>
-                            <p className="font-mono">${parseFloat(pos.sizeInUsd || '0').toFixed(2)}</p>
+            {/* Your Earnings Section - matching reference */}
+            <section className="py-12">
+              <div className="container">
+                <h2 className="text-2xl font-bold text-foreground mb-6">Your Earnings</h2>
+                
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {/* Savings Balance */}
+                  <Card className="card-gradient border-border">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                        <PiggyBank className="h-4 w-4" />
+                        Savings Balance
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        <span className="text-3xl font-bold text-foreground">${totalSavings.toFixed(2)}</span>
+                        {totalSavings > 0 && (
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success">
+                              <TrendingUp className="mr-1 h-3 w-3" />
+                              Earning {aaveData.usdcSupplyApy?.toFixed(2) || '3.40'}% APY
+                            </span>
                           </div>
-                          <div>
-                            <p className="text-muted-foreground">Collateral</p>
-                            <p className="font-mono">${parseFloat(pos.collateralAmount || '0').toFixed(2)}</p>
-                          </div>
-                          <div>
-                            <p className="text-muted-foreground">Leverage</p>
-                            <p className="font-mono">{pos.leverage?.toFixed(1) || '2.5'}x</p>
-                          </div>
-                        </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground text-center py-4">No GMX positions</p>
-                )}
-              </CardContent>
-            </Card>
+                    </CardContent>
+                  </Card>
 
-            {/* Morpho Positions */}
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Zap className="h-5 w-5 text-purple-500" />
-                  Morpho Vault Positions
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {morphoData.isLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : parseFloat(morphoData.totalUsdValue) > 0 ? (
-                  <div className="space-y-3">
-                    <div className="p-4 rounded-lg bg-muted flex justify-between items-center">
-                      <div>
-                        <p className="font-medium">Total Value</p>
-                        <p className="text-sm text-muted-foreground">50/50 EURC + DAI</p>
+                  {/* Loan Balance */}
+                  <Card className="card-gradient border-border">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                        <Landmark className="h-4 w-4" />
+                        Loan Balance
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        <span className="text-3xl font-bold text-foreground">{totalLoanBalance.toFixed(4)}</span>
+                        {totalLoanBalance > 0 && (
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
+                              Pay {aaveData.avaxBorrowApy?.toFixed(2) || '3.63'}% APY
+                            </span>
+                          </div>
+                        )}
                       </div>
-                      <div className="text-right">
-                        <p className="font-mono">${parseFloat(morphoData.totalUsdValue).toFixed(2)}</p>
-                        <p className="text-sm text-green-500">+{morphoData.blendedApy.toFixed(2)}% APY</p>
-                      </div>
-                    </div>
-                    {parseFloat(morphoData.eurcUsdValue) > 0 && (
-                      <div className="p-4 rounded-lg bg-muted flex justify-between items-center">
-                        <div>
-                          <p className="font-medium">Gauntlet USDC Core</p>
-                          <p className="text-sm text-muted-foreground">Morpho Vault</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-mono">${parseFloat(morphoData.eurcUsdValue).toFixed(2)}</p>
-                          <p className="text-sm text-green-500">+{morphoData.eurcApy.toFixed(2)}% APY</p>
-                        </div>
-                      </div>
-                    )}
-                    {parseFloat(morphoData.daiUsdValue) > 0 && (
-                      <div className="p-4 rounded-lg bg-muted flex justify-between items-center">
-                        <div>
-                          <p className="font-medium">Hyperithm USDC</p>
-                          <p className="text-sm text-muted-foreground">Morpho Vault</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-mono">${parseFloat(morphoData.daiUsdValue).toFixed(2)}</p>
-                          <p className="text-sm text-green-500">+{morphoData.daiApy.toFixed(2)}% APY</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground text-center py-4">No Morpho positions</p>
-                )}
-              </CardContent>
-            </Card>
+                    </CardContent>
+                  </Card>
 
-            {/* Wallet Balance */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Wallet className="h-5 w-5" />
-                  Wallet Balance
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 rounded-lg bg-muted">
-                    <p className="text-sm text-muted-foreground">USDC</p>
-                    <p className="text-xl font-mono">${usdcBalanceFormatted.toFixed(2)}</p>
-                  </div>
-                  <div className="p-4 rounded-lg bg-muted">
-                    <p className="text-sm text-muted-foreground">AVAX (for gas)</p>
-                    <p className="text-xl font-mono">
-                      {avaxBalance ? parseFloat(formatUnits(avaxBalance.value, 18)).toFixed(4) : '0.0000'}
-                    </p>
-                  </div>
+                  {/* GMX Positions */}
+                  <Card className="card-gradient border-border">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                        GMX Positions
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {gmxLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        ) : gmxPositions && gmxPositions.length > 0 ? (
+                          <div className="space-y-2">
+                            {gmxPositions.map((pos, i: number) => (
+                              <div key={i} className="text-sm">
+                                <p className="font-medium text-foreground">
+                                  {pos.marketInfo?.name || 'Market'} {pos.isLong ? 'Long' : 'Short'}
+                                </p>
+                                <p className="text-muted-foreground">
+                                  ${parseFloat(pos.sizeInUsd || '0').toFixed(2)} @ {pos.leverage?.toFixed(1) || '2.5'}x
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No open GMX positions</p>
+                        )}
+                        <Link to="/gmx">
+                          <Button variant="action" size="sm" className="w-full">
+                            Open a Position
+                          </Button>
+                        </Link>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </section>
           </>
         )}
 
