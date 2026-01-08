@@ -17,7 +17,7 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { executeMorphoFromHubWallet } from './webhook';
+import { executeMorphoFromHubWallet } from './webhook-morpho';
 
 async function handler(req: VercelRequest, res: VercelResponse) {
   // Only allow POST
