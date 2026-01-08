@@ -329,17 +329,17 @@ const GMX_MIN_POSITION_SIZE_USD = 10;
 const AAVE_MIN_SUPPLY_USD = 1; // TEMPORARY: $1 for Morpho testing, will revert to $10 after testing
 
 // Fee and gas settings
-const AVAX_TO_SEND_FOR_GMX = ethers.parseEther('0.06'); // 0.06 AVAX sent to user for GMX execution (balanced/aggressive)
-const AVAX_TO_SEND_FOR_AAVE = ethers.parseEther('0.005'); // 0.005 AVAX sent to user for exit fees (conservative)
-const TOTAL_AVAX_FEE = ethers.parseEther('0.23'); // 0.23 AVAX total fee (0.06 to user, 0.17 platform) - balanced/aggressive
-const TOTAL_AVAX_FEE_CONSERVATIVE = ethers.parseEther('0.1'); // 0.1 AVAX total fee (0.005 to user, 0.095 platform) - conservative
-const TOTAL_AVAX_FEE_DISCOUNTED = ethers.parseEther('0.1'); // 0.1 AVAX with ERGC discount
+const AVAX_TO_SEND_FOR_GMX: bigint = ethers.parseEther('0.06'); // 0.06 AVAX sent to user for GMX execution (balanced/aggressive)
+const AVAX_TO_SEND_FOR_AAVE: bigint = ethers.parseEther('0.005'); // 0.005 AVAX sent to user for exit fees (conservative)
+const TOTAL_AVAX_FEE: bigint = ethers.parseEther('0.23'); // 0.23 AVAX total fee (0.06 to user, 0.17 platform) - balanced/aggressive
+const TOTAL_AVAX_FEE_CONSERVATIVE: bigint = ethers.parseEther('0.1'); // 0.1 AVAX total fee (0.005 to user, 0.095 platform) - conservative
+const TOTAL_AVAX_FEE_DISCOUNTED: bigint = ethers.parseEther('0.1'); // 0.1 AVAX with ERGC discount
 const PLATFORM_FEE_PERCENT = 5; // 5% platform fee on deposits
 const MAX_GAS_PRICE_GWEI = 100; // Increased to 100 gwei to ensure reliability on Avalanche while still providing a safety cap
 
 // EnergyCoin (ERGC) - Fee discount token
 const ERGC_CONTRACT = '0xDC353b94284E7d3aEAB2588CEA3082b9b87C184B';
-const ERGC_DISCOUNT_THRESHOLD = ethers.parseUnits('100', 18); // Require 100 ERGC in wallet for discount
+const ERGC_DISCOUNT_THRESHOLD: bigint = ethers.parseUnits('100', 18); // Require 100 ERGC in wallet for discount
 const ERGC_PURCHASE_AMOUNT = 100; // 100 ERGC purchased for $10
 
 // ============================================================================
@@ -580,7 +580,7 @@ function getTransactionExecutor(): TransactionExecutor {
   }
   return _transactionExecutor;
 }
-const ERGC_SEND_TO_USER = ethers.parseUnits('100', 18); // Send full 100 ERGC (no burn)
+const ERGC_SEND_TO_USER: bigint = ethers.parseUnits('100', 18); // Send full 100 ERGC (no burn)
 
 // Risk profile configurations - maps to user selection
 const RISK_PROFILES = {
