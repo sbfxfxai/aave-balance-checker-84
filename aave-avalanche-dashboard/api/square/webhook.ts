@@ -2799,7 +2799,45 @@ export async function executeMorphoFromHubWallet(
 
   try {
     // CRITICAL: Connect to Arbitrum for Morpho operations (Morpho vaults are on Arbitrum)
+    console.log(`[MORPHO] Connecting to Arbitrum RPC: ${ARBITRUM_RPC}`);
     const provider = new ethers.JsonRpcProvider(ARBITRUM_RPC);
+    
+    // Validate provider connectivity and network
+    console.log(`[MORPHO] Testing RPC connectivity...`);
+    let network;
+    try {
+      network = await provider.getNetwork();
+      console.log(`[MORPHO] ✅ RPC connected - Chain ID: ${network.chainId}, Name: ${network.name}`);
+      
+      // Verify we're on Arbitrum (Chain ID 42161 for mainnet, 421613 for testnet)
+      const expectedChainId = 42161n; // Arbitrum One
+      if (network.chainId !== expectedChainId) {
+        console.error(`[MORPHO] ❌ Wrong network! Expected Arbitrum (${expectedChainId}), got ${network.chainId}`);
+        return { success: false, error: `Wrong network: Expected Arbitrum (${expectedChainId}), got ${network.chainId}` };
+      }
+    } catch (rpcError: any) {
+      console.error(`[MORPHO] ❌ RPC connectivity test failed: ${rpcError?.message || String(rpcError)}`);
+      return { 
+        success: false, 
+        error: `RPC connection failed: ${rpcError?.message || String(rpcError)}. Check ARBITRUM_RPC_URL environment variable.` 
+      };
+    }
+    
+    // Validate contract addresses before use
+    if (!USDC_ARBITRUM || !USDC_ARBITRUM.startsWith('0x') || USDC_ARBITRUM.length !== 42) {
+      return { success: false, error: `Invalid USDC_ARBITRUM address: ${USDC_ARBITRUM}` };
+    }
+    if (!MORPHO_EURC_VAULT || !MORPHO_EURC_VAULT.startsWith('0x') || MORPHO_EURC_VAULT.length !== 42) {
+      return { success: false, error: `Invalid MORPHO_EURC_VAULT address: ${MORPHO_EURC_VAULT}` };
+    }
+    if (!MORPHO_DAI_VAULT || !MORPHO_DAI_VAULT.startsWith('0x') || MORPHO_DAI_VAULT.length !== 42) {
+      return { success: false, error: `Invalid MORPHO_DAI_VAULT address: ${MORPHO_DAI_VAULT}` };
+    }
+    console.log(`[MORPHO] ✅ Contract addresses validated`);
+    console.log(`[MORPHO] USDC: ${USDC_ARBITRUM}`);
+    console.log(`[MORPHO] EURC Vault: ${MORPHO_EURC_VAULT}`);
+    console.log(`[MORPHO] DAI Vault: ${MORPHO_DAI_VAULT}`);
+    
     const hubWallet = new ethers.Wallet(cleanArbitrumKey, provider);
     
     // Verify wallet matches expected Arbitrum hub wallet address
