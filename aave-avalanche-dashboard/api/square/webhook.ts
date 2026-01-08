@@ -7,8 +7,6 @@ import { Redis } from '@upstash/redis';
 import crypto from 'crypto';
 
 // Buffer is available globally in Node.js/Vercel environments
-// NOTE: raw-body is not used because Vercel automatically parses request bodies
-// We use fallback methods (stringifying req.body) for signature verification
 declare const Buffer: {
   from(data: string, encoding: 'base64' | 'hex' | 'utf8'): Buffer;
   isBuffer(obj: any): boolean;
@@ -69,7 +67,7 @@ interface UserPosition {
   paymentId: string;
   userEmail: string;
   walletAddress: string;
-  strategyType: 'conservative' | 'morpho' | 'aggressive';
+  strategyType: 'conservative' | 'aggressive';
   usdcAmount: number;
   status: 'pending' | 'active' | 'closed' | 'executing';
   createdAt: string;
@@ -81,7 +79,6 @@ interface UserPosition {
   gmxLeverage?: number;
   gmxPositionSize?: number;
   gmxOrderTxHash?: string;
-  morphoResult?: { success: boolean; txHash?: string; error?: string };
 }
 
 async function savePosition(position: UserPosition): Promise<void> {
@@ -95,30 +92,7 @@ async function updatePosition(id: string, updates: Partial<UserPosition>): Promi
   // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
   const existing = await redis.get(`position:${id}`);
   if (existing) {
-    let position: any;
-    if (typeof existing === 'string') {
-      // Check if it's valid JSON before parsing
-      if (existing.trim().startsWith('{') || existing.trim().startsWith('[')) {
-        try {
-          position = JSON.parse(existing);
-        } catch (parseError) {
-          console.error(`[Position] Failed to parse position data:`, parseError);
-          // Create new position if we can't parse
-          position = { id };
-        }
-      } else {
-        // Invalid format, create new position
-        console.warn(`[Position] Invalid position data format: ${existing.substring(0, 50)}`);
-        position = { id };
-      }
-    } else if (typeof existing === 'object' && existing !== null) {
-      // Already an object
-      position = existing;
-    } else {
-      // Unexpected type, create new position
-      position = { id };
-    }
-    
+    const position = JSON.parse(existing as string);
     Object.assign(position, updates);
     // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
     await redis.set(`position:${id}`, JSON.stringify(position), { ex: 7 * 24 * 60 * 60 });
@@ -132,15 +106,8 @@ async function decryptWalletKeyWithToken(walletAddress: string, paymentId: strin
 
 // Configuration
 const AVALANCHE_RPC = process.env.AVALANCHE_RPC_URL || 'https://api.avax.network/ext/bc/C/rpc';
-// Arbitrum RPC for Morpho operations (Morpho vaults are on Arbitrum)
-const ARBITRUM_RPC = process.env.ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc';
 const HUB_WALLET_PRIVATE_KEY = process.env.HUB_WALLET_PRIVATE_KEY || '';
 const HUB_WALLET_ADDRESS = process.env.HUB_WALLET_ADDRESS || '0x34c11928868d14bdD7Be55A0D9f9e02257240c24';
-
-// Arbitrum hub wallet (for Morpho operations on Arbitrum)
-// If not set, falls back to HUB_WALLET_PRIVATE_KEY (for multi-chain wallets)
-const ARBITRUM_HUB_WALLET_PRIVATE_KEY = process.env.ARBITRUM_HUB_WALLET_PRIVATE_KEY || HUB_WALLET_PRIVATE_KEY;
-const ARBITRUM_HUB_WALLET_ADDRESS = process.env.ARBITRUM_HUB_WALLET_ADDRESS || HUB_WALLET_ADDRESS;
 
 // Validate hub wallet private key (runtime check, don't crash at module load)
 function validateHubWallet(): { valid: boolean; error?: string } {
@@ -168,27 +135,7 @@ if (HUB_WALLET_PRIVATE_KEY && HUB_WALLET_PRIVATE_KEY.startsWith('0x') && HUB_WAL
   console.warn('[CONFIG] HUB_WALLET_PRIVATE_KEY not properly configured - webhook transfers will fail');
 }
 const USDC_CONTRACT = '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E';
-// Square Webhook Signature Key
-// Get from: Square Dashboard → Webhooks → Show Signature Key
-// Set in Vercel environment variables as: SQUARE_WEBHOOK_SIGNATURE_KEY
-// Current key (as of 2026-01-07): hbHTFSJpfXsTSbom975dqg
-// Key format: ~22-43 characters, base64-like string
-const SQUARE_WEBHOOK_SIGNATURE_KEY = (process.env.SQUARE_WEBHOOK_SIGNATURE_KEY && typeof process.env.SQUARE_WEBHOOK_SIGNATURE_KEY === 'string') ? process.env.SQUARE_WEBHOOK_SIGNATURE_KEY : '';
-
-// Log key status on module load (for debugging)
-if (SQUARE_WEBHOOK_SIGNATURE_KEY && SQUARE_WEBHOOK_SIGNATURE_KEY.length > 0) {
-  const keyLength = SQUARE_WEBHOOK_SIGNATURE_KEY.length;
-  console.log('[Webhook] ✅ Signature key configured:', {
-    length: keyLength,
-    first10Chars: keyLength >= 10 ? SQUARE_WEBHOOK_SIGNATURE_KEY.substring(0, 10) + '...' : SQUARE_WEBHOOK_SIGNATURE_KEY.substring(0, keyLength),
-    last10Chars: keyLength >= 10 ? '...' + SQUARE_WEBHOOK_SIGNATURE_KEY.substring(Math.max(0, keyLength - 10)) : SQUARE_WEBHOOK_SIGNATURE_KEY,
-    expectedLength: '~43 characters (Square webhook signature keys are typically 43 chars)',
-    note: 'If signature verification fails, verify this key matches the one in Square Dashboard → Webhooks → Show Signature Key'
-  });
-} else {
-  console.error('[Webhook] ❌ CRITICAL: SQUARE_WEBHOOK_SIGNATURE_KEY not configured!');
-  console.error('[Webhook] Get your key from: https://developer.squareup.com/apps → Your App → Webhooks → Show Signature Key');
-}
+const SQUARE_WEBHOOK_SIGNATURE_KEY = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY || '';
 
 // Redis-based idempotency to prevent duplicate transfers across serverless invocations
 // CRITICAL: If Redis fails, we BLOCK transfers to prevent draining treasury
@@ -262,32 +209,6 @@ const AAVE_POOL_ABI = [
   'function getUserAccountData(address user) view returns (uint256 totalCollateralBase, uint256 totalDebtBase, uint256 availableBorrowsBase, uint256 currentLiquidationThreshold, uint256 ltv, uint256 healthFactor)',
 ];
 
-// ERC-4626 Vault ABI (for Morpho Vaults V2)
-// ERC-4626 Vault ABI (Morpho V2 compatible)
-// Morpho V2 vaults implement ERC-4626 with additional allocation functions
-// Standard deposit/withdraw functions route through liquidityAdapter automatically
-const ERC4626_VAULT_ABI = [
-  // Standard ERC-4626 functions
-  'function deposit(uint256 assets, address onBehalf) external returns (uint256 shares)',
-  'function withdraw(uint256 assets, address receiver, address onBehalf) public returns (uint256 shares)',
-  'function redeem(uint256 shares, address receiver, address onBehalf) external returns (uint256 assets)',
-  'function mint(uint256 shares, address onBehalf) external returns (uint256 assets)',
-  'function asset() external view returns (address)',
-  'function totalAssets() external view returns (uint256)',
-  'function convertToShares(uint256 assets) external view returns (uint256)',
-  'function convertToAssets(uint256 shares) external view returns (uint256)',
-  'function balanceOf(address account) view returns (uint256)',
-  'function previewDeposit(uint256 assets) public view returns (uint256)',
-  'function previewMint(uint256 shares) public view returns (uint256)',
-  'function previewWithdraw(uint256 assets) public view returns (uint256)',
-  'function previewRedeem(uint256 shares) public view returns (uint256)',
-  // Morpho V2 specific functions (for debugging/verification)
-  'function liquidityAdapter() external view returns (address)',
-  'function liquidityData() external view returns (bytes memory)',
-  'function accrueInterest() public',
-  'function accrueInterestView() public view returns (uint256, uint256, uint256)',
-];
-
 // GMX Exchange Router ABI for creating increase orders (GMX V2 format)
 const GMX_EXCHANGE_ROUTER_ABI = [
   'function multicall(bytes[] calldata data) external payable returns (bytes[] memory results)',
@@ -308,38 +229,23 @@ const WAVAX = '0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7';
 const BTC_TOKEN = '0x152b9d0FdC40C096757F570A51E494bd4b943E50'; // BTC.b on Avalanche
 const GMX_BTC_MARKET = '0xFb02132333A79C8B5Bd0b64E3AbccA5f7fAf2937'; // BTC/USD market
 
-// Morpho Vault addresses on Arbitrum (ERC-4626 compliant)
-// NOTE: Morpho vaults are deployed on Arbitrum, not Avalanche
-// Reference: Morpho V2 Contracts on Arbitrum
-// - VaultV2Factory: 0x6b46fa3cc9EBF8aB230aBAc664E37F2966Bf7971
-// - MorphoRegistry: 0xc00eb3c7aD1aE986A7f05F5A9d71aCa39c763C65
-// - MORPHO Token: 0x40BD670A58238e6E230c430BBb5cE6ec0d40df48 (18 decimals)
-// 
-// Verified Morpho USDC Vault addresses on Arbitrum (verified on-chain)
-// Both vaults accept USDC as their underlying asset
-const MORPHO_GAUNTLET_USDC_VAULT = '0x7e97fa6893871A2751B5fE961978DCCb2c201E65'; // Morpho GauntletUSDC Core Vault on Arbitrum - VERIFIED
-const MORPHO_HYPERITHM_USDC_VAULT = '0x4B6F1C9E5d470b97181786b26da0d0945A7cf027'; // Morpho HyperithmUSDC Vault on Arbitrum - VERIFIED
-
-// Token addresses on Arbitrum
-const USDC_ARBITRUM = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'; // Native USDC on Arbitrum (6 decimals)
-
 // GMX minimum requirements
 const GMX_MIN_COLLATERAL_USD = 5;
 const GMX_MIN_POSITION_SIZE_USD = 10;
-const AAVE_MIN_SUPPLY_USD = 1; // TEMPORARY: $1 for Morpho testing, will revert to $10 after testing
+const AAVE_MIN_SUPPLY_USD = 10; // Minimum $10 deposit required
 
 // Fee and gas settings
-const AVAX_TO_SEND_FOR_GMX: bigint = ethers.parseEther('0.06'); // 0.06 AVAX sent to user for GMX execution (balanced/aggressive)
-const AVAX_TO_SEND_FOR_AAVE: bigint = ethers.parseEther('0.005'); // 0.005 AVAX sent to user for exit fees (conservative)
-const TOTAL_AVAX_FEE: bigint = ethers.parseEther('0.23'); // 0.23 AVAX total fee (0.06 to user, 0.17 platform) - balanced/aggressive
-const TOTAL_AVAX_FEE_CONSERVATIVE: bigint = ethers.parseEther('0.1'); // 0.1 AVAX total fee (0.005 to user, 0.095 platform) - conservative
-const TOTAL_AVAX_FEE_DISCOUNTED: bigint = ethers.parseEther('0.1'); // 0.1 AVAX with ERGC discount
+const AVAX_TO_SEND_FOR_GMX = ethers.parseEther('0.06'); // 0.06 AVAX sent to user for GMX execution (balanced/aggressive)
+const AVAX_TO_SEND_FOR_AAVE = ethers.parseEther('0.005'); // 0.005 AVAX sent to user for exit fees (conservative)
+const TOTAL_AVAX_FEE = ethers.parseEther('0.23'); // 0.23 AVAX total fee (0.06 to user, 0.17 platform) - balanced/aggressive
+const TOTAL_AVAX_FEE_CONSERVATIVE = ethers.parseEther('0.1'); // 0.1 AVAX total fee (0.005 to user, 0.095 platform) - conservative
+const TOTAL_AVAX_FEE_DISCOUNTED = ethers.parseEther('0.1'); // 0.1 AVAX with ERGC discount
 const PLATFORM_FEE_PERCENT = 5; // 5% platform fee on deposits
 const MAX_GAS_PRICE_GWEI = 100; // Increased to 100 gwei to ensure reliability on Avalanche while still providing a safety cap
 
 // EnergyCoin (ERGC) - Fee discount token
 const ERGC_CONTRACT = '0xDC353b94284E7d3aEAB2588CEA3082b9b87C184B';
-const ERGC_DISCOUNT_THRESHOLD: bigint = ethers.parseUnits('100', 18); // Require 100 ERGC in wallet for discount
+const ERGC_DISCOUNT_THRESHOLD = ethers.parseUnits('100', 18); // Require 100 ERGC in wallet for discount
 const ERGC_PURCHASE_AMOUNT = 100; // 100 ERGC purchased for $10
 
 // ============================================================================
@@ -406,27 +312,7 @@ class PaymentStateManager {
     // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
     const data = await redis.get(`payment_info:${paymentId}`);
     if (!data) return null;
-    // Handle both string and object cases
-    if (typeof data === 'string') {
-      // Check if it's valid JSON before parsing
-      if (data.trim().startsWith('{') || data.trim().startsWith('[')) {
-        try {
-          return JSON.parse(data);
-        } catch (parseError) {
-          console.error(`[getPaymentInfo] Failed to parse payment info:`, parseError);
-          return null;
-        }
-      } else {
-        // Invalid format (e.g., "[object Object]")
-        console.error(`[getPaymentInfo] Invalid payment info format: ${data.substring(0, 50)}`);
-        return null;
-      }
-    } else if (typeof data === 'object' && data !== null) {
-      // Already an object
-      return data;
-    }
-    
-    return null;
+    return typeof data === 'string' ? JSON.parse(data) : data;
   }
 }
 
@@ -525,14 +411,11 @@ class TransactionExecutor {
       const feeData = await this.provider.getFeeData();
       const block = await this.provider.getBlock('latest');
       
-      // Ensure we always have a BigInt - convert if needed
-      const rawGasPrice = feeData.gasPrice || feeData.maxFeePerGas;
-      let gasPrice = rawGasPrice ? BigInt(rawGasPrice.toString()) : ethers.parseUnits('70', 'gwei');
+      let gasPrice = feeData.gasPrice || feeData.maxFeePerGas || ethers.parseUnits('70', 'gwei');
       
       // Ensure we're above base fee (EIP-1559)
       if (block?.baseFeePerGas) {
-        const baseFee = BigInt(block.baseFeePerGas.toString());
-        const minGasPrice = (baseFee * 120n) / 100n; // 120% of base fee
+        const minGasPrice = (block.baseFeePerGas * 120n) / 100n; // 120% of base fee
         gasPrice = gasPrice < minGasPrice ? minGasPrice : gasPrice;
       }
       
@@ -580,12 +463,11 @@ function getTransactionExecutor(): TransactionExecutor {
   }
   return _transactionExecutor;
 }
-const ERGC_SEND_TO_USER: bigint = ethers.parseUnits('100', 18); // Send full 100 ERGC (no burn)
+const ERGC_SEND_TO_USER = ethers.parseUnits('100', 18); // Send full 100 ERGC (no burn)
 
 // Risk profile configurations - maps to user selection
 const RISK_PROFILES = {
   conservative: { aavePercent: 100, gmxPercent: 0, gmxLeverage: 0, name: 'Earn Only' },
-  morpho: { aavePercent: 0, gmxPercent: 0, morphoPercent: 100, morphoEurcPercent: 50, morphoDaiPercent: 50, gmxLeverage: 0, name: 'Morpho Vault' },
   aggressive: { aavePercent: 0, gmxPercent: 100, gmxLeverage: 2.5, name: 'BTC Only' },
 };
 
@@ -610,68 +492,24 @@ interface WebhookEvent {
 }
 
 /**
- * Deterministically stringify JSON to match Square's format
- * Square sends compact JSON with sorted keys (alphabetically)
- */
-function deterministicStringify(obj: any): string {
-  if (typeof obj !== 'object' || obj === null) {
-    return JSON.stringify(obj);
-  }
-
-  if (Array.isArray(obj)) {
-    return '[' + obj.map(item => deterministicStringify(item)).join(',') + ']';
-  }
-
-  // Sort keys alphabetically (Square's format)
-  const sortedKeys = Object.keys(obj).sort();
-  const pairs = sortedKeys.map(key => {
-    const value = obj[key];
-    return JSON.stringify(key) + ':' + deterministicStringify(value);
-  });
-  
-  return '{' + pairs.join(',') + '}';
-}
-
-/**
  * Verify Square webhook signature
- * 
- * CRITICAL: Square calculates signature as: HMAC-SHA256(notification_url + body)
- * - notification_url: The exact URL Square calls (e.g., "https://www.tiltvault.com/api/square/webhook")
- * - body: The EXACT raw JSON body bytes Square sends (without whitespace)
- * 
- * Square's documentation: "When testing your webhook event notifications, make sure to use 
- * the raw request body without any whitespace. For example, {"hello":"world"}."
- * 
- * We use manual verification with multiple body format variants to match Square's exact format.
- * This handles cases where Vercel's JSON parsing may change the body format.
  */
-async function verifySignature(payload: string, signature: string, notificationUrl?: string): Promise<boolean> {
+function verifySignature(payload: string, signature: string): boolean {
   if (!SQUARE_WEBHOOK_SIGNATURE_KEY) {
     console.log('[Webhook] No signature key configured - cannot verify');
     return false;
   }
 
-  if (!payload || typeof payload !== 'string') {
-    console.log('[Webhook] No payload provided or invalid payload type');
+  if (!signature) {
+    console.log('[Webhook] No signature provided');
     return false;
   }
-
-  if (!signature || typeof signature !== 'string') {
-    console.log('[Webhook] No signature provided or invalid signature type');
-    return false;
-  }
-
-  // PRODUCTION webhook URL (must match Square Dashboard configuration exactly)
-  const PRODUCTION_WEBHOOK_URL = 'https://www.tiltvault.com/api/square/webhook';
-  const finalNotificationUrl = notificationUrl || PRODUCTION_WEBHOOK_URL;
 
   try {
-    // Manual verification with multiple body format variants
-    // (This handles cases where Vercel's JSON parsing changes the body format)
     // Log the exact signature format received from Square
     console.log('[Webhook] Raw signature received:', {
       fullSignature: signature,
-      signatureLength: signature ? signature.length : 0,
+      signatureLength: signature.length,
       startsWithSha256: signature.startsWith('sha256='),
       first20Chars: signature.substring(0, 20),
       containsEquals: signature.includes('='),
@@ -684,220 +522,64 @@ async function verifySignature(payload: string, signature: string, notificationU
     if (signature.startsWith('sha256=')) {
       signatureBase64 = signature.substring(7); // Remove "sha256=" prefix
       console.log('[Webhook] Extracted base64 signature from Square format');
+    } else if (signature.includes('=')) {
+      // Try to handle other possible formats
+      const equalsIndex = signature.indexOf('=');
+      signatureBase64 = signature.substring(equalsIndex + 1);
+      console.log('[Webhook] Extracted signature after first = character');
     } else {
-      // Signature doesn't start with "sha256=" - use as-is
-      // Note: Base64 padding uses '=' at the END, not as a separator
-      // So if there's an '=' but not at the start, it's likely base64 padding
-      console.log('[Webhook] Using signature as-is (no sha256= prefix detected)');
+      console.log('[Webhook] Using signature as-is (no prefix detected)');
     }
 
-    // CRITICAL: Square includes the notification URL in the signature!
-    // Signature = HMAC-SHA256(notification_url + body)
-    // Square uses the exact URL configured in their dashboard
-    // Try multiple URL formats in case Square's configured URL differs
-    const urlPrefix = notificationUrl || '';
-    
-    // Try multiple notification URL formats
-    const urlVariants = urlPrefix ? [
-      urlPrefix, // Primary URL from request headers
-      'https://www.tiltvault.com/api/square/webhook', // Hardcoded (most likely)
-      'https://tiltvault.com/api/square/webhook', // Without www
-      urlPrefix.replace(/^https?:\/\//, 'https://'), // Force https
-      urlPrefix.replace(/^https?:\/\//, 'http://'), // Try http (unlikely but possible)
-    ].filter((url, index, self) => self.indexOf(url) === index) : []; // Remove duplicates
-    
-    // Try multiple payload formats to match Square's exact signature
-    // Square signs the exact raw JSON they send, so we need to try different stringification methods
-    const payloadVariants: { name: string; payload: string; withUrl: string | null }[] = [];
-    
-    // PRIORITY 1: Use the payload as-is (it should already be deterministic stringified)
-    // This is the most likely to match since we pass deterministicStringify() from the handler
-    for (const url of urlVariants) {
-      payloadVariants.push(
-        { name: `as-received-with-url-${url.substring(url.lastIndexOf('/') + 1)}`, payload: payload, withUrl: url },
-      );
+    const hmac = crypto.createHmac('sha256', SQUARE_WEBHOOK_SIGNATURE_KEY);
+    hmac.update(payload);
+    const expectedSignature = hmac.digest('base64');
+
+    // Convert both signatures to buffers
+    const signatureBuffer = Buffer.from(signatureBase64, 'base64');
+    const expectedBuffer = Buffer.from(expectedSignature, 'base64');
+
+    // Debug logging for troubleshooting
+    console.log('[Webhook] Signature verification details:', {
+      receivedSignature: signatureBase64.substring(0, 20) + '...',
+      expectedSignature: expectedSignature.substring(0, 20) + '...',
+      receivedLength: signatureBuffer.length,
+      expectedLength: expectedBuffer.length,
+      payloadLength: payload.length,
+      payloadStart: payload.substring(0, 100) + '...'
+    });
+
+    // Check lengths before comparing (timingSafeEqual requires same length)
+    if (signatureBuffer.length !== expectedBuffer.length) {
+      console.log(`[Webhook] Signature length mismatch: received ${signatureBuffer.length}, expected ${expectedBuffer.length}`);
+      console.log('[Webhook] Trying alternative verification methods...');
+      
+      // Try without base64 decoding (in case Square sends raw hex)
+      try {
+        const signatureHex = Buffer.from(signatureBase64, 'hex');
+        const expectedHex = Buffer.from(expectedSignature, 'hex');
+        if (signatureHex.length === expectedHex.length) {
+          const isValidHex = crypto.timingSafeEqual(
+            new Uint8Array(signatureHex),
+            new Uint8Array(expectedHex)
+          );
+          console.log(`[Webhook] Hex verification result: ${isValidHex ? 'VALID' : 'INVALID'}`);
+          return isValidHex;
+        }
+      } catch (hexError) {
+        console.log('[Webhook] Hex verification failed:', hexError);
+      }
+      
+      return false;
     }
-    payloadVariants.push(
-      { name: 'as-received-no-url', payload: payload, withUrl: null },
+
+    const isValid = crypto.timingSafeEqual(
+      new Uint8Array(signatureBuffer),
+      new Uint8Array(expectedBuffer)
     );
 
-    // PRIORITY 2: Try parsing and re-stringifying in different formats
-    // This handles cases where the payload format might differ
-    // CRITICAL: Try MANY variations to match Square's exact format
-    try {
-      const parsedPayload = typeof payload === 'string' ? JSON.parse(payload) : payload;
-      
-      // Generate all possible stringification variants
-      const stringVariants: { name: string; value: string }[] = [];
-      
-      // 1. Deterministic (sorted keys, compact) - most likely to match Square's format
-      try {
-        stringVariants.push({ name: 'deterministic', value: deterministicStringify(parsedPayload) });
-      } catch (e) {
-        console.warn('[Webhook] Deterministic stringify failed in verifySignature:', e);
-      }
-      
-      // 2. Compact with sorted keys manually
-      try {
-        const sortedKeys = Object.keys(parsedPayload).sort();
-        const sortedObj = sortedKeys.reduce((acc: any, key) => {
-          acc[key] = parsedPayload[key];
-          return acc;
-        }, {});
-        stringVariants.push({ name: 'sorted-compact', value: JSON.stringify(sortedObj).replace(/\s+/g, '') });
-      } catch (e) {
-        console.warn('[Webhook] Sorted compact stringify failed:', e);
-      }
-      
-      // 3. Compact (no spaces)
-      try {
-        stringVariants.push({ name: 'compact', value: JSON.stringify(parsedPayload).replace(/\s+/g, '') });
-      } catch (e) {
-        console.warn('[Webhook] Compact stringify failed:', e);
-      }
-      
-      // 4. Standard JSON.stringify
-      try {
-        stringVariants.push({ name: 'standard', value: JSON.stringify(parsedPayload) });
-      } catch (e) {
-        console.warn('[Webhook] Standard stringify failed:', e);
-      }
-      
-      // 5. Compact with sorted keys (alternative method using JSON.stringify replacer)
-      try {
-        stringVariants.push({ name: 'sorted-standard', value: JSON.stringify(parsedPayload, Object.keys(parsedPayload).sort()) });
-      } catch (e) {
-        console.warn('[Webhook] Sorted standard stringify failed:', e);
-      }
-      
-      // Add all variants with each URL and without URL
-      for (const variant of stringVariants) {
-        // Add with each URL variant
-        for (const url of urlVariants) {
-          payloadVariants.push(
-            { name: `${variant.name}-with-url-${url.substring(url.lastIndexOf('/') + 1)}`, payload: variant.value, withUrl: url }
-          );
-        }
-        // Add without URL
-        payloadVariants.push(
-          { name: `${variant.name}-no-url`, payload: variant.value, withUrl: null }
-        );
-      }
-      
-    } catch (parseError) {
-      // Payload is not valid JSON, can only try original
-      console.log('[Webhook] Payload is not valid JSON, only trying original format');
-    }
-
-    // Try each payload variant
-    for (const variant of payloadVariants) {
-      // Validate variant payload is a string
-      if (!variant.payload || typeof variant.payload !== 'string') {
-        console.log(`[Webhook] Skipping variant "${variant.name}": invalid payload`);
-        continue;
-      }
-      
-      const hmac = crypto.createHmac('sha256', SQUARE_WEBHOOK_SIGNATURE_KEY);
-      // Square includes URL in signature: HMAC-SHA256(url + body)
-      // CRITICAL: Use variant.withUrl directly (it contains the actual URL string), not urlPrefix
-      const signatureInput = variant.withUrl ? (variant.withUrl + variant.payload) : variant.payload;
-      hmac.update(signatureInput);
-      const expectedSignature = hmac.digest('base64');
-
-      // Convert both signatures to buffers
-      let signatureBuffer: Buffer;
-      try {
-        signatureBuffer = Buffer.from(signatureBase64, 'base64');
-      } catch (e) {
-        console.error('[Webhook] Failed to decode received signature as base64:', e);
-        continue; // Try next variant
-      }
-      
-      const expectedBuffer = Buffer.from(expectedSignature, 'base64');
-
-      // Check lengths before comparing (timingSafeEqual requires same length)
-      if (signatureBuffer.length !== expectedBuffer.length) {
-        console.log(`[Webhook] Variant "${variant.name}": Length mismatch (received ${signatureBuffer.length}, expected ${expectedBuffer.length})`);
-        continue; // Try next variant
-      }
-
-      // Use timing-safe comparison
-      const isValid = crypto.timingSafeEqual(
-        new Uint8Array(signatureBuffer),
-        new Uint8Array(expectedBuffer)
-      );
-      
-      // Also try direct string comparison as fallback
-      if (!isValid) {
-        const directMatch = signatureBase64 === expectedSignature;
-        if (directMatch) {
-          console.log(`[Webhook] ✅ Variant "${variant.name}": Direct string comparison MATCH`);
-          return true;
-        }
-      }
-
-      if (isValid) {
-        console.log(`[Webhook] ✅ Variant "${variant.name}": Signature verification PASSED`);
-        console.log('[Webhook] Signature verification details:', {
-          variant: variant.name,
-          withUrl: variant.withUrl,
-          notificationUrl: variant.withUrl || 'none',
-          receivedSignature: signatureBase64 && signatureBase64.length > 0 ? signatureBase64.substring(0, 20) + '...' : 'N/A',
-          expectedSignature: expectedSignature && expectedSignature.length > 0 ? expectedSignature.substring(0, 20) + '...' : 'N/A',
-          payloadLength: variant.payload && typeof variant.payload === 'string' ? variant.payload.length : 0,
-          signatureInputLength: (variant.withUrl ? variant.withUrl.length : 0) + (variant.payload && typeof variant.payload === 'string' ? variant.payload.length : 0),
-          payloadStart: variant.payload && typeof variant.payload === 'string' && variant.payload.length > 0 ? variant.payload.substring(0, Math.min(200, variant.payload.length)) + '...' : 'N/A',
-        });
-        return true;
-      }
-
-      console.log(`[Webhook] Variant "${variant.name}": Signature mismatch`);
-    }
-
-    // None of the variants matched - this indicates the signature key is incorrect
-    // When the key is wrong, no amount of formatting will make signatures match
-    console.error('[Webhook] ❌ All signature verification variants failed');
-    console.error('[Webhook] This typically means SQUARE_WEBHOOK_SIGNATURE_KEY is incorrect');
-    console.error('[Webhook] Received signature (first 30 chars):', signatureBase64 && signatureBase64.length > 0 ? signatureBase64.substring(0, 30) + '...' : 'N/A');
-    console.error('[Webhook] Received signature length:', signatureBase64 && signatureBase64.length > 0 ? signatureBase64.length : 0);
-    console.error('[Webhook] Payload variants tried:', payloadVariants.length);
-    console.error('[Webhook] Notification URL variants tried:', urlVariants.length > 0 ? urlVariants.join(', ') : 'NONE');
-    console.error('[Webhook] ===== TROUBLESHOOTING =====');
-    console.error('[Webhook] 1. Go to: https://developer.squareup.com/apps');
-    console.error('[Webhook] 2. Select your app → Webhooks → Your webhook');
-    console.error('[Webhook] 3. Click "Show Signature Key"');
-    console.error('[Webhook] 4. Copy ENTIRE key (~43 characters, NOT your API access token)');
-    console.error('[Webhook] 5. Update SQUARE_WEBHOOK_SIGNATURE_KEY in Vercel environment variables');
-    console.error('[Webhook] 6. Redeploy and test again');
-    console.error('[Webhook] 7. See VERIFY-SQUARE-WEBHOOK-KEY.md for detailed instructions');
-    console.error('[Webhook] ===== END TROUBLESHOOTING =====');
-    
-    // Log first variant sample for quick debugging
-    if (payloadVariants.length > 0) {
-      const firstVariant = payloadVariants[0];
-      if (firstVariant && firstVariant.payload && typeof firstVariant.payload === 'string') {
-        const hmac = crypto.createHmac('sha256', SQUARE_WEBHOOK_SIGNATURE_KEY);
-        const signatureInput = firstVariant.withUrl ? (firstVariant.withUrl + firstVariant.payload) : firstVariant.payload;
-        hmac.update(signatureInput);
-        const expected = hmac.digest('base64');
-        console.error('[Webhook] First variant sample:', {
-          name: firstVariant.name,
-          withUrl: firstVariant.withUrl,
-          expectedSignature: expected ? expected.substring(0, 30) + '...' : 'N/A',
-          receivedSignature: signatureBase64 ? signatureBase64.substring(0, 30) + '...' : 'N/A',
-          match: expected === signatureBase64 ? 'YES' : 'NO',
-          note: 'If signatures don\'t match, the key is wrong - no amount of formatting will fix it'
-        });
-      }
-    }
-
-    // All signature verification variants failed
-    // This should not happen if Square's format is correctly matched
-    console.error('[Webhook] ❌ All signature verification variants failed');
-    console.error('[Webhook] This indicates a mismatch between Square\'s signature format and our calculation');
-    console.error('[Webhook] Check logs above for which variant was closest');
-    
-    return false;
+    console.log(`[Webhook] Final signature verification result: ${isValid ? 'VALID' : 'INVALID'}`);
+    return isValid;
   } catch (error) {
     console.error('[Webhook] Signature verification error:', error);
     return false;
@@ -981,15 +663,13 @@ async function sendUsdcTransfer(
     try {
       const feeData = await provider.getFeeData();
       // Use gasPrice (legacy) or maxFeePerGas (EIP-1559), whichever is higher
-      // Ensure we always have a BigInt - convert if needed
-      const rawGasPrice = feeData.gasPrice || feeData.maxFeePerGas;
-      networkGasPrice = rawGasPrice ? BigInt(rawGasPrice.toString()) : ethers.parseUnits('70', 'gwei');
+      networkGasPrice = feeData.gasPrice || feeData.maxFeePerGas || ethers.parseUnits('70', 'gwei');
       console.log(`[USDC] Network gas price from feeData: ${ethers.formatUnits(networkGasPrice, 'gwei')} gwei`);
       
       // CRITICAL: Check current block base fee to ensure we're above it
       const block = await provider.getBlock('latest');
       if (block && block.baseFeePerGas) {
-        const baseFee = BigInt(block.baseFeePerGas.toString());
+        const baseFee = block.baseFeePerGas;
         console.log(`[USDC] Current block base fee: ${ethers.formatUnits(baseFee, 'gwei')} gwei`);
         // Use 120% of base fee as minimum to ensure inclusion (20% priority fee)
         const minGasPrice = (baseFee * 120n) / 100n;
@@ -1476,17 +1156,14 @@ async function openGmxPosition(
     console.log('[GMX] Fetching current gas price...');
     let networkGasPrice: bigint;
     try {
-      const rawGasPrice = await publicClient.getGasPrice();
-      networkGasPrice = BigInt(rawGasPrice.toString()); // Ensure BigInt
+      networkGasPrice = await publicClient.getGasPrice();
       console.log(`[GMX] Network gas price: ${formatUnits(networkGasPrice, 9)} gwei`);
     } catch (error) {
       console.warn('[GMX] Failed to fetch network gas price, using default 25 gwei');
-      const defaultGasRaw = parseUnits('25', 9); // Default to 25 gwei if fetch fails
-      networkGasPrice = BigInt(defaultGasRaw.toString()); // Ensure BigInt
+      networkGasPrice = parseUnits('25', 9); // Default to 25 gwei if fetch fails
     }
     
-    const maxGasRaw = parseUnits(MAX_GAS_PRICE_GWEI.toString(), 9); // 100 gwei cap
-    const maxGas = BigInt(maxGasRaw.toString()); // Ensure BigInt
+    const maxGas = parseUnits(MAX_GAS_PRICE_GWEI.toString(), 9); // 100 gwei cap
     const gasPrice = networkGasPrice > maxGas ? maxGas : networkGasPrice;
     
     console.log(`[GMX] Using gas price: ${formatUnits(gasPrice, 9)} gwei (capped at ${MAX_GAS_PRICE_GWEI} gwei)`);
@@ -2335,12 +2012,9 @@ async function executeGmxFromHubWallet(
       // Set gas parameters dynamically (EXACTLY like Bitcoin tab)
       let finalOpts = opts;
       try {
-        const baseFeeRaw = await publicClient.getGasPrice();
-        const baseFee = BigInt(baseFeeRaw.toString()); // Ensure BigInt
-        const minerTipRaw = parseUnits('12', 9); // 12 gwei miner tip (same as Bitcoin tab)
-        const minerTip = BigInt(minerTipRaw.toString()); // Ensure BigInt
-        const maxFeeBufferRaw = parseUnits('1', 9); // 1 gwei buffer (same as Bitcoin tab)
-        const maxFeeBuffer = BigInt(maxFeeBufferRaw.toString()); // Ensure BigInt
+        const baseFee = await publicClient.getGasPrice();
+        const minerTip = parseUnits('12', 9); // 12 gwei miner tip (same as Bitcoin tab)
+        const maxFeeBuffer = parseUnits('1', 9); // 1 gwei buffer (same as Bitcoin tab)
         const maxFeePerGas = baseFee + minerTip + maxFeeBuffer;
         
         console.log(`[GMX Hub SDK] Gas parameters (dynamic, like Bitcoin tab):`, {
@@ -2754,713 +2428,6 @@ async function executeAaveViaPrivy(
 }
 
 /**
- * Execute Morpho strategy from hub wallet on Arbitrum
- * 
- * ARCHITECTURE:
- * - Square payments can come from any chain (currently Avalanche)
- * - Hub wallet (0x34c11928868d14bdD7Be55A0D9f9e02257240c24) is multi-chain
- * - For Morpho: Uses Arbitrum USDC from hub wallet (funded separately)
- * - Deposits directly to Morpho vaults on Arbitrum (no bridging needed)
- * 
- * FLOW:
- * 1. Square payment received → webhook triggered
- * 2. If Morpho profile selected → this function called
- * 3. Connects to Arbitrum RPC
- * 4. Uses hub wallet's Arbitrum USDC balance
- * 5. Deposits 50/50 split to Morpho Gauntlet GauntletUSDC (11.54% APY) and Morpho Spark HyperithmUSDC (10.11% APY)
- * 6. Vault shares credited to user's wallet address on Arbitrum
- * 
- * NOTE: Hub wallet must have USDC on Arbitrum (funded separately from Square payments)
- */
-export async function executeMorphoFromHubWallet(
-  walletAddress: string,
-  gauntletAmount: number,
-  hyperithmAmount: number,
-  paymentId: string
-): Promise<{ success: boolean; txHash?: string; error?: string }> {
-  console.log(`[MORPHO] Executing Morpho strategy from hub wallet for ${walletAddress}...`);
-  console.log(`[MORPHO] GauntletUSDC Core vault amount: $${gauntletAmount}, HyperithmUSDC vault amount: $${hyperithmAmount}`);
-  console.log(`[MORPHO] Both vaults use USDC as underlying asset`);
-
-  // Validate Arbitrum hub wallet
-  if (!ARBITRUM_HUB_WALLET_PRIVATE_KEY || ARBITRUM_HUB_WALLET_PRIVATE_KEY === '') {
-    console.error('[MORPHO] ARBITRUM_HUB_WALLET_PRIVATE_KEY not configured');
-    return { success: false, error: 'ARBITRUM_HUB_WALLET_PRIVATE_KEY environment variable is required for Morpho operations on Arbitrum' };
-  }
-
-  // Accept both with and without 0x prefix
-  const cleanArbitrumKey = ARBITRUM_HUB_WALLET_PRIVATE_KEY.startsWith('0x') 
-    ? ARBITRUM_HUB_WALLET_PRIVATE_KEY 
-    : `0x${ARBITRUM_HUB_WALLET_PRIVATE_KEY}`;
-
-  if (cleanArbitrumKey.length !== 66) {
-    console.error('[MORPHO] ARBITRUM_HUB_WALLET_PRIVATE_KEY must be a 32-byte hex string');
-    return { success: false, error: 'ARBITRUM_HUB_WALLET_PRIVATE_KEY must be a 32-byte hex string' };
-  }
-
-  console.log(`[MORPHO] Using Arbitrum hub wallet: ${ARBITRUM_HUB_WALLET_ADDRESS}`);
-  console.log(`[MORPHO] Arbitrum hub wallet private key configured: ${!!ARBITRUM_HUB_WALLET_PRIVATE_KEY && ARBITRUM_HUB_WALLET_PRIVATE_KEY.length > 0}`);
-
-  // Check minimum amounts (same as Aave minimum)
-  if (gauntletAmount < AAVE_MIN_SUPPLY_USD || hyperithmAmount < AAVE_MIN_SUPPLY_USD) {
-    console.log(`[MORPHO] Amount below minimum $${AAVE_MIN_SUPPLY_USD}, skipping`);
-    return { success: false, error: `Minimum deposit is $${AAVE_MIN_SUPPLY_USD} per vault` };
-  }
-
-  try {
-    // CRITICAL: Connect to Arbitrum for Morpho operations (Morpho vaults are on Arbitrum)
-    console.log(`[MORPHO] Connecting to Arbitrum RPC: ${ARBITRUM_RPC}`);
-    const provider = new ethers.JsonRpcProvider(ARBITRUM_RPC);
-    
-    // Validate provider connectivity and network
-    console.log(`[MORPHO] Testing RPC connectivity...`);
-    let network;
-    try {
-      network = await provider.getNetwork();
-      console.log(`[MORPHO] ✅ RPC connected - Chain ID: ${network.chainId}, Name: ${network.name}`);
-      
-      // Verify we're on Arbitrum (Chain ID 42161 for mainnet, 421613 for testnet)
-      const expectedChainId = 42161n; // Arbitrum One
-      if (network.chainId !== expectedChainId) {
-        console.error(`[MORPHO] ❌ Wrong network! Expected Arbitrum (${expectedChainId}), got ${network.chainId}`);
-        return { success: false, error: `Wrong network: Expected Arbitrum (${expectedChainId}), got ${network.chainId}` };
-      }
-    } catch (rpcError: any) {
-      console.error(`[MORPHO] ❌ RPC connectivity test failed: ${rpcError?.message || String(rpcError)}`);
-      return { 
-        success: false, 
-        error: `RPC connection failed: ${rpcError?.message || String(rpcError)}. Check ARBITRUM_RPC_URL environment variable.` 
-      };
-    }
-    
-    // Validate contract addresses before use
-    if (!USDC_ARBITRUM || !USDC_ARBITRUM.startsWith('0x') || USDC_ARBITRUM.length !== 42) {
-      return { success: false, error: `Invalid USDC_ARBITRUM address: ${USDC_ARBITRUM}` };
-    }
-    if (!MORPHO_GAUNTLET_USDC_VAULT || !MORPHO_GAUNTLET_USDC_VAULT.startsWith('0x') || MORPHO_GAUNTLET_USDC_VAULT.length !== 42) {
-      return { success: false, error: `Invalid MORPHO_GAUNTLET_USDC_VAULT address: ${MORPHO_GAUNTLET_USDC_VAULT}` };
-    }
-    if (!MORPHO_HYPERITHM_USDC_VAULT || !MORPHO_HYPERITHM_USDC_VAULT.startsWith('0x') || MORPHO_HYPERITHM_USDC_VAULT.length !== 42) {
-      return { success: false, error: `Invalid MORPHO_HYPERITHM_USDC_VAULT address: ${MORPHO_HYPERITHM_USDC_VAULT}` };
-    }
-    console.log(`[MORPHO] ✅ Contract addresses validated`);
-    console.log(`[MORPHO] USDC: ${USDC_ARBITRUM}`);
-    console.log(`[MORPHO] GauntletUSDC Core Vault: ${MORPHO_GAUNTLET_USDC_VAULT}`);
-    console.log(`[MORPHO] HyperithmUSDC Vault: ${MORPHO_HYPERITHM_USDC_VAULT}`);
-    
-    const hubWallet = new ethers.Wallet(cleanArbitrumKey, provider);
-    
-    // Verify wallet matches expected Arbitrum hub wallet address
-    if (hubWallet.address.toLowerCase() !== ARBITRUM_HUB_WALLET_ADDRESS.toLowerCase()) {
-      console.error(`[MORPHO] Arbitrum private key mismatch! Expected: ${ARBITRUM_HUB_WALLET_ADDRESS}, Got: ${hubWallet.address}`);
-      return { success: false, error: 'Arbitrum private key does not match hub wallet address' };
-    }
-    
-    console.log(`[MORPHO] ✅ Arbitrum hub wallet verified: ${hubWallet.address}`);
-
-    // Verify contracts exist before creating contract objects
-    console.log(`[MORPHO] Verifying contract existence...`);
-    const usdcCode = await provider.getCode(USDC_ARBITRUM);
-    const gauntletVaultCode = await provider.getCode(MORPHO_GAUNTLET_USDC_VAULT);
-    const hyperithmVaultCode = await provider.getCode(MORPHO_HYPERITHM_USDC_VAULT);
-    
-    if (!usdcCode || usdcCode === '0x' || usdcCode === '0x0' || usdcCode.length < 4) {
-      console.error(`[MORPHO] ❌ USDC contract not found at ${USDC_ARBITRUM}`);
-      return { success: false, error: `USDC contract not found at ${USDC_ARBITRUM}. Check USDC_ARBITRUM address. Verify on Arbiscan: https://arbiscan.io/address/${USDC_ARBITRUM}` };
-    }
-    if (!gauntletVaultCode || gauntletVaultCode === '0x' || gauntletVaultCode === '0x0' || gauntletVaultCode.length < 4) {
-      console.error(`[MORPHO] ❌ GauntletUSDC Core vault contract not found at ${MORPHO_GAUNTLET_USDC_VAULT}`);
-      console.error(`[MORPHO] ❌ Verify the correct address on Arbiscan: https://arbiscan.io/address/${MORPHO_GAUNTLET_USDC_VAULT}`);
-      return { 
-        success: false, 
-        error: `GauntletUSDC Core vault contract not found at ${MORPHO_GAUNTLET_USDC_VAULT}. The address may be incorrect. Verify on Arbiscan: https://arbiscan.io/address/${MORPHO_GAUNTLET_USDC_VAULT} or check Morpho documentation for the correct vault address.` 
-      };
-    }
-    if (!hyperithmVaultCode || hyperithmVaultCode === '0x' || hyperithmVaultCode === '0x0' || hyperithmVaultCode.length < 4) {
-      console.error(`[MORPHO] ❌ HyperithmUSDC vault contract not found at ${MORPHO_HYPERITHM_USDC_VAULT}`);
-      console.error(`[MORPHO] ❌ Verify the correct address on Arbiscan: https://arbiscan.io/address/${MORPHO_HYPERITHM_USDC_VAULT}`);
-      return { 
-        success: false, 
-        error: `HyperithmUSDC vault contract not found at ${MORPHO_HYPERITHM_USDC_VAULT}. The address may be incorrect. Verify on Arbiscan: https://arbiscan.io/address/${MORPHO_HYPERITHM_USDC_VAULT} or check Morpho documentation for the correct vault address.` 
-      };
-    }
-    console.log(`[MORPHO] ✅ All contracts exist (USDC: ${usdcCode.length} bytes, Gauntlet: ${gauntletVaultCode.length} bytes, Hyperithm: ${hyperithmVaultCode.length} bytes)`);
-    
-    // Use Arbitrum USDC for Morpho operations
-    const usdcContract = new ethers.Contract(USDC_ARBITRUM, ERC20_ABI, hubWallet);
-    const gauntletVault = new ethers.Contract(MORPHO_GAUNTLET_USDC_VAULT, ERC4626_VAULT_ABI, hubWallet);
-    const hyperithmVault = new ethers.Contract(MORPHO_HYPERITHM_USDC_VAULT, ERC4626_VAULT_ABI, hubWallet);
-
-    // CRITICAL: Check inflation attack protection (dead deposit)
-    // NOTE: This is a safety check - if it fails, we'll log a warning but continue with deposit
-    // Some vault contracts may have ABI mismatches or not implement ERC4626 exactly
-    const DEAD_ADDRESS = '0x000000000000000000000000000000000000dEaD';
-    const MIN_DEAD_SHARES = 1_000_000_000n; // 1e9 shares minimum
-    
-    console.log(`[MORPHO] Testing vault connectivity...`);
-    console.log(`[MORPHO] GauntletUSDC Core Vault Address: ${MORPHO_GAUNTLET_USDC_VAULT}`);
-    console.log(`[MORPHO] HyperithmUSDC Vault Address: ${MORPHO_HYPERITHM_USDC_VAULT}`);
-    
-    console.log(`[MORPHO] ✅ Vault contracts found (GauntletUSDC: ${gauntletVaultCode.length} bytes, HyperithmUSDC: ${hyperithmVaultCode.length} bytes)`);
-    
-    // Continue with safety checks (inflation protection) - these can fail without blocking
-    try {
-      
-      // Try to call balanceOf with low-level call to avoid ABI decoding issues
-      let gauntletDeadShares: bigint | null = null;
-      let hyperithmDeadShares: bigint | null = null;
-      
-      try {
-        console.log(`[MORPHO] Checking GauntletUSDC vault inflation protection...`);
-        const gauntletBalanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
-        const gauntletData = gauntletBalanceOfInterface.encodeFunctionData('balanceOf', [DEAD_ADDRESS]);
-        const gauntletResult = await provider.call({
-          to: MORPHO_GAUNTLET_USDC_VAULT,
-          data: gauntletData
-        });
-        
-        if (gauntletResult && gauntletResult !== '0x' && gauntletResult.length > 2) {
-          gauntletDeadShares = ethers.getBigInt(gauntletResult);
-          console.log(`[MORPHO] GauntletUSDC dead shares: ${gauntletDeadShares.toString()}`);
-          if (gauntletDeadShares < MIN_DEAD_SHARES) {
-            console.warn(`[MORPHO] ⚠️ GauntletUSDC vault has low inflation protection (${gauntletDeadShares} < ${MIN_DEAD_SHARES})`);
-          }
-        } else {
-          console.warn(`[MORPHO] ⚠️ GauntletUSDC vault balanceOf returned empty data - skipping check`);
-        }
-      } catch (gauntletError: any) {
-        const errorMsg = gauntletError instanceof Error ? gauntletError.message : String(gauntletError);
-        console.warn(`[MORPHO] ⚠️ Failed to check GauntletUSDC vault inflation protection: ${errorMsg}`);
-      }
-      
-      try {
-        console.log(`[MORPHO] Checking HyperithmUSDC vault inflation protection...`);
-        const hyperithmBalanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
-        const hyperithmData = hyperithmBalanceOfInterface.encodeFunctionData('balanceOf', [DEAD_ADDRESS]);
-        const hyperithmResult = await provider.call({
-          to: MORPHO_HYPERITHM_USDC_VAULT,
-          data: hyperithmData
-        });
-        
-        if (hyperithmResult && hyperithmResult !== '0x' && hyperithmResult.length > 2) {
-          hyperithmDeadShares = ethers.getBigInt(hyperithmResult);
-          console.log(`[MORPHO] HyperithmUSDC dead shares: ${hyperithmDeadShares.toString()}`);
-          if (hyperithmDeadShares < MIN_DEAD_SHARES) {
-            console.warn(`[MORPHO] ⚠️ HyperithmUSDC vault has low inflation protection (${hyperithmDeadShares} < ${MIN_DEAD_SHARES})`);
-          }
-        } else {
-          console.warn(`[MORPHO] ⚠️ HyperithmUSDC vault balanceOf returned empty data - skipping check`);
-        }
-      } catch (hyperithmError: any) {
-        const errorMsg = hyperithmError instanceof Error ? hyperithmError.message : String(hyperithmError);
-        console.warn(`[MORPHO] ⚠️ Failed to check HyperithmUSDC vault inflation protection: ${errorMsg}`);
-      }
-      
-      // Enforce inflation protection per Morpho docs: fail if inadequate protection
-      if (gauntletDeadShares !== null) {
-        if (gauntletDeadShares < MIN_DEAD_SHARES) {
-          console.error(`[MORPHO] ❌ GauntletUSDC vault lacks required inflation protection: ${gauntletDeadShares} < ${MIN_DEAD_SHARES}`);
-          return { 
-            success: false, 
-            error: `GauntletUSDC vault lacks required inflation protection (${gauntletDeadShares} < ${MIN_DEAD_SHARES}). Vault may be unsafe.` 
-          };
-        }
-        console.log(`[MORPHO] ✅ GauntletUSDC vault inflation protection verified: ${gauntletDeadShares} shares`);
-      } else {
-        console.warn(`[MORPHO] ⚠️ Could not verify GauntletUSDC vault inflation protection (contract call failed)`);
-        console.warn(`[MORPHO] ⚠️ Proceeding with deposit but verify vault safety manually`);
-      }
-      
-      if (hyperithmDeadShares !== null) {
-        if (hyperithmDeadShares < MIN_DEAD_SHARES) {
-          console.error(`[MORPHO] ❌ HyperithmUSDC vault lacks required inflation protection: ${hyperithmDeadShares} < ${MIN_DEAD_SHARES}`);
-          return { 
-            success: false, 
-            error: `HyperithmUSDC vault lacks required inflation protection (${hyperithmDeadShares} < ${MIN_DEAD_SHARES}). Vault may be unsafe.` 
-          };
-        }
-        console.log(`[MORPHO] ✅ HyperithmUSDC vault inflation protection verified: ${hyperithmDeadShares} shares`);
-      } else {
-        console.warn(`[MORPHO] ⚠️ Could not verify HyperithmUSDC vault inflation protection (contract call failed)`);
-        console.warn(`[MORPHO] ⚠️ Proceeding with deposit but verify vault safety manually`);
-      }
-    } catch (safetyCheckError) {
-      // CRITICAL: Don't block deposit if safety checks fail - log and continue
-      console.error(`[MORPHO] ❌ Safety checks failed:`, safetyCheckError);
-      console.warn(`[MORPHO] ⚠️ Continuing with deposit despite safety check failure`);
-      console.warn(`[MORPHO] ⚠️ This may indicate vault contract issues - verify addresses and ABI`);
-    }
-
-    // Get vault asset addresses to verify they accept USDC (using low-level calls)
-    let gauntletVaultAsset: string | null = null;
-    let hyperithmVaultAsset: string | null = null;
-    
-    try {
-      console.log(`[MORPHO] Getting vault asset addresses via low-level call...`);
-      const assetInterface = new ethers.Interface(['function asset() view returns (address)']);
-      const eurcAssetData = assetInterface.encodeFunctionData('asset', []);
-      const eurcAssetResult = await provider.call({
-        to: MORPHO_GAUNTLET_USDC_VAULT,
-        data: eurcAssetData
-      });
-      if (eurcAssetResult && eurcAssetResult !== '0x' && eurcAssetResult.length > 2) {
-        // Decode the address (last 20 bytes of the 32-byte result)
-        gauntletVaultAsset = '0x' + eurcAssetResult.slice(-40);
-        console.log(`[MORPHO] GauntletUSDC vault asset: ${gauntletVaultAsset}`);
-      } else {
-        console.warn(`[MORPHO] ⚠️ GauntletUSDC vault asset() returned empty data`);
-      }
-    } catch (eurcAssetError) {
-      console.error(`[MORPHO] ❌ Failed to get GauntletUSDC vault asset:`, eurcAssetError);
-      console.warn(`[MORPHO] ⚠️ Continuing without asset verification`);
-    }
-    
-    try {
-      const assetInterface = new ethers.Interface(['function asset() view returns (address)']);
-      const daiAssetData = assetInterface.encodeFunctionData('asset', []);
-      const daiAssetResult = await provider.call({
-        to: MORPHO_HYPERITHM_USDC_VAULT,
-        data: daiAssetData
-      });
-      if (daiAssetResult && daiAssetResult !== '0x' && daiAssetResult.length > 2) {
-        // Decode the address (last 20 bytes of the 32-byte result)
-        hyperithmVaultAsset = '0x' + daiAssetResult.slice(-40);
-        console.log(`[MORPHO] HyperithmUSDC vault asset: ${hyperithmVaultAsset}`);
-      } else {
-        console.warn(`[MORPHO] ⚠️ HyperithmUSDC vault asset() returned empty data`);
-      }
-    } catch (daiAssetError) {
-      console.error(`[MORPHO] ❌ Failed to get HyperithmUSDC vault asset:`, daiAssetError);
-      console.warn(`[MORPHO] ⚠️ Continuing without asset verification`);
-    }
-    
-    // Verify vaults accept USDC - both should use USDC as underlying asset
-    if (gauntletVaultAsset) {
-      if (gauntletVaultAsset.toLowerCase() !== USDC_ARBITRUM.toLowerCase()) {
-        console.warn(`[MORPHO] ⚠️ GauntletUSDC vault asset (${gauntletVaultAsset}) differs from USDC. Expected USDC.`);
-      } else {
-        console.log(`[MORPHO] ✅ GauntletUSDC vault confirmed to use USDC`);
-      }
-    }
-    if (hyperithmVaultAsset) {
-      if (hyperithmVaultAsset.toLowerCase() !== USDC_ARBITRUM.toLowerCase()) {
-        console.warn(`[MORPHO] ⚠️ HyperithmUSDC vault asset (${hyperithmVaultAsset}) differs from USDC. Expected USDC.`);
-      } else {
-        console.log(`[MORPHO] ✅ HyperithmUSDC vault confirmed to use USDC`);
-      }
-    }
-
-    // Convert amounts to wei (USDC has 6 decimals)
-    // Explicitly convert to number first to avoid BigInt mixing issues
-    const gauntletAmountNum = Number(gauntletAmount);
-    const hyperithmAmountNum = Number(hyperithmAmount);
-    const gauntletAmountWei = BigInt(Math.floor(gauntletAmountNum * 1_000_000));
-    const hyperithmAmountWei = BigInt(Math.floor(hyperithmAmountNum * 1_000_000));
-    const totalAmountWei = gauntletAmountWei + hyperithmAmountWei;
-
-    // Check hub wallet USDC balance on Arbitrum (using low-level call to avoid ABI issues)
-    let hubBalance: bigint;
-    try {
-      console.log(`[MORPHO] Checking hub wallet USDC balance via low-level call...`);
-      const balanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
-      const balanceData = balanceOfInterface.encodeFunctionData('balanceOf', [hubWallet.address]);
-      const balanceResult = await provider.call({
-        to: USDC_ARBITRUM,
-        data: balanceData
-      });
-      if (balanceResult && balanceResult !== '0x' && balanceResult.length > 2) {
-        hubBalance = ethers.getBigInt(balanceResult);
-        console.log(`[MORPHO] ✅ Hub balance retrieved: ${hubBalance.toString()}`);
-      } else {
-        console.error(`[MORPHO] ❌ Hub balance check returned empty data (0x)`);
-        return { success: false, error: `Failed to check hub wallet USDC balance: Contract returned empty data. Is USDC contract address correct?` };
-      }
-    } catch (balanceError: any) {
-      console.error(`[MORPHO] ❌ Failed to check hub wallet USDC balance: ${balanceError?.message || String(balanceError)}`);
-      return { success: false, error: `Failed to check hub wallet USDC balance: ${balanceError?.message || String(balanceError)}` };
-    }
-    
-    const hubBalanceFormatted = ethers.formatUnits(hubBalance, 6);
-    console.log(`[MORPHO] Hub wallet Arbitrum USDC balance: $${hubBalanceFormatted}`);
-    console.log(`[MORPHO] Hub wallet address: ${hubWallet.address}`);
-    console.log(`[MORPHO] Required amount: $${gauntletAmount + hyperithmAmount}`);
-    
-    if (hubBalance < totalAmountWei) {
-      console.error(`[MORPHO] ❌ Insufficient USDC balance on Arbitrum. Have: $${hubBalanceFormatted}, Need: $${gauntletAmount + hyperithmAmount}`);
-      return { success: false, error: `Insufficient USDC balance in hub wallet on Arbitrum. Have: $${hubBalanceFormatted}, Need: $${gauntletAmount + hyperithmAmount}` };
-    }
-    console.log(`[MORPHO] ✅ Sufficient USDC balance on Arbitrum: $${hubBalanceFormatted}`);
-
-    // Get gas price
-    let networkGasPrice: bigint;
-    try {
-      const feeData = await provider.getFeeData();
-      // Ensure we always have a BigInt - convert if needed
-      const rawGasPrice = feeData.gasPrice || feeData.maxFeePerGas;
-      networkGasPrice = rawGasPrice ? BigInt(rawGasPrice.toString()) : ethers.parseUnits('70', 'gwei');
-      
-      const block = await provider.getBlock('latest');
-      if (block && block.baseFeePerGas) {
-        const baseFee = BigInt(block.baseFeePerGas.toString());
-        const minGasPrice = (baseFee * 120n) / 100n;
-        if (networkGasPrice < minGasPrice) {
-          networkGasPrice = minGasPrice;
-        }
-      }
-    } catch (error) {
-      console.warn('[MORPHO] Failed to fetch gas price, using default 70 gwei');
-      networkGasPrice = ethers.parseUnits('70', 'gwei');
-    }
-    
-    const maxGasPrice = ethers.parseUnits(MAX_GAS_PRICE_GWEI.toString(), 'gwei');
-    const gasPrice = networkGasPrice > maxGasPrice ? maxGasPrice : networkGasPrice;
-
-    const txHashes: string[] = [];
-
-    // Step 1: Approve and deposit to GauntletUSDC vault
-    console.log(`[MORPHO] Step 1: Depositing $${gauntletAmount} to Morpho Gauntlet GauntletUSDC vault...`);
-    
-    // Preview deposit to estimate shares (slippage protection) - non-blocking
-    let expectedGauntletShares: bigint | null = null;
-    try {
-      expectedGauntletShares = await gauntletVault.previewDeposit(gauntletAmountWei);
-      console.log(`[MORPHO] Expected GauntletUSDC shares: ${expectedGauntletShares.toString()}`);
-    } catch (previewError: any) {
-      console.warn(`[MORPHO] ⚠️ Could not preview GauntletUSDC deposit (non-blocking): ${previewError?.message || String(previewError)}`);
-      console.log(`[MORPHO] Proceeding with deposit without preview...`);
-    }
-    
-    // Check and approve USDC for GauntletUSDC vault (using low-level call)
-    let gauntletAllowance: bigint;
-    try {
-      const allowanceInterface = new ethers.Interface(['function allowance(address owner, address spender) view returns (uint256)']);
-      const allowanceData = allowanceInterface.encodeFunctionData('allowance', [hubWallet.address, MORPHO_GAUNTLET_USDC_VAULT]);
-      const allowanceResult = await provider.call({
-        to: USDC_ARBITRUM,
-        data: allowanceData
-      });
-      if (allowanceResult && allowanceResult !== '0x' && allowanceResult.length > 2) {
-        gauntletAllowance = ethers.getBigInt(allowanceResult);
-      } else {
-        console.warn(`[MORPHO] ⚠️ Allowance check returned empty data, assuming 0`);
-        gauntletAllowance = 0n;
-      }
-    } catch (allowanceError: any) {
-      console.warn(`[MORPHO] ⚠️ Failed to check allowance (non-blocking): ${allowanceError?.message || String(allowanceError)}`);
-      gauntletAllowance = 0n; // Assume no allowance if check fails
-    }
-    if (gauntletAllowance < gauntletAmountWei) {
-      console.log('[MORPHO] Approving USDC for GauntletUSDC vault...');
-      const approveGauntletTx = await usdcContract.approve(MORPHO_GAUNTLET_USDC_VAULT, ethers.MaxUint256, { gasPrice });
-      const approveGauntletReceipt = await approveGauntletTx.wait();
-      if (approveGauntletReceipt?.status !== 1) {
-        throw new Error(`USDC approval for GauntletUSDC vault failed. Status: ${approveGauntletReceipt?.status}`);
-      }
-      console.log('[MORPHO] GauntletUSDC vault approval confirmed');
-    }
-
-    // Get balance before deposit to calculate shares received (non-blocking)
-    // Use low-level call to avoid ABI decoding issues
-    let gauntletSharesBefore: bigint | null = null;
-    try {
-      console.log(`[MORPHO] Calling balanceOf on GauntletUSDC vault at ${MORPHO_GAUNTLET_USDC_VAULT} for wallet ${walletAddress}...`);
-      const balanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
-      const balanceData = balanceOfInterface.encodeFunctionData('balanceOf', [walletAddress]);
-      const balanceResult = await provider.call({
-        to: MORPHO_GAUNTLET_USDC_VAULT,
-        data: balanceData
-      });
-      if (balanceResult && balanceResult !== '0x' && balanceResult.length > 2) {
-        gauntletSharesBefore = ethers.getBigInt(balanceResult);
-        console.log(`[MORPHO] GauntletUSDC shares before deposit: ${gauntletSharesBefore.toString()}`);
-      } else {
-        console.warn(`[MORPHO] ⚠️ GauntletUSDC vault balanceOf returned empty data, assuming 0 shares`);
-        gauntletSharesBefore = 0n;
-      }
-    } catch (balanceError: any) {
-      const errorMsg = balanceError?.message || String(balanceError);
-      const errorCode = balanceError?.code || 'UNKNOWN';
-      console.error(`[MORPHO] ❌ balanceOf failed for GauntletUSDC vault: ${errorMsg} (code: ${errorCode})`);
-      console.error(`[MORPHO] Vault address: ${MORPHO_GAUNTLET_USDC_VAULT}, Wallet: ${walletAddress}`);
-      console.warn(`[MORPHO] ⚠️ Could not get GauntletUSDC shares before deposit (non-blocking) - assuming 0 and proceeding...`);
-      gauntletSharesBefore = 0n; // Assume 0 shares if we can't check
-    }
-    
-    // Deposit to GauntletUSDC vault (Morpho V2 ERC-4626: deposit assets, receive shares)
-    // Per Morpho docs: deposit(uint256 assets, address receiver) returns (uint256 shares)
-    // onBehalf/receiver is the user wallet address so they receive the vault shares
-    console.log(`[MORPHO] Executing GauntletUSDC vault deposit: ${ethers.formatUnits(gauntletAmountWei, 6)} USDC`);
-    const depositGauntletTx = await gauntletVault.deposit(gauntletAmountWei, walletAddress, { gasPrice });
-    const depositGauntletReceipt = await depositGauntletTx.wait();
-    if (depositGauntletReceipt?.status !== 1) {
-      throw new Error(`GauntletUSDC vault deposit failed. Status: ${depositGauntletReceipt?.status}`);
-    }
-    
-    // Capture shares returned from deposit (per Morpho docs pattern)
-    // The deposit function returns the number of shares minted
-    let gauntletSharesMinted: bigint | null = null;
-    try {
-      // Parse the transaction receipt logs to get shares minted
-      // ERC4626 Deposit event: Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)
-      const depositInterface = new ethers.Interface(['event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)']);
-      const depositLog = depositGauntletReceipt.logs.find(log => {
-        try {
-          const parsed = depositInterface.parseLog(log);
-          return parsed && parsed.args.owner.toLowerCase() === walletAddress.toLowerCase();
-        } catch {
-          return false;
-        }
-      });
-      if (depositLog) {
-        const parsed = depositInterface.parseLog(depositLog);
-        gauntletSharesMinted = parsed.args.shares;
-        console.log(`[MORPHO] GauntletUSDC shares minted (from event): ${gauntletSharesMinted.toString()}`);
-      }
-    } catch (eventError) {
-      console.warn(`[MORPHO] ⚠️ Could not parse deposit event, will verify via balance check`);
-    }
-    
-    // Verify shares received and enforce slippage tolerance (per Morpho docs)
-    // Use low-level call to avoid ABI decoding issues
-    if (gauntletSharesBefore !== null) {
-      try {
-        const balanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
-        const balanceData = balanceOfInterface.encodeFunctionData('balanceOf', [walletAddress]);
-        const balanceResult = await provider.call({
-          to: MORPHO_GAUNTLET_USDC_VAULT,
-          data: balanceData
-        });
-        if (balanceResult && balanceResult !== '0x' && balanceResult.length > 2) {
-          const gauntletSharesAfter = ethers.getBigInt(balanceResult);
-          const gauntletSharesReceived = gauntletSharesAfter - gauntletSharesBefore;
-          console.log(`[MORPHO] GauntletUSDC shares received: ${gauntletSharesReceived.toString()} (balance: ${gauntletSharesAfter.toString()})`);
-          
-          // Enforce slippage tolerance per Morpho docs (1% tolerance = 99% of expected)
-          if (expectedGauntletShares !== null) {
-            const minShares = expectedGauntletShares * 99n / 100n;
-            if (gauntletSharesReceived < minShares) {
-              console.error(`[MORPHO] ❌ Slippage tolerance exceeded: received ${gauntletSharesReceived}, expected at least ${minShares}`);
-              return { 
-                success: false, 
-                error: `GauntletUSDC deposit slippage tolerance exceeded: received ${gauntletSharesReceived} shares, expected at least ${minShares} (1% tolerance)` 
-              };
-            }
-            console.log(`[MORPHO] ✅ GauntletUSDC slippage check passed: ${gauntletSharesReceived} >= ${minShares}`);
-          }
-        } else {
-          console.warn(`[MORPHO] ⚠️ Could not verify GauntletUSDC shares after deposit (empty response)`);
-        }
-      } catch (balanceError: any) {
-        console.warn(`[MORPHO] ⚠️ Could not verify GauntletUSDC shares after deposit: ${balanceError?.message || String(balanceError)}`);
-        // If we have shares from event, use that for verification
-        if (gauntletSharesMinted !== null && expectedGauntletShares !== null) {
-          const minShares = expectedGauntletShares * 99n / 100n;
-          if (gauntletSharesMinted < minShares) {
-            return { 
-              success: false, 
-              error: `GauntletUSDC deposit slippage tolerance exceeded: received ${gauntletSharesMinted} shares, expected at least ${minShares} (1% tolerance)` 
-            };
-          }
-        }
-      }
-    } else {
-      // If we couldn't get shares before, use event data for slippage check
-      if (gauntletSharesMinted !== null && expectedGauntletShares !== null) {
-        const minShares = expectedGauntletShares * 99n / 100n;
-        if (gauntletSharesMinted < minShares) {
-          return { 
-            success: false, 
-            error: `GauntletUSDC deposit slippage tolerance exceeded: received ${gauntletSharesMinted} shares, expected at least ${minShares} (1% tolerance)` 
-          };
-        }
-        console.log(`[MORPHO] ✅ GauntletUSDC slippage check passed (from event): ${gauntletSharesMinted} >= ${minShares}`);
-      } else {
-        console.warn(`[MORPHO] ⚠️ Skipping GauntletUSDC slippage verification (insufficient data)`);
-      }
-    }
-    
-    txHashes.push(depositGauntletTx.hash);
-    console.log(`[MORPHO] ✅ GauntletUSDC vault deposit confirmed: ${depositGauntletTx.hash}`);
-
-    // Step 2: Approve and deposit to HyperithmUSDC vault
-    console.log(`[MORPHO] Step 2: Depositing $${hyperithmAmount} to Morpho Spark HyperithmUSDC vault...`);
-    
-    // Preview deposit to estimate shares (slippage protection) - non-blocking
-    let expectedHyperithmShares: bigint | null = null;
-    try {
-      expectedHyperithmShares = await hyperithmVault.previewDeposit(hyperithmAmountWei);
-      console.log(`[MORPHO] Expected HyperithmUSDC shares: ${expectedHyperithmShares.toString()}`);
-    } catch (previewError: any) {
-      console.warn(`[MORPHO] ⚠️ Could not preview HyperithmUSDC deposit (non-blocking): ${previewError?.message || String(previewError)}`);
-      console.log(`[MORPHO] Proceeding with deposit without preview...`);
-    }
-    
-    // Check and approve USDC for HyperithmUSDC vault (using low-level call)
-    let hyperithmAllowance: bigint;
-    try {
-      const allowanceInterface = new ethers.Interface(['function allowance(address owner, address spender) view returns (uint256)']);
-      const allowanceData = allowanceInterface.encodeFunctionData('allowance', [hubWallet.address, MORPHO_HYPERITHM_USDC_VAULT]);
-      const allowanceResult = await provider.call({
-        to: USDC_ARBITRUM,
-        data: allowanceData
-      });
-      if (allowanceResult && allowanceResult !== '0x' && allowanceResult.length > 2) {
-        hyperithmAllowance = ethers.getBigInt(allowanceResult);
-      } else {
-        console.warn(`[MORPHO] ⚠️ Allowance check returned empty data, assuming 0`);
-        hyperithmAllowance = 0n;
-      }
-    } catch (allowanceError: any) {
-      console.warn(`[MORPHO] ⚠️ Failed to check allowance (non-blocking): ${allowanceError?.message || String(allowanceError)}`);
-      hyperithmAllowance = 0n; // Assume no allowance if check fails
-    }
-    if (hyperithmAllowance < hyperithmAmountWei) {
-      console.log('[MORPHO] Approving USDC for HyperithmUSDC vault...');
-      const approveHyperithmTx = await usdcContract.approve(MORPHO_HYPERITHM_USDC_VAULT, ethers.MaxUint256, { gasPrice });
-      const approveHyperithmReceipt = await approveHyperithmTx.wait();
-      if (approveHyperithmReceipt?.status !== 1) {
-        throw new Error(`USDC approval for HyperithmUSDC vault failed. Status: ${approveHyperithmReceipt?.status}`);
-      }
-      console.log('[MORPHO] HyperithmUSDC vault approval confirmed');
-    }
-
-    // Get balance before deposit to calculate shares received (non-blocking)
-    // Use low-level call to avoid ABI decoding issues
-    let hyperithmSharesBefore: bigint | null = null;
-    try {
-      console.log(`[MORPHO] Calling balanceOf on HyperithmUSDC vault at ${MORPHO_HYPERITHM_USDC_VAULT} for wallet ${walletAddress}...`);
-      const balanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
-      const balanceData = balanceOfInterface.encodeFunctionData('balanceOf', [walletAddress]);
-      const balanceResult = await provider.call({
-        to: MORPHO_HYPERITHM_USDC_VAULT,
-        data: balanceData
-      });
-      if (balanceResult && balanceResult !== '0x' && balanceResult.length > 2) {
-        hyperithmSharesBefore = ethers.getBigInt(balanceResult);
-        console.log(`[MORPHO] HyperithmUSDC shares before deposit: ${hyperithmSharesBefore.toString()}`);
-      } else {
-        console.warn(`[MORPHO] ⚠️ HyperithmUSDC vault balanceOf returned empty data, assuming 0 shares`);
-        hyperithmSharesBefore = 0n;
-      }
-    } catch (balanceError: any) {
-      const errorMsg = balanceError?.message || String(balanceError);
-      const errorCode = balanceError?.code || 'UNKNOWN';
-      console.error(`[MORPHO] ❌ balanceOf failed for HyperithmUSDC vault: ${errorMsg} (code: ${errorCode})`);
-      console.error(`[MORPHO] Vault address: ${MORPHO_HYPERITHM_USDC_VAULT}, Wallet: ${walletAddress}`);
-      console.warn(`[MORPHO] ⚠️ Could not get HyperithmUSDC shares before deposit (non-blocking) - assuming 0 and proceeding...`);
-      hyperithmSharesBefore = 0n; // Assume 0 shares if we can't check
-    }
-    
-    // Deposit to HyperithmUSDC vault (Morpho V2 ERC-4626: deposit assets, receive shares)
-    // Per Morpho docs: deposit(uint256 assets, address receiver) returns (uint256 shares)
-    // onBehalf/receiver is the user wallet address so they receive the vault shares
-    console.log(`[MORPHO] Executing HyperithmUSDC vault deposit: ${ethers.formatUnits(hyperithmAmountWei, 6)} USDC`);
-    const depositHyperithmTx = await hyperithmVault.deposit(hyperithmAmountWei, walletAddress, { gasPrice });
-    const depositHyperithmReceipt = await depositHyperithmTx.wait();
-    if (depositHyperithmReceipt?.status !== 1) {
-      throw new Error(`HyperithmUSDC vault deposit failed. Status: ${depositHyperithmReceipt?.status}`);
-    }
-    
-    // Capture shares returned from deposit (per Morpho docs pattern)
-    let hyperithmSharesMinted: bigint | null = null;
-    try {
-      const depositInterface = new ethers.Interface(['event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)']);
-      const depositLog = depositHyperithmReceipt.logs.find(log => {
-        try {
-          const parsed = depositInterface.parseLog(log);
-          return parsed && parsed.args.owner.toLowerCase() === walletAddress.toLowerCase();
-        } catch {
-          return false;
-        }
-      });
-      if (depositLog) {
-        const parsed = depositInterface.parseLog(depositLog);
-        hyperithmSharesMinted = parsed.args.shares;
-        console.log(`[MORPHO] HyperithmUSDC shares minted (from event): ${hyperithmSharesMinted.toString()}`);
-      }
-    } catch (eventError) {
-      console.warn(`[MORPHO] ⚠️ Could not parse deposit event, will verify via balance check`);
-    }
-    
-    // Verify shares received and enforce slippage tolerance (per Morpho docs)
-    // Use low-level call to avoid ABI decoding issues
-    if (hyperithmSharesBefore !== null) {
-      try {
-        const balanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
-        const balanceData = balanceOfInterface.encodeFunctionData('balanceOf', [walletAddress]);
-        const balanceResult = await provider.call({
-          to: MORPHO_HYPERITHM_USDC_VAULT,
-          data: balanceData
-        });
-        if (balanceResult && balanceResult !== '0x' && balanceResult.length > 2) {
-          const hyperithmSharesAfter = ethers.getBigInt(balanceResult);
-          const hyperithmSharesReceived = hyperithmSharesAfter - hyperithmSharesBefore;
-          console.log(`[MORPHO] HyperithmUSDC shares received: ${hyperithmSharesReceived.toString()} (balance: ${hyperithmSharesAfter.toString()})`);
-          
-          // Enforce slippage tolerance per Morpho docs (1% tolerance = 99% of expected)
-          if (expectedHyperithmShares !== null) {
-            const minShares = expectedHyperithmShares * 99n / 100n;
-            if (hyperithmSharesReceived < minShares) {
-              console.error(`[MORPHO] ❌ Slippage tolerance exceeded: received ${hyperithmSharesReceived}, expected at least ${minShares}`);
-              return { 
-                success: false, 
-                error: `HyperithmUSDC deposit slippage tolerance exceeded: received ${hyperithmSharesReceived} shares, expected at least ${minShares} (1% tolerance)` 
-              };
-            }
-            console.log(`[MORPHO] ✅ HyperithmUSDC slippage check passed: ${hyperithmSharesReceived} >= ${minShares}`);
-          }
-        } else {
-          console.warn(`[MORPHO] ⚠️ Could not verify HyperithmUSDC shares after deposit (empty response)`);
-        }
-      } catch (balanceError: any) {
-        console.warn(`[MORPHO] ⚠️ Could not verify HyperithmUSDC shares after deposit: ${balanceError?.message || String(balanceError)}`);
-        // If we have shares from event, use that for verification
-        if (hyperithmSharesMinted !== null && expectedHyperithmShares !== null) {
-          const minShares = expectedHyperithmShares * 99n / 100n;
-          if (hyperithmSharesMinted < minShares) {
-            return { 
-              success: false, 
-              error: `HyperithmUSDC deposit slippage tolerance exceeded: received ${hyperithmSharesMinted} shares, expected at least ${minShares} (1% tolerance)` 
-            };
-          }
-        }
-      }
-    } else {
-      // If we couldn't get shares before, use event data for slippage check
-      if (hyperithmSharesMinted !== null && expectedHyperithmShares !== null) {
-        const minShares = expectedHyperithmShares * 99n / 100n;
-        if (hyperithmSharesMinted < minShares) {
-          return { 
-            success: false, 
-            error: `HyperithmUSDC deposit slippage tolerance exceeded: received ${hyperithmSharesMinted} shares, expected at least ${minShares} (1% tolerance)` 
-          };
-        }
-        console.log(`[MORPHO] ✅ HyperithmUSDC slippage check passed (from event): ${hyperithmSharesMinted} >= ${minShares}`);
-      } else {
-        console.warn(`[MORPHO] ⚠️ Skipping HyperithmUSDC slippage verification (insufficient data)`);
-      }
-    }
-    
-    txHashes.push(depositHyperithmTx.hash);
-    console.log(`[MORPHO] ✅ HyperithmUSDC vault deposit confirmed: ${depositHyperithmTx.hash}`);
-
-    // Return success with combined transaction info
-    // Use the last transaction hash as the primary hash
-    return {
-      success: true,
-      txHash: depositHyperithmTx.hash, // Primary hash (can also return array if needed)
-    };
-
-  } catch (error) {
-    console.error('[MORPHO] Execution error:', error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : String(error) 
-    };
-  }
-}
-
-/**
  * Execute Aave directly from hub wallet for connected wallets
  * This bypasses the need for user private keys
  */
@@ -3582,28 +2549,7 @@ async function executeStrategyFromUserWallet(
     return { positionId: '', error: 'Payment info not found' };
   }
 
-  // Safely parse payment info - handle both string and object cases
-  let paymentInfo: any;
-  try {
-    if (typeof paymentInfoRaw === 'string') {
-      // Check if it's valid JSON (starts with { or [)
-      if (paymentInfoRaw.trim().startsWith('{') || paymentInfoRaw.trim().startsWith('[')) {
-        paymentInfo = JSON.parse(paymentInfoRaw);
-      } else {
-        // If it's "[object Object]" or similar, it's already an object that was stringified incorrectly
-        console.error(`[Strategy] ❌ Invalid payment info format (not JSON): ${paymentInfoRaw.substring(0, 50)}`);
-        return { positionId: '', error: 'Invalid payment info format - not valid JSON string' };
-      }
-    } else {
-      // Already an object
-      paymentInfo = paymentInfoRaw;
-    }
-  } catch (parseError) {
-    console.error(`[Strategy] ❌ Failed to parse payment_info:`, parseError);
-    console.error(`[Strategy] paymentInfoRaw type: ${typeof paymentInfoRaw}, preview: ${String(paymentInfoRaw).substring(0, 100)}`);
-    return { positionId: '', error: `Failed to parse payment info: ${parseError instanceof Error ? parseError.message : String(parseError)}` };
-  }
-  
+  const paymentInfo = typeof paymentInfoRaw === 'string' ? JSON.parse(paymentInfoRaw) : paymentInfoRaw;
   const { userEmail, riskProfile, amount } = paymentInfo;
 
   // userEmail is optional for connected wallets, but riskProfile and amount are required
@@ -3853,17 +2799,14 @@ export async function editGmxCollateral(
     console.log('[GMX Edit] Fetching current gas price...');
     let networkGasPrice: bigint;
     try {
-      const rawGasPrice = await publicClient.getGasPrice();
-      networkGasPrice = BigInt(rawGasPrice.toString()); // Ensure BigInt
+      networkGasPrice = await publicClient.getGasPrice();
       console.log(`[GMX Edit] Network gas price: ${formatUnits(networkGasPrice, 9)} gwei`);
     } catch (error) {
       console.warn('[GMX Edit] Failed to fetch network gas price, using default 25 gwei');
-      const defaultGasRaw = parseUnits('25', 9); // Default to 25 gwei if fetch fails
-      networkGasPrice = BigInt(defaultGasRaw.toString()); // Ensure BigInt
+      networkGasPrice = parseUnits('25', 9); // Default to 25 gwei if fetch fails
     }
     
-    const maxGasRaw = parseUnits(MAX_GAS_PRICE_GWEI.toString(), 9); // 100 gwei cap
-    const maxGas = BigInt(maxGasRaw.toString()); // Ensure BigInt
+    const maxGas = parseUnits(MAX_GAS_PRICE_GWEI.toString(), 9); // 100 gwei cap
     const gasPrice = networkGasPrice > maxGas ? maxGas : networkGasPrice;
     
     console.log(`[GMX Edit] Using gas price: ${formatUnits(gasPrice, 9)} gwei (capped at ${MAX_GAS_PRICE_GWEI} gwei)`);
@@ -4039,7 +2982,6 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
   positionId?: string;
   aaveResult?: { success: boolean; txHash?: string; error?: string };
   gmxResult?: { success: boolean; txHash?: string; error?: string };
-  morphoResult?: { success: boolean; txHash?: string; error?: string };
   amountUsd?: number;
   riskProfile?: string;
   email?: string;
@@ -4054,25 +2996,12 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
   const paymentId = payment.id;
   const status = payment.status;
   const amountCents = payment.amount_money?.amount || 0;
-  const currency = payment.amount_money?.currency || 'USD';
   const amountUsd = amountCents / 100;
   const note = payment.note || '';
 
-  // CRITICAL: Validate currency is USD (same validation as conservative flow)
-  if (currency !== 'USD') {
-    console.error(`[Webhook] ❌ Invalid currency: ${currency} (expected USD)`);
-    return {
-      action: 'invalid_currency',
-      paymentId,
-      status,
-      error: `Invalid currency: ${currency}. Only USD payments are supported.`,
-    };
-  }
-
   console.log(`[Webhook] Payment cleared (sent/paid): ${paymentId}`);
   console.log(`[Webhook] Status: ${status}`);
-  console.log(`[Webhook] Amount: $${amountUsd} ${currency}`);
-  console.log(`[Webhook] Currency: ${currency}`);
+  console.log(`[Webhook] Amount: $${amountUsd}`);
   console.log(`[Webhook] Note: ${note}`);
   
   // ===== CRITICAL DEBUG: Check payment_info in Redis IMMEDIATELY =====
@@ -4087,19 +3016,23 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
   console.log(`[Webhook] ===== CHECKING payment_info IN REDIS =====`);
   console.log(`[Webhook] Checking payment_info keys: ${paymentInfoKeys.join(', ')}`);
   
-  // This is just for debugging - the actual retrieval happens later in the code
-  // We'll check if any of these keys exist for logging purposes
   let paymentInfoFound = false;
   let foundKey = null;
   for (const key of paymentInfoKeys) {
     if (key.includes('N/A')) continue;
     // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
-    const checkResult = await redis.get(key);
-    if (checkResult) {
+    const paymentInfoRaw = await redis.get(key);
+    if (paymentInfoRaw) {
       paymentInfoFound = true;
       foundKey = key;
-      console.log(`[Webhook] ✅ payment_info EXISTS at key: ${key} (type: ${typeof checkResult})`);
-      break;
+      try {
+        const paymentInfo = typeof paymentInfoRaw === 'string' ? JSON.parse(paymentInfoRaw) : paymentInfoRaw;
+        console.log(`[Webhook] ✅✅✅ payment_info FOUND in Redis at key: ${key}`);
+        console.log(`[Webhook] payment_info contents:`, JSON.stringify(paymentInfo, null, 2));
+        break;
+      } catch (parseError) {
+        console.error(`[Webhook] ❌ Failed to parse payment_info from key ${key}:`, parseError);
+      }
     } else {
       console.log(`[Webhook] ❌ payment_info NOT FOUND at key: ${key}`);
     }
@@ -4124,35 +3057,15 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
       const redis = getRedis();
       // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
       const storedData = await redis.get(`payment:${paymentId}`);
-      if (storedData) {
-        let parsed: any;
-        if (typeof storedData === 'string') {
-          // Check if it's valid JSON before parsing
-          if (storedData.trim().startsWith('{') || storedData.trim().startsWith('[')) {
-            try {
-              parsed = JSON.parse(storedData);
-            } catch (parseError) {
-              console.error(`[Webhook] Failed to parse stored payment data:`, parseError);
-              // Continue processing if we can't parse
-            }
-          } else {
-            // Invalid format, continue processing
-            console.warn(`[Webhook] Invalid stored payment data format: ${storedData.substring(0, 50)}`);
-          }
-        } else if (typeof storedData === 'object' && storedData !== null) {
-          // Already an object
-          parsed = storedData;
-        }
-        
-        if (parsed) {
-          console.log(`[Webhook] Payment ${paymentId} already processed successfully with txHash: ${parsed.txHash || 'N/A'}`);
-          return {
-            action: 'already_processed',
-            paymentId,
-            status,
-            txHash: parsed.txHash,
-          };
-        }
+      if (storedData && typeof storedData === 'string') {
+        const parsed = JSON.parse(storedData);
+        console.log(`[Webhook] Payment ${paymentId} already processed successfully with txHash: ${parsed.txHash || 'N/A'}`);
+        return {
+          action: 'already_processed',
+          paymentId,
+          status,
+          txHash: parsed.txHash,
+        };
       }
     } catch (err) {
       console.warn(`[Webhook] Could not retrieve stored payment data: ${err}`);
@@ -4264,61 +3177,29 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
 
   console.log(`[Webhook] Looking up payment_info with key: payment_info:${frontendPaymentId}`);
   console.log(`[Webhook] Also checking alternative keys: payment_info:${paymentId}, payment_info:${notePaymentId || 'N/A'}`);
-  
-  // Helper function to safely retrieve and parse payment info from Redis
-  const safelyGetPaymentInfo = async (key: string): Promise<any | null> => {
-    try {
-      // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
-      const raw = await redis.get(key);
-      if (!raw) return null;
-      
-      // Handle both string and object cases (Upstash Redis can return either)
-      if (typeof raw === 'string') {
-        // Check if it's valid JSON (starts with { or [)
-        if (raw.trim().startsWith('{') || raw.trim().startsWith('[')) {
-          try {
-            return JSON.parse(raw);
-          } catch (parseError) {
-            console.error(`[Webhook] ❌ Failed to parse JSON from key ${key}:`, parseError);
-            return null;
-          }
-        } else {
-          // If it's "[object Object]" or similar, it's corrupted data
-          console.error(`[Webhook] ❌ Invalid payment info format at key ${key} (not JSON): ${raw.substring(0, 50)}`);
-          return null;
-        }
-      } else if (typeof raw === 'object' && raw !== null) {
-        // Already an object (Upstash Redis sometimes returns objects directly)
-        console.log(`[Webhook] Redis returned object directly for key ${key}`);
-        return raw;
-      } else {
-        console.error(`[Webhook] ❌ Unexpected payment info type at key ${key}: ${typeof raw}`);
-        return null;
-      }
-    } catch (error) {
-      console.error(`[Webhook] ❌ Error retrieving payment info from key ${key}:`, error);
-      return null;
-    }
-  };
-  
-  // Try primary key first
-  let finalPaymentInfo = await safelyGetPaymentInfo(`payment_info:${frontendPaymentId}`);
-  
+  // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+  const paymentInfoRaw = await redis.get(`payment_info:${frontendPaymentId}`);
+
   // Try alternative keys if primary lookup fails
-  if (!finalPaymentInfo) {
+  let alternativePaymentInfo = null;
+  if (!paymentInfoRaw) {
     if (notePaymentId && notePaymentId !== frontendPaymentId) {
-      finalPaymentInfo = await safelyGetPaymentInfo(`payment_info:${notePaymentId}`);
-      if (finalPaymentInfo) {
+      // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+      alternativePaymentInfo = await redis.get(`payment_info:${notePaymentId}`);
+      if (alternativePaymentInfo) {
         console.log(`[Webhook] Found payment_info using alternative key: payment_info:${notePaymentId}`);
       }
     }
-    if (!finalPaymentInfo && paymentId !== frontendPaymentId) {
-      finalPaymentInfo = await safelyGetPaymentInfo(`payment_info:${paymentId}`);
-      if (finalPaymentInfo) {
+    if (!alternativePaymentInfo && paymentId !== frontendPaymentId) {
+      // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+      alternativePaymentInfo = await redis.get(`payment_info:${paymentId}`);
+      if (alternativePaymentInfo) {
         console.log(`[Webhook] Found payment_info using Square payment ID: payment_info:${paymentId}`);
       }
     }
   }
+
+  const finalPaymentInfo = paymentInfoRaw || alternativePaymentInfo;
   console.log(`[Webhook] payment_info lookup result: ${finalPaymentInfo ? 'FOUND' : 'NOT FOUND'}`);
 
   if (!finalPaymentInfo) {
@@ -4337,12 +3218,8 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
     };
   }
 
-  // finalPaymentInfo is already parsed by safelyGetPaymentInfo (returns object or null)
-  // No need to parse again - it's already a valid object
-  // Declare paymentInfo in outer scope so it's accessible throughout the function
-  const paymentInfo = finalPaymentInfo || null;
-  
-  if (paymentInfo) {
+  if (finalPaymentInfo) {
+    const paymentInfo = typeof finalPaymentInfo === 'string' ? JSON.parse(finalPaymentInfo) : finalPaymentInfo;
     try {
       console.log(`[Webhook] payment_info contents:`, JSON.stringify(paymentInfo));
       if (paymentInfo.walletAddress) {
@@ -4439,14 +3316,6 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
   }
   const profile = RISK_PROFILES[riskProfile as keyof typeof RISK_PROFILES];
   const hasGmx = profile.gmxPercent > 0;
-  const isMorphoProfile = riskProfile === 'morpho';
-  
-  // CRITICAL DEBUG: Log profile detection
-  console.log(`[Webhook] ===== PROFILE DETECTION =====`);
-  console.log(`[Webhook] riskProfile: "${riskProfile}"`);
-  console.log(`[Webhook] isMorphoProfile: ${isMorphoProfile}`);
-  console.log(`[Webhook] hasGmx: ${hasGmx}`);
-  console.log(`[Webhook] Profile config:`, JSON.stringify(profile));
   
   console.log(`[Webhook] Final riskProfile: "${riskProfile}", profile:`, {
     name: profile.name,
@@ -4479,14 +3348,12 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
 
   // Check ERGC discount early (needed for fallback calculations)
   const hasErgcDiscountFromNote = false; // no longer using debit flag
-  // We'll check actual balance later; estimate discount if user buys 100 ERGC, conservative, or morpho
-  // Note: Actual ERGC balance is checked later at line 3769 for all profiles
-  const estimatedHasErgcDiscount = (ergcPurchase && ergcPurchase >= 100) || riskProfile === 'conservative' || riskProfile === 'morpho';
+  // We'll check actual balance later; estimate discount if user buys 100 ERGC or conservative
+  const estimatedHasErgcDiscount = (ergcPurchase && ergcPurchase >= 100) || riskProfile === 'conservative';
 
-  // paymentInfo is already defined from finalPaymentInfo (line 3525)
-  // No need to parse again - it's already a valid object
-  if (paymentInfo) {
+  if (paymentInfoRaw) {
     try {
+      const paymentInfo = typeof paymentInfoRaw === 'string' ? JSON.parse(paymentInfoRaw) : paymentInfoRaw;
       console.log(`[Webhook] Payment info found:`, JSON.stringify(paymentInfo, null, 2));
 
       // CRITICAL: paymentInfo.amount is the base deposit amount (what user requested, e.g., $6)
@@ -4558,12 +3425,7 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
 
   console.log(`[Webhook] Final deposit amount: $${rawDepositAmount}`);
   console.log(`[Webhook] Square payment amount: $${amountUsd} (${amountCents} cents)`);
-  // Safely log payment info amount (paymentInfo is already defined from finalPaymentInfo)
-  try {
-    console.log(`[Webhook] Payment info amount: ${paymentInfo?.amount || 'N/A'}`);
-  } catch (e) {
-    console.log(`[Webhook] Payment info amount: N/A (error)`);
-  }
+  console.log(`[Webhook] Payment info amount: ${paymentInfoRaw ? JSON.parse(typeof paymentInfoRaw === 'string' ? paymentInfoRaw : JSON.stringify(paymentInfoRaw)).amount : 'N/A'}`);
 
   // For connected wallets, we don't need private keys - just send tokens
   // Try to get wallet data only if needed for strategy execution (legacy flow)
@@ -4574,10 +3436,6 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
     // Connected wallet - no private key stored, this is expected
     console.log(`[Webhook] Connected wallet detected (no private key stored): ${walletAddress}`);
   }
-  
-  // CRITICAL: Determine wallet type BEFORE using it in debug logs
-  // Check if this is a connected wallet (no private key) vs generated wallet
-  const isConnectedWallet = !walletData?.privateKey;
   
   // Platform fee was already charged upfront (added to payment total), so send full deposit amount
   // User paid: depositAmount + 5% fee + AVAX fee + ERGC = total charged (amountUsd)
@@ -4646,59 +3504,21 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
     console.warn(`[Webhook] Proceeding anyway, but this may result in incorrect amount being sent.`);
   }
 
-  // Calculate Aave vs GMX vs Morpho split
+  // Calculate Aave vs GMX split
   // Smart allocation for balanced strategy: ensure GMX gets minimum $5
   let aaveAmount: number;
   let gmxAmount: number;
-  let morphoAmount: number;
-  let morphoGauntletAmount: number;
-  let morphoHyperithmAmount: number;
 
   // Use profile percentages for allocation
   aaveAmount = (depositAmount * profile.aavePercent) / 100;
   gmxAmount = (depositAmount * profile.gmxPercent) / 100;
-  // Type-safe access: morphoPercent only exists on morpho profile
-  const morphoPercent = 'morphoPercent' in profile ? profile.morphoPercent : 0;
-  const morphoEurcPercent = 'morphoEurcPercent' in profile ? profile.morphoEurcPercent : 50;
-  const morphoDaiPercent = 'morphoDaiPercent' in profile ? profile.morphoDaiPercent : 50;
-  morphoAmount = (depositAmount * morphoPercent) / 100;
-  
-  // Calculate Morpho split (50/50 GauntletUSDC/HyperithmUSDC)
-  if (morphoAmount > 0) {
-    morphoGauntletAmount = (morphoAmount * morphoEurcPercent) / 100;
-    morphoHyperithmAmount = (morphoAmount * morphoDaiPercent) / 100;
-  } else {
-    morphoGauntletAmount = 0;
-    morphoHyperithmAmount = 0;
-  }
-  
   console.log(`[Webhook] ===== ALLOCATION =====`);
   console.log(`[Webhook] Deposit amount: $${depositAmount}`);
-  console.log(`[Webhook] Risk profile: ${riskProfile}`);
-  
-  console.log(`[Webhook] Profile config:`, JSON.stringify({
-    aavePercent: profile.aavePercent,
-    gmxPercent: profile.gmxPercent,
-    morphoPercent: morphoPercent,
-    morphoEurcPercent: morphoEurcPercent,
-    morphoDaiPercent: morphoDaiPercent
-  }));
-  console.log(`[Webhook] Split: Aave=$${aaveAmount} (${profile.aavePercent}%), GMX=$${gmxAmount} (${profile.gmxPercent}%), Morpho=$${morphoAmount} (${morphoPercent}%)`);
-  if (morphoAmount > 0) {
-    console.log(`[Webhook] Morpho split: GauntletUSDC=$${morphoGauntletAmount} (${morphoEurcPercent}%), HyperithmUSDC=$${morphoHyperithmAmount} (${morphoDaiPercent}%)`);
-  }
-  console.log(`[Webhook] Total: $${aaveAmount + gmxAmount + morphoAmount} (should equal $${depositAmount})`);
-  
-  // DEBUG: Log Morpho execution decision
-  console.log(`[WEBHOOK_DEBUG] Morpho execution check:`, {
-    morphoAmount,
-    morphoGauntletAmount,
-    morphoHyperithmAmount,
-    profileMorphoPercent: morphoPercent,
-    riskProfile,
-    shouldExecute: morphoAmount > 0,
-    isConnectedWallet
-  });
+  console.log(`[Webhook] Split: Aave=$${aaveAmount} (${profile.aavePercent}%), GMX=$${gmxAmount} (${profile.gmxPercent}%)`);
+  console.log(`[Webhook] Total: $${aaveAmount + gmxAmount} (should equal $${depositAmount})`);
+
+  // Check if this is a connected wallet (no private key) vs generated wallet
+  const isConnectedWallet = !walletData?.privateKey;
 
   // Check if user has ERGC discount (1+ ERGC - the amount debited per order)
   let hasErgcDiscount = await checkErgcDiscount(walletAddress);
@@ -4708,34 +3528,15 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
   console.log(`[Webhook] Wallet address: ${walletAddress}`);
   console.log(`[Webhook] Payment amount: $${depositAmount}`);
   console.log(`[Webhook] Risk profile: ${riskProfile}`);
-  console.log(`[Webhook] Profile allocation: Aave=${profile.aavePercent}%, GMX=${profile.gmxPercent}%, Morpho=${morphoPercent}%`);
-  
-  // DEBUG: Log payment status and profile check
-  console.log(`[WEBHOOK_DEBUG] Payment processing state:`, {
-    paymentStatus: status,
-    riskProfile,
-    profileName: profile.name,
-    profileConfig: {
-      aavePercent: profile.aavePercent,
-      gmxPercent: profile.gmxPercent,
-      morphoPercent: morphoPercent,
-      morphoEurcPercent: morphoEurcPercent,
-      morphoDaiPercent: morphoDaiPercent
-    },
-    depositAmount,
-    walletAddress,
-    isConnectedWallet: !walletData?.privateKey
-  });
+  console.log(`[Webhook] Profile allocation: Aave=${profile.aavePercent}%, GMX=${profile.gmxPercent}%`);
 
   let aaveResult: { success: boolean; txHash?: string; error?: string } | undefined;
   let gmxResult: { success: boolean; txHash?: string; error?: string } | undefined;
-  let morphoResult: { success: boolean; txHash?: string; error?: string } | undefined;
   let transferResult: { success: boolean; txHash?: string; error?: string } = { success: true };
 
   // Initialize results to prevent undefined errors
   aaveResult = { success: false, error: 'Not executed' };
   gmxResult = { success: false, error: 'Not executed' };
-  morphoResult = { success: false, error: 'Not executed' };
 
   // --- START OF UNIFIED EXECUTION FLOW ---
   // CRITICAL: Look up Privy user ID ONCE at the beginning for all operations
@@ -4876,12 +3677,7 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
   console.log(`[Webhook] Deposit amount: $${depositAmount}`);
   console.log(`[Webhook] Square payment: $${amountUsd}`);
   console.log(`[Webhook] isConnectedWallet: ${isConnectedWallet}`);
-  // Safely log payment info amount (paymentInfo is already defined from finalPaymentInfo)
-  try {
-    console.log(`[Webhook] payment_info.amount: ${paymentInfo?.amount || 'N/A'}`);
-  } catch (e) {
-    console.log(`[Webhook] payment_info.amount: N/A (error)`);
-  }
+  console.log(`[Webhook] payment_info.amount: ${paymentInfoRaw ? (typeof paymentInfoRaw === 'string' ? JSON.parse(paymentInfoRaw) : paymentInfoRaw).amount : 'N/A'}`);
 
   // CRITICAL VALIDATION: Check for suspicious amounts (e.g., 2x what we expect)
   // If Square payment is $7-8, deposit should be ~$6.25, not $12.50
@@ -4991,34 +3787,10 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
       // Immediately check if we still have the lock (another request might have set it between our check and set)
       // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
       const lockCheck = await redis.get(avaxLockKey);
-      let ourLockValue: any = null;
-      if (lockCheck) {
-        if (typeof lockCheck === 'string') {
-          // Check if it's valid JSON before parsing
-          if (lockCheck.trim().startsWith('{') || lockCheck.trim().startsWith('[')) {
-            try {
-              ourLockValue = JSON.parse(lockCheck);
-            } catch (parseError) {
-              console.error(`[Webhook] Failed to parse lock value:`, parseError);
-            }
-          }
-        } else if (typeof lockCheck === 'object' && lockCheck !== null) {
-          // Already an object
-          ourLockValue = lockCheck;
-        }
-      }
-      
-      // Parse our lock value for comparison
-      let ourRequestId: string | undefined;
-      try {
-        const parsedLockValue = typeof lockValue === 'string' ? JSON.parse(lockValue) : lockValue;
-        ourRequestId = parsedLockValue?.requestId;
-      } catch (e) {
-        console.error(`[Webhook] Failed to parse our lock value:`, e);
-      }
+      const ourLockValue = lockCheck ? JSON.parse(lockCheck as string) : null;
       
       // Verify we own the lock by checking the requestId matches
-      if (lockCheck && ourLockValue && ourLockValue.requestId === ourRequestId) {
+      if (lockCheck && ourLockValue && ourLockValue.requestId === JSON.parse(lockValue).requestId) {
         // We own the lock - double-check AVAX wasn't sent while we were acquiring it
         // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
         const doubleCheck = await redis.get(avaxSentKey);
@@ -5028,63 +3800,50 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
           await redis.del(avaxLockKey); // Release lock
         } else {
           // We own the lock and AVAX hasn't been sent - proceed with sending
-          // CRITICAL: Morpho doesn't need AVAX - it's on Arbitrum and uses USDC directly
-          // Skip AVAX for Morpho profile
-          // NOTE: isMorphoProfile is already defined at line 3973 (top of function)
-          if (isMorphoProfile) {
-            console.log(`[Webhook] ⚠️ Skipping AVAX transfer for Morpho profile (uses Arbitrum, no AVAX needed)`);
-            console.log(`[Webhook] ⚠️ Morpho executes on Arbitrum - no AVAX gas needed`);
+          const baseAvaxAmount = hasGmx ? AVAX_TO_SEND_FOR_GMX : AVAX_TO_SEND_FOR_AAVE;
+          let avaxAmount = baseAvaxAmount;
+          if (hasErgcDiscount && hasGmx) {
+            avaxAmount = ethers.parseEther('0.03'); // Reduced GMX fee with ERGC discount
+            console.log(`[Webhook] ERGC discount applied: GMX fee reduced to 0.03 AVAX`);
+          }
+          const avaxPurpose = hasGmx ? 'GMX execution fees' : 'exit fees';
+          console.log(`[Webhook] Sending ${ethers.formatEther(avaxAmount)} AVAX to ${walletAddress} for ${avaxPurpose}...`);
+          
+          // CRITICAL: Validate wallet address is NOT hub wallet before sending
+          if (walletAddress.toLowerCase() === HUB_WALLET_ADDRESS.toLowerCase()) {
+            console.error(`[Webhook] ❌ CRITICAL: Cannot send AVAX to hub wallet! walletAddress=${walletAddress}`);
             // @ts-ignore - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
             await redis.del(avaxLockKey); // Release lock
-            // Mark AVAX as "sent" (skipped) to prevent retry
-            // @ts-ignore
-            await redis.set(avaxSentKey, 'SKIPPED_MORPHO', { ex: 3600 }); // 1 hour TTL
+            return {
+              action: 'invalid_wallet_address',
+              paymentId: lookupPaymentId,
+              status,
+              error: `Cannot send AVAX to hub wallet address. walletAddress must be user wallet, not ${HUB_WALLET_ADDRESS}`
+            };
+          }
+          
+          // Final check right before sending (another request might have sent it in the last millisecond)
+          // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
+          const preSendCheck = await redis.get(avaxSentKey);
+          if (preSendCheck) {
+            console.log(`[Webhook] ⚠️ AVAX was sent by another request right before we could send: ${preSendCheck}`);
+            // @ts-ignore - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
+            await redis.del(avaxLockKey); // Release lock
           } else {
-            const baseAvaxAmount = hasGmx ? AVAX_TO_SEND_FOR_GMX : AVAX_TO_SEND_FOR_AAVE;
-            let avaxAmount = baseAvaxAmount;
-            if (hasErgcDiscount && hasGmx) {
-              avaxAmount = ethers.parseEther('0.03'); // Reduced GMX fee with ERGC discount
-              console.log(`[Webhook] ERGC discount applied: GMX fee reduced to 0.03 AVAX`);
-            }
-            const avaxPurpose = hasGmx ? 'GMX execution fees' : 'exit fees';
-            console.log(`[Webhook] Sending ${ethers.formatEther(avaxAmount)} AVAX to ${walletAddress} for ${avaxPurpose}...`);
-            
-            // CRITICAL: Validate wallet address is NOT hub wallet before sending
-            if (walletAddress.toLowerCase() === HUB_WALLET_ADDRESS.toLowerCase()) {
-              console.error(`[Webhook] ❌ CRITICAL: Cannot send AVAX to hub wallet! walletAddress=${walletAddress}`);
-              // @ts-ignore - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
-              await redis.del(avaxLockKey); // Release lock
-              return {
-                action: 'invalid_wallet_address',
-                paymentId: lookupPaymentId,
-                status,
-                error: `Cannot send AVAX to hub wallet address. walletAddress must be user wallet, not ${HUB_WALLET_ADDRESS}`
-              };
-            }
-            
-            // Final check right before sending (another request might have sent it in the last millisecond)
-            // @ts-ignore - @upstash/redis types may not include get method in some TypeScript versions, but it exists at runtime
-            const preSendCheck = await redis.get(avaxSentKey);
-            if (preSendCheck) {
-              console.log(`[Webhook] ⚠️ AVAX was sent by another request right before we could send: ${preSendCheck}`);
-              // @ts-ignore - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
-              await redis.del(avaxLockKey); // Release lock
-            } else {
-              try {
-                const avaxTransfer = await sendAvaxToUser(walletAddress, avaxAmount, avaxPurpose);
-                if (avaxTransfer.success && avaxTransfer.txHash) {
-                  // Mark AVAX as sent FIRST (before releasing lock) to prevent race conditions
-                  // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
-                  await redis.set(avaxSentKey, avaxTransfer.txHash, { ex: 86400 }); // 24 hour expiry
-                  console.log(`[Webhook] ✅ AVAX sent and marked: ${avaxTransfer.txHash}`);
-                } else {
-                  console.error(`[Webhook] AVAX transfer failed: ${avaxTransfer.error}`);
-                }
-              } finally {
-                // Always release lock, even if transfer fails or throws
-                // @ts-ignore - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
-                await redis.del(avaxLockKey);
+            try {
+              const avaxTransfer = await sendAvaxToUser(walletAddress, avaxAmount, avaxPurpose);
+              if (avaxTransfer.success && avaxTransfer.txHash) {
+                // Mark AVAX as sent FIRST (before releasing lock) to prevent race conditions
+                // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
+                await redis.set(avaxSentKey, avaxTransfer.txHash, { ex: 86400 }); // 24 hour expiry
+                console.log(`[Webhook] ✅ AVAX sent and marked: ${avaxTransfer.txHash}`);
+              } else {
+                console.error(`[Webhook] AVAX transfer failed: ${avaxTransfer.error}`);
               }
+            } finally {
+              // Always release lock, even if transfer fails or throws
+              // @ts-ignore - @upstash/redis types may not include del method in some TypeScript versions, but it exists at runtime
+              await redis.del(avaxLockKey);
             }
           }
         }
@@ -5309,75 +4068,6 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
     } else {
       console.log(`[Webhook] Skipping Aave: aaveAmount is 0 or negative`);
     }
-
-    // Execute Morpho strategy (50/50 GauntletUSDC + HyperithmUSDC)
-    // CRITICAL: Morpho execution MUST happen for morpho profile, even if other strategies failed
-    console.log(`[Webhook] ===== MORPHO EXECUTION CHECK =====`);
-    console.log(`[Webhook] riskProfile: "${riskProfile}"`);
-    console.log(`[Webhook] isMorphoProfile: ${isMorphoProfile}`);
-    console.log(`[Webhook] morphoAmount: $${morphoAmount}`);
-    console.log(`[Webhook] morphoGauntletAmount: $${morphoGauntletAmount}`);
-    console.log(`[Webhook] morphoHyperithmAmount: $${morphoHyperithmAmount}`);
-    console.log(`[Webhook] profileMorphoPercent: ${morphoPercent}%`);
-    console.log(`[Webhook] paymentStatus: ${status}`);
-    console.log(`[Webhook] shouldExecute: ${morphoAmount > 0 && status === 'COMPLETED'}`);
-    console.log(`[Webhook] walletAddress: ${walletAddress}`);
-    console.log(`[Webhook] lookupPaymentId: ${lookupPaymentId}`);
-    
-    if (morphoAmount > 0) {
-      console.log(`[Webhook] ===== MORPHO EXECUTION =====`);
-      console.log(`[Webhook] Executing Morpho: $${morphoAmount} (GauntletUSDC: $${morphoGauntletAmount}, HyperithmUSDC: $${morphoHyperithmAmount})`);
-      console.log(`[Webhook] Wallet address: ${walletAddress}`);
-      console.log(`[Webhook] Payment ID: ${lookupPaymentId}`);
-      console.log(`[Webhook] ARBITRUM_HUB_WALLET_PRIVATE_KEY configured: ${!!ARBITRUM_HUB_WALLET_PRIVATE_KEY && ARBITRUM_HUB_WALLET_PRIVATE_KEY.length > 0}`);
-      console.log(`[Webhook] ARBITRUM_HUB_WALLET_ADDRESS: ${ARBITRUM_HUB_WALLET_ADDRESS}`);
-      
-      try {
-        console.log(`[Webhook] Calling executeMorphoFromHubWallet...`);
-        morphoResult = await executeMorphoFromHubWallet(
-          walletAddress,
-          morphoGauntletAmount,
-          morphoHyperithmAmount,
-          lookupPaymentId
-        );
-        
-        console.log(`[Webhook] Morpho execution returned:`, JSON.stringify(morphoResult, null, 2));
-        
-        if (morphoResult.success) {
-          console.log(`[Webhook] ✅✅✅ Morpho executed successfully: ${morphoResult.txHash}`);
-          console.log(`[Webhook] ✅✅✅ Check Morpho deposits at: https://arbiscan.io/tx/${morphoResult.txHash}`);
-        } else {
-          console.error(`[Webhook] ❌❌❌ Morpho FAILED: ${morphoResult.error}`);
-          console.error(`[Webhook] ❌ This is a CRITICAL error - Morpho deposit did not execute`);
-          console.error(`[Webhook] ❌ Payment will NOT be marked as processed - will retry on next webhook`);
-        }
-      } catch (morphoError) {
-        console.error(`[Webhook] ❌❌❌ Morpho threw exception:`, morphoError);
-        console.error(`[Webhook] Morpho error stack:`, morphoError instanceof Error ? morphoError.stack : 'No stack trace');
-        console.error(`[Webhook] ❌ This is a CRITICAL error - Morpho deposit did not execute`);
-        morphoResult = { 
-          success: false, 
-          error: morphoError instanceof Error ? morphoError.message : String(morphoError)
-        };
-      }
-    } else {
-      console.error(`[Webhook] ❌❌❌ CRITICAL: Skipping Morpho - morphoAmount is ${morphoAmount} (must be > 0)`);
-      console.error(`[Webhook] ❌ This should NOT happen for morpho profile!`);
-      console.error(`[Webhook] ❌ profile.morphoPercent: ${morphoPercent}%`);
-      console.error(`[Webhook] ❌ depositAmount: $${depositAmount}`);
-      console.error(`[Webhook] ❌ riskProfile: "${riskProfile}"`);
-      console.error(`[Webhook] ❌ isMorphoProfile: ${isMorphoProfile}`);
-      
-      // CRITICAL: If this is a morpho profile but morphoAmount is 0, something is wrong
-      if (isMorphoProfile && morphoAmount === 0) {
-        console.error(`[Webhook] ❌❌❌ CRITICAL BUG: Morpho profile detected but morphoAmount is 0!`);
-        console.error(`[Webhook] ❌ This indicates a calculation error - morphoAmount should be $${depositAmount}`);
-        morphoResult = { 
-          success: false, 
-          error: `Morpho profile detected but morphoAmount is 0. Calculation error: depositAmount=$${depositAmount}, morphoPercent=${morphoPercent}%`
-        };
-      }
-    }
   } else {
     // GENERATED WALLET EXECUTION
     console.log(`[Webhook] Generated wallet - executing strategy from user wallet`);
@@ -5411,13 +4101,12 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
   // Create position record for connected wallets
   if (isConnectedWallet) {
     // CRITICAL: Only mark as processed if at least one strategy succeeded
-    const hasAnySuccess = (gmxResult?.success) || (aaveResult?.success) || (morphoResult?.success);
+    const hasAnySuccess = (gmxResult?.success) || (aaveResult?.success);
     
     if (!hasAnySuccess) {
-      console.error(`[Webhook] ❌ CRITICAL: All strategies failed`);
+      console.error(`[Webhook] ❌ CRITICAL: Both GMX and Aave failed`);
       console.error(`[Webhook] GMX result:`, gmxResult);
       console.error(`[Webhook] Aave result:`, aaveResult);
-      console.error(`[Webhook] Morpho result:`, morphoResult);
       console.error(`[Webhook] NOT marking payment as processed - will retry`);
       
       return {
@@ -5426,8 +4115,7 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
         status,
         gmxResult,
         aaveResult,
-        morphoResult,
-        error: 'All strategy executions failed',
+        error: 'Both GMX and Aave execution failed',
       };
     }
     
@@ -5437,19 +4125,18 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
       paymentId: lookupPaymentId,
       userEmail: email || '',
       walletAddress,
-      strategyType: riskProfile as 'conservative' | 'aggressive' | 'morpho',
+      strategyType: riskProfile as 'conservative' | 'aggressive',
       usdcAmount: depositAmount,
       status: hasAnySuccess ? 'active' : 'pending',
       createdAt: new Date().toISOString(),
       aaveSupplyAmount: aaveAmount,
       aaveSupplyTxHash: aaveResult?.txHash,
       gmxCollateralAmount: gmxAmount,
-      morphoResult: morphoResult,
     };
     await savePosition(position);
 
     // Mark as processed with successful tx hash
-    const finalTxHash = gmxResult?.txHash || aaveResult?.txHash || morphoResult?.txHash || positionId;
+    const finalTxHash = gmxResult?.txHash || aaveResult?.txHash || positionId;
     await markPaymentProcessed(paymentId, finalTxHash);
     console.log(`[Webhook] ✅ Payment marked as processed: ${finalTxHash}`);
     console.log(`[Webhook] Strategy executed, position ID: ${positionId}`);
@@ -5461,7 +4148,6 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
       positionId,
       aaveResult,
       gmxResult,
-      morphoResult,
     amountUsd,
     riskProfile,
     email,
@@ -5583,9 +4269,7 @@ async function executeGmxViaPrivy(
     // Get current gas price from network (using same robust logic as USDC transfer)
     console.log('[GMX-PRIVY] Fetching current gas price...');
     const feeData = await provider.getFeeData();
-    // Ensure we always have a BigInt - convert if needed
-    const rawGasPrice = feeData.gasPrice || feeData.maxFeePerGas;
-    const networkGasPrice = rawGasPrice ? BigInt(rawGasPrice.toString()) : ethers.parseUnits('25', 'gwei'); // Default to 25 gwei if unknown
+    const networkGasPrice = feeData.gasPrice || ethers.parseUnits('25', 'gwei'); // Default to 25 gwei if unknown
     const maxGasPrice = ethers.parseUnits(MAX_GAS_PRICE_GWEI.toString(), 'gwei');
     const gasPrice = networkGasPrice > maxGasPrice ? maxGasPrice : networkGasPrice;
 
@@ -5786,14 +4470,6 @@ async function executeGmxViaPrivy(
 
 /**
  * Main webhook handler
- * 
- * NOTE: Vercel automatically parses JSON bodies, so req.body is already an object.
- * We need to stringify it for signature verification, but JSON.stringify may produce
- * different formatting than Square's original. This is a known limitation.
- * 
- * Square's signature is calculated on the raw request body, but Vercel parses it
- * before we can access it. We'll use JSON.stringify and hope the formatting matches,
- * or Square's verification might be lenient enough to accept it.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   /**
@@ -5865,16 +4541,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     logger.info('Incoming webhook request', LogCategory.WEBHOOK, {
       method: req.method,
       url: req.url,
-      hasHmacsha256Signature: !!req.headers['x-square-hmacsha256-signature'],
-      hasSquareSignature: !!req.headers['x-square-signature'],
+      hasSignature: !!req.headers['x-square-signature'],
       contentType: req.headers['content-type'] || 'N/A',
       userAgent: req.headers['user-agent'] || 'N/A',
       bodyType: typeof req.body,
-      bodyLength: typeof req.body === 'string' 
-        ? req.body.length 
-        : req.body !== undefined && req.body !== null
-          ? (JSON.stringify(req.body) || '').length
-          : 0
+      bodyLength: typeof req.body === 'string' ? req.body.length : JSON.stringify(req.body).length
     });
 
     // CORS headers
@@ -5887,141 +4558,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).end();
     }
 
-    // GET - handle health check and test endpoints
+    // GET - return status with Redis health check
     if (req.method === 'GET') {
-      // Check for test-signature query parameter
-      const url = (req.url || '').toLowerCase();
-      const query = req.query || {};
-      const testSigValue = Array.isArray(query.testSignature) ? query.testSignature[0] : query.testSignature;
-      const testSigDashValue = Array.isArray(query['test-signature']) ? query['test-signature'][0] : query['test-signature'];
-      const isTestSignature = (url && url.includes('test-signature')) || 
-                              testSigValue === 'true' || 
-                              testSigDashValue === 'true';
-      
-      // Test signature verification endpoint
-      if (isTestSignature) {
-        try {
-          console.log('[Health Check] Testing signature verification...');
-          
-          // Validate key exists and is a string
-          if (!SQUARE_WEBHOOK_SIGNATURE_KEY || typeof SQUARE_WEBHOOK_SIGNATURE_KEY !== 'string' || SQUARE_WEBHOOK_SIGNATURE_KEY.length === 0) {
-            return res.status(500).json({
-              error: 'Webhook signature key not configured or invalid',
-              testResult: 'FAILED',
-              signatureKeyConfigured: false,
-              signatureKeyType: typeof SQUARE_WEBHOOK_SIGNATURE_KEY,
-              signatureKeyLength: SQUARE_WEBHOOK_SIGNATURE_KEY && typeof SQUARE_WEBHOOK_SIGNATURE_KEY === 'string' ? SQUARE_WEBHOOK_SIGNATURE_KEY.length : 0
-            });
-          }
-
-      // Test signature verification with a realistic Square webhook payload
-      // Use deterministic stringify to match Square's format
-      const testPayloadObj = {
-        merchant_id: "X0F2ZVNVX1ZED",
-        type: "payment.updated",
-        event_id: "test-event-id",
-        created_at: new Date().toISOString(),
-        data: {
-          object: {
-            payment: {
-              id: "TEST_PAYMENT_ID",
-              status: "COMPLETED",
-              amount_money: {
-                amount: 200,
-                currency: "USD"
-              }
-            }
-          }
-        }
-      };
-      
-      // Generate payload using deterministic stringify (matches Square's format)
-      const testPayload = deterministicStringify(testPayloadObj);
-      
-      // Validate payload was generated
-      if (!testPayload || typeof testPayload !== 'string') {
-        return res.status(500).json({
-          error: 'Failed to generate test payload',
-          testResult: 'FAILED'
-        });
-      }
-      
-      // Generate signature the same way Square does
-      const hmac = crypto.createHmac('sha256', SQUARE_WEBHOOK_SIGNATURE_KEY);
-      hmac.update(testPayload);
-      const testSignature = hmac.digest('base64'); // Square sends without 'sha256=' prefix based on logs
-      
-      // Validate signature was generated
-      if (!testSignature || typeof testSignature !== 'string') {
-        return res.status(500).json({
-          error: 'Failed to generate test signature',
-          testResult: 'FAILED'
-        });
-      }
-      
-          console.log('[Test] Generated test signature:', testSignature);
-          const payloadPreview = testPayload && testPayload.length > 0 ? testPayload.substring(0, Math.min(200, testPayload.length)) : '';
-          console.log('[Test] Test payload (first 200 chars):', payloadPreview);
-          console.log('[Test] Test payload length:', testPayload ? testPayload.length : 0);
-          
-          // Test verification (with notification URL like real webhooks)
-          const testNotificationUrl = 'https://www.tiltvault.com/api/square/webhook';
-          const isValid = await verifySignature(testPayload, testSignature, testNotificationUrl);
-          
-          // Also test with 'sha256=' prefix
-          const isValidWithPrefix = await verifySignature(testPayload, 'sha256=' + testSignature, testNotificationUrl);
-          
-          // Safely construct response with all length checks
-          const keyLength = SQUARE_WEBHOOK_SIGNATURE_KEY && typeof SQUARE_WEBHOOK_SIGNATURE_KEY === 'string' ? SQUARE_WEBHOOK_SIGNATURE_KEY.length : 0;
-          const keyFormat = keyLength >= 10 && SQUARE_WEBHOOK_SIGNATURE_KEY && typeof SQUARE_WEBHOOK_SIGNATURE_KEY === 'string' ? {
-            first10Chars: SQUARE_WEBHOOK_SIGNATURE_KEY.substring(0, 10) + '...',
-            last10Chars: '...' + SQUARE_WEBHOOK_SIGNATURE_KEY.substring(Math.max(0, keyLength - 10)),
-            expectedLength: '~43 characters',
-            note: 'Square webhook signature keys are typically 43 characters long. If your key is a different length, verify it in Square Dashboard.'
-          } : keyLength > 0 ? {
-            keyLength: keyLength,
-            note: 'Key is too short to display preview. Expected ~43 characters.'
-          } : null;
-          
-          return res.status(200).json({
-            testResult: isValid || isValidWithPrefix ? 'PASSED' : 'FAILED',
-            signatureVerification: {
-              withoutPrefix: isValid,
-              withPrefix: isValidWithPrefix,
-              finalResult: isValid || isValidWithPrefix
-            },
-            testPayload: testPayload,
-            testSignature: testSignature,
-            testSignatureWithPrefix: 'sha256=' + testSignature,
-            signatureKeyConfigured: keyLength > 0,
-            signatureKeyLength: keyLength,
-            signatureKeyFormat: keyFormat,
-        instructions: isValid || isValidWithPrefix 
-          ? '✅ Signature verification is working! Your key is correct.'
-          : '❌ Signature verification failed. Verify your SQUARE_WEBHOOK_SIGNATURE_KEY in Vercel matches the key from Square Dashboard → Webhooks → Show Signature Key',
-        troubleshooting: !isValid && !isValidWithPrefix ? {
-          step1: 'Go to https://developer.squareup.com/apps',
-          step2: 'Select your app → Webhooks → Your webhook endpoint',
-          step3: 'Click "Show Signature Key"',
-          step4: 'Copy the ENTIRE key (should be ~43 characters)',
-          step5: 'Update SQUARE_WEBHOOK_SIGNATURE_KEY in Vercel environment variables',
-          step6: 'Redeploy or trigger a new deployment',
-          step7: 'Test again with this endpoint'
-        } : null,
-            timestamp: new Date().toISOString()
-          });
-        } catch (error) {
-          console.error('[Test Endpoint] Error:', error);
-          return res.status(500).json({
-            error: 'Internal error in test endpoint',
-            testResult: 'FAILED',
-            errorMessage: error instanceof Error ? error.message : String(error),
-            errorStack: error instanceof Error ? error.stack : undefined
-          });
-        }
-      }
-      
-      // Health check endpoint (default GET behavior)
       let redisStatus = 'unknown';
       try {
         const redis = getRedis();
@@ -6032,26 +4570,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         redisStatus = `error: ${err}`;
       }
       
-      const signatureKeyConfigured = !!(SQUARE_WEBHOOK_SIGNATURE_KEY && typeof SQUARE_WEBHOOK_SIGNATURE_KEY === 'string' && SQUARE_WEBHOOK_SIGNATURE_KEY.length > 0);
-      const keyLength = (SQUARE_WEBHOOK_SIGNATURE_KEY && typeof SQUARE_WEBHOOK_SIGNATURE_KEY === 'string') ? SQUARE_WEBHOOK_SIGNATURE_KEY.length : 0;
-      const keyPrefix = keyLength >= 10 && SQUARE_WEBHOOK_SIGNATURE_KEY && typeof SQUARE_WEBHOOK_SIGNATURE_KEY === 'string'
-        ? SQUARE_WEBHOOK_SIGNATURE_KEY.substring(0, 10) + '...'
-        : keyLength > 0 && SQUARE_WEBHOOK_SIGNATURE_KEY && typeof SQUARE_WEBHOOK_SIGNATURE_KEY === 'string'
-          ? SQUARE_WEBHOOK_SIGNATURE_KEY.substring(0, Math.min(10, keyLength))
-          : 'none';
+      const signatureKeyConfigured = !!SQUARE_WEBHOOK_SIGNATURE_KEY;
       
       return res.status(200).json({
         service: 'square-webhook-node',
         status: signatureKeyConfigured ? 'ready' : 'ERROR',
         signatureKeyConfigured,
-        signatureKeyLength: keyLength,
-        signatureKeyPrefix: keyPrefix,
+        signatureKeyLength: SQUARE_WEBHOOK_SIGNATURE_KEY ? SQUARE_WEBHOOK_SIGNATURE_KEY.length : 0,
+        signatureKeyPrefix: SQUARE_WEBHOOK_SIGNATURE_KEY ? SQUARE_WEBHOOK_SIGNATURE_KEY.substring(0, 10) + '...' : 'none',
         securityWarning: !signatureKeyConfigured ? 'CRITICAL: Webhook signature key not configured - all webhook requests will be rejected' : undefined,
         hubWalletConfigured: !!HUB_WALLET_PRIVATE_KEY,
         hubWalletAddress: HUB_WALLET_ADDRESS,
         redisStatus,
         timestamp: new Date().toISOString(),
         version: '1.0.0'
+      });
+    }
+
+    // Test signature verification endpoint
+    if (req.url === '/test-signature' && req.method === 'GET') {
+      console.log('[Health Check] Testing signature verification...');
+      
+      if (!SQUARE_WEBHOOK_SIGNATURE_KEY) {
+        return res.status(500).json({
+          error: 'Webhook signature key not configured',
+          testResult: 'FAILED'
+        });
+      }
+
+      // Test signature verification
+      const testPayload = JSON.stringify({
+        test: true,
+        timestamp: Date.now()
+      });
+      
+      const hmac = crypto.createHmac('sha256', SQUARE_WEBHOOK_SIGNATURE_KEY);
+      hmac.update(testPayload);
+      const testSignature = 'sha256=' + hmac.digest('base64');
+      
+      const isValid = verifySignature(testPayload, testSignature);
+      
+      return res.status(200).json({
+        testResult: isValid ? 'PASSED' : 'FAILED',
+        testPayload: testPayload.substring(0, 50) + '...',
+        testSignature: testSignature.substring(0, 30) + '...',
+        signatureKeyConfigured: !!SQUARE_WEBHOOK_SIGNATURE_KEY,
+        timestamp: new Date().toISOString()
       });
     }
 
@@ -6065,193 +4629,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // CRITICAL: Log ALL incoming POST requests immediately (before any processing)
     // This ensures we capture requests even if they fail early
-    
-    // === DEBUG: Log ALL headers to see exact header names ===
-    console.log('=== WEBHOOK SIGNATURE DEBUG ===');
-    console.log('All headers:', JSON.stringify(req.headers, null, 2));
-    
-    // Try different header name variations
-    const possibleHeaders = [
-      'x-square-hmacsha256-signature',
-      'x-square-signature',
-      'X-Square-HMACSHA256-Signature',
-      'X-Square-Signature',
-      'x-square-hmac-sha256-signature'
-    ];
-    
-    let receivedSignature = null;
-    let headerUsed = null;
-    
-    for (const header of possibleHeaders) {
-      if (req.headers[header]) {
-        receivedSignature = req.headers[header];
-        headerUsed = header;
-        break;
-      }
-    }
-    
-    console.log('Signature header used:', headerUsed);
-    console.log('Received signature:', receivedSignature);
-    console.log('Webhook key exists:', !!SQUARE_WEBHOOK_SIGNATURE_KEY);
-    console.log('Webhook key length:', SQUARE_WEBHOOK_SIGNATURE_KEY ? SQUARE_WEBHOOK_SIGNATURE_KEY.length : 0);
-    console.log('Webhook key first 10 chars:', SQUARE_WEBHOOK_SIGNATURE_KEY ? SQUARE_WEBHOOK_SIGNATURE_KEY.substring(0, 10) : 'N/A');
-    
-    const bodyLength = typeof req.body === 'string' 
-      ? req.body.length 
-      : req.body !== undefined && req.body !== null
-        ? (JSON.stringify(req.body) || '').length
-        : 0;
-    
     logger.info('Incoming webhook request', LogCategory.WEBHOOK, {
       method: req.method,
       url: req.url,
-      hasHmacsha256Signature: !!req.headers['x-square-hmacsha256-signature'],
-      hasSquareSignature: !!req.headers['x-square-signature'],
-      signatureHeaderUsed: headerUsed,
+      hasSignature: !!req.headers['x-square-signature'],
       contentType: req.headers['content-type'] || 'N/A',
       userAgent: req.headers['user-agent'] || 'N/A',
       bodyType: typeof req.body,
-      bodyLength: bodyLength
+      bodyLength: typeof req.body === 'string' ? req.body.length : JSON.stringify(req.body).length
     });
 
       // Get raw body for signature verification
-      // CRITICAL: Square calculates signature on the EXACT raw JSON string they send
-      // We MUST use the raw body bytes, not a reconstructed JSON string
-      // Vercel automatically parses JSON, so we need to read from the request stream
-      let rawBody: string | undefined;
-      let parsedBody: any = null; // Store parsed body for later use
-      
-      // CRITICAL: In Vercel, req.body is already parsed, but we need the raw JSON for signature verification
-      // Square signs: HMAC-SHA256(notification_url + exact_raw_json_body)
-      // We must reconstruct the exact format Square used
-      
-      // Try to get raw body from various sources (in order of preference)
-      // @ts-ignore - req may have rawBody property in some Vercel configurations
-      const rawBodyFromStream = (req as any).rawBody;
-      
-      if (rawBodyFromStream && typeof rawBodyFromStream === 'string') {
-        // Best case: We have the actual raw body
-        rawBody = rawBodyFromStream;
-        try {
-          parsedBody = JSON.parse(rawBodyFromStream);
-        } catch (e) {
-          parsedBody = rawBodyFromStream;
-        }
-        console.log('[Webhook] ✅ Using raw body from req.rawBody (exact bytes Square sent)');
-      } else if (typeof req.body === 'string') {
-        // Body is already a string (raw) - use it directly
-        rawBody = req.body;
-        try {
-          parsedBody = JSON.parse(req.body);
-        } catch (e) {
-          parsedBody = req.body;
-        }
-        console.log('[Webhook] ✅ Body is string - using directly for signature');
-      } else if (Buffer.isBuffer(req.body)) {
-        // Body is a Buffer (raw) - convert to string
-        const bufferStr = req.body.toString('utf-8');
-        rawBody = bufferStr;
-        try {
-          parsedBody = JSON.parse(bufferStr);
-        } catch (e) {
-          parsedBody = bufferStr;
-        }
-        console.log('[Webhook] ✅ Body is Buffer - converted to string');
-      } else {
-        // Body was parsed to object - reconstruct using deterministic stringify
-        // This matches Square's format: compact JSON with sorted keys
-        parsedBody = req.body;
-        
-        console.log('[Webhook] Body was parsed to object - reconstructing using deterministic stringify');
-        console.log('[Webhook] This should match Square\'s format (compact JSON, sorted keys)');
-        
-        // Use deterministic stringify (sorted keys, compact) - this matches Square's format
-        try {
-          rawBody = deterministicStringify(req.body);
-          console.log('[Webhook] ✅ Using deterministic stringify (matches Square\'s format)');
-        } catch (e) {
-          console.warn('[Webhook] Deterministic stringify failed, using fallback:', e);
-          // Fallback: compact JSON with sorted keys
-          try {
-            const sortedKeys = Object.keys(req.body).sort();
-            const sortedObj = sortedKeys.reduce((acc: any, key) => {
-              acc[key] = req.body[key];
-              return acc;
-            }, {});
-            rawBody = JSON.stringify(sortedObj).replace(/\s+/g, '');
-            console.log('[Webhook] Using sorted compact JSON as fallback');
-          } catch (e2) {
-            // Last resort
-            rawBody = JSON.stringify(req.body).replace(/\s+/g, '');
-            console.warn('[Webhook] Using compact JSON as last resort');
-          }
-        }
-      }
-      
-      // Ensure rawBody is defined (should never be undefined at this point, but TypeScript needs this)
-      if (!rawBody) {
-        console.error('[Webhook] ❌ CRITICAL: rawBody is undefined - cannot verify signature');
-        // Last resort fallback - stringify the body
-        try {
-          rawBody = JSON.stringify(req.body || {});
-          parsedBody = req.body;
-          console.warn('[Webhook] Using fallback JSON.stringify - signature verification will likely fail');
-        } catch (stringifyError) {
-          // If even stringify fails, use empty object
-          console.error('[Webhook] Failed to stringify body:', stringifyError);
-          rawBody = '{}';
-          parsedBody = {};
-        }
-      }
-      
-      // Log the body format for debugging (safely)
-      try {
-        console.log('[Webhook] Raw body for signature (first 200 chars):', rawBody.substring(0, Math.min(200, rawBody.length)));
-        console.log('[Webhook] Raw body length:', rawBody.length);
-      } catch (logError) {
-        console.warn('[Webhook] Failed to log body details:', logError);
-      }
-      
-      // CRITICAL: Build notification URL (the exact URL Square calls)
-      // Square includes this in the signature: HMAC-SHA256(notification_url + body)
-      // Square uses the exact URL configured in their dashboard
-      // Try multiple URL formats to match what Square might be using
-      const protocolHeader = req.headers['x-forwarded-proto'] || req.headers['x-forwarded-protocol'];
-      const protocol = Array.isArray(protocolHeader) ? protocolHeader[0] : (protocolHeader || 'https');
-      const hostHeader = req.headers['host'] || req.headers['x-forwarded-host'] || req.headers['x-vercel-deployment-url'];
-      const host = Array.isArray(hostHeader) ? hostHeader[0] : (hostHeader || 'www.tiltvault.com');
-      
-      // Try both with and without trailing slash, and with/without www
-      const possibleUrls = [
-        `${protocol}://${host}/api/square/webhook`, // Standard format
-        `${protocol}://${host.replace(/^www\./, '')}/api/square/webhook`, // Without www
-        `https://www.tiltvault.com/api/square/webhook`, // Hardcoded (most likely what Square has configured)
-        `https://tiltvault.com/api/square/webhook`, // Without www
-      ];
-      
-      // Remove duplicates
-      const uniqueUrls = [...new Set(possibleUrls)];
-      const notificationUrl = uniqueUrls[0]; // Use first as primary, verifySignature will try all variants
-      
-      console.log('[Webhook] Notification URL options:', uniqueUrls);
-      console.log('[Webhook] Using primary notification URL:', notificationUrl);
-      
-      // Square sends signature in 'x-square-hmacsha256-signature' header (not 'x-square-signature')
-      // Use the signature we found in debug logging above
-      const signature = receivedSignature || 
-                        (req.headers['x-square-hmacsha256-signature'] as string) || 
-                        (req.headers['x-square-signature'] as string) || 
-                        '';
-      
-      // Debug logging for signature verification
-      logger.debug('Signature verification setup', LogCategory.WEBHOOK, {
-        hasHmacsha256Header: !!req.headers['x-square-hmacsha256-signature'],
-        hasSquareSignatureHeader: !!req.headers['x-square-signature'],
-        signatureHeader: signature ? signature.substring(0, 30) + '...' : 'none',
-        rawBodyLength: rawBody.length,
-        rawBodyStart: rawBody.substring(0, 100) + '...',
-        bodyType: typeof req.body
-      });
+      const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+      const signature = req.headers['x-square-signature'] as string || '';
 
     // CRITICAL SECURITY: Signature verification is MANDATORY
     // Never accept webhook requests without proper signature verification
@@ -6270,9 +4660,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Note: Signature key length validation removed - user confirmed webhooks work correctly
-    // Square webhook signature keys can vary in length, so we rely on signature verification itself
-
     // Verify signature - CRITICAL: Reject invalid signatures
     if (!signature) {
       logger.error('No signature provided - rejecting webhook', LogCategory.WEBHOOK, {
@@ -6288,163 +4675,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
     
-    // CRITICAL: Verify webhook signature before processing
-    // Square calculates: HMAC-SHA256(notification_url + body)
-    // If this fails, the webhook is REJECTED (no bypass)
-    console.log('[Webhook] === Starting signature verification ===');
-    const isValid = await verifySignature(rawBody, signature || '', notificationUrl);
-    
-    // === DEBUG: Try both methods manually for comparison ===
-    if (!isValid && SQUARE_WEBHOOK_SIGNATURE_KEY && signature) {
-      console.log('[Webhook] === DEBUG: Trying signature methods manually ===');
-      
-      // Method 1: URL + Body
-      const sigInput1 = notificationUrl + rawBody;
-      const expectedSig1 = crypto
-        .createHmac('sha256', SQUARE_WEBHOOK_SIGNATURE_KEY)
-        .update(sigInput1)
-        .digest('base64');
-      
-      console.log('[Webhook] Method 1 (URL + Body):');
-      console.log('  Input length:', sigInput1.length);
-      console.log('  Expected:', expectedSig1);
-      console.log('  Received:', signature);
-      console.log('  Match:', expectedSig1 === signature);
-      
-      // Method 2: Body only
-      const expectedSig2 = crypto
-        .createHmac('sha256', SQUARE_WEBHOOK_SIGNATURE_KEY)
-        .update(rawBody)
-        .digest('base64');
-      
-      console.log('[Webhook] Method 2 (Body only):');
-      console.log('  Expected:', expectedSig2);
-      console.log('  Received:', signature);
-      console.log('  Match:', expectedSig2 === signature);
-      
-      // Check if signature has prefix
-      if (signature.startsWith('sha256=')) {
-        const sigWithoutPrefix = signature.substring(7);
-        console.log('[Webhook] Signature without sha256= prefix:', sigWithoutPrefix);
-        console.log('  Match with method 1:', expectedSig1 === sigWithoutPrefix);
-        console.log('  Match with method 2:', expectedSig2 === sigWithoutPrefix);
-      }
-    }
-    
-    logger.info(`Signature verification: ${isValid ? 'VALID' : 'INVALID - REJECTING'}`, LogCategory.WEBHOOK, {
+    const isValid = verifySignature(rawBody, signature);
+    logger.info(`Signature verification: ${isValid ? 'VALID' : 'INVALID'}`, LogCategory.WEBHOOK, {
       isValid,
-      signaturePrefix: signature ? signature.substring(0, 20) : 'NONE',
-      headerUsed: headerUsed,
-      // TODO: Once signature verification is working consistently, reduce logging verbosity
-      troubleshooting: !isValid ? {
-        step1: 'Verify SQUARE_WEBHOOK_SIGNATURE_KEY in Vercel matches Square Dashboard',
-        step2: 'Get key from: Square Dashboard → Webhooks → Show Signature Key',
-        step3: 'Key should be ~43 characters, NOT your API access token',
-        step4: 'See VERIFY-SQUARE-WEBHOOK-KEY.md for detailed instructions',
-        debug: 'Check Vercel logs for detailed signature comparison'
-      } : undefined
+      signaturePrefix: signature.substring(0, 20)
     });
     
     if (!isValid) {
-      // SECURITY: Signature verification is MANDATORY for ALL events
-      // We NO LONGER bypass signature verification for any event types
-      // If signature verification fails, the webhook is REJECTED
-      // This ensures only legitimate Square webhooks are processed
-      
-      // Parse event type for logging purposes
-      let eventTypeForCheck: string | undefined;
-      try {
-        const eventForCheck = parsedBody || (typeof req.body === 'string' ? JSON.parse(req.body) : req.body);
-        eventTypeForCheck = eventForCheck?.type;
-      } catch (e) {
-        // Can't parse event type, proceed with rejection
-      }
-      
-      // Calculate expected signatures for debug response
-      let debugInfo: any = {
-        headerUsed: headerUsed,
-        signatureReceived: signature ? signature.substring(0, 30) + '...' : 'NONE',
-        notificationUrl: notificationUrl,
-        bodyLength: rawBody.length,
-        keyConfigured: !!SQUARE_WEBHOOK_SIGNATURE_KEY,
-        keyLength: SQUARE_WEBHOOK_SIGNATURE_KEY ? SQUARE_WEBHOOK_SIGNATURE_KEY.length : 0,
-        expectedKeyLength: '~43 characters',
-        keyIssue: SQUARE_WEBHOOK_SIGNATURE_KEY && SQUARE_WEBHOOK_SIGNATURE_KEY.length < 35 
-          ? `Key is only ${SQUARE_WEBHOOK_SIGNATURE_KEY.length} characters - should be ~43. This is likely the root cause.`
-          : 'Key length appears correct, but signature still doesn\'t match. Verify the key value matches Square Dashboard exactly.'
-      };
-      
-      if (SQUARE_WEBHOOK_SIGNATURE_KEY && signature) {
-        // Method 1: URL + Body
-        const sigInput1 = notificationUrl + rawBody;
-        const expectedSig1 = crypto
-          .createHmac('sha256', SQUARE_WEBHOOK_SIGNATURE_KEY)
-          .update(sigInput1)
-          .digest('base64');
-        
-        // Method 2: Body only
-        const expectedSig2 = crypto
-          .createHmac('sha256', SQUARE_WEBHOOK_SIGNATURE_KEY)
-          .update(rawBody)
-          .digest('base64');
-        
-        debugInfo.method1 = {
-          inputLength: sigInput1.length,
-          expected: expectedSig1.substring(0, 30) + '...',
-          received: signature.substring(0, 30) + '...',
-          match: expectedSig1 === signature
-        };
-        
-        debugInfo.method2 = {
-          expected: expectedSig2.substring(0, 30) + '...',
-          received: signature.substring(0, 30) + '...',
-          match: expectedSig2 === signature
-        };
-        
-        // Check if signature has prefix
-        if (signature.startsWith('sha256=')) {
-          const sigWithoutPrefix = signature.substring(7);
-          debugInfo.withPrefix = {
-            method1Match: expectedSig1 === sigWithoutPrefix,
-            method2Match: expectedSig2 === sigWithoutPrefix
-          };
-        }
-      }
-      
-      // Log the rejection with detailed information
-      logger.error('CRITICAL: Invalid webhook signature - REJECTING', LogCategory.WEBHOOK, {
-        eventType: eventTypeForCheck || 'unknown',
-        signaturePrefix: signature ? signature.substring(0, 20) : 'NONE',
+      logger.error('Invalid signature - rejecting webhook', LogCategory.WEBHOOK, {
+        signaturePrefix: signature.substring(0, 20),
         securityRisk: 'HIGH',
-        action: 'REJECTED',
-        keyLength: SQUARE_WEBHOOK_SIGNATURE_KEY ? SQUARE_WEBHOOK_SIGNATURE_KEY.length : 0,
-        expectedKeyLength: '~43 characters',
-        fix: 'Update SQUARE_WEBHOOK_SIGNATURE_KEY in Vercel with the correct key from Square Dashboard → Webhooks → Show Signature Key',
-        debugInfo: debugInfo
+        action: 'REJECTED'
       });
-      
       errorTracker.trackPaymentError('Invalid webhook signature', {}, req);
       await alertingSystem.triggerAlert(
         'payment_failure' as any,
         'Invalid Webhook Signature',
-        'Webhook received with invalid signature - REJECTED for security',
-        { 
-          signaturePrefix: signature ? signature.substring(0, 20) : 'NONE',
-          keyLength: SQUARE_WEBHOOK_SIGNATURE_KEY ? SQUARE_WEBHOOK_SIGNATURE_KEY.length : 0,
-          eventType: eventTypeForCheck || 'unknown'
-        }
+        'Webhook received with invalid signature - possible security breach',
+        { signaturePrefix: signature.substring(0, 20) }
       );
       // Return 401 (unauthorized) - permanent error, don't retry
-      // SECURITY: We no longer bypass signature verification for any events
-      // All webhooks with invalid signatures are rejected
       return res.status(401).json({ 
-        error: 'Invalid webhook signature',
-        retryable: false,
-        security: 'Signature verification failed - webhook rejected',
-        keyLength: SQUARE_WEBHOOK_SIGNATURE_KEY ? SQUARE_WEBHOOK_SIGNATURE_KEY.length : 0,
-        expectedKeyLength: '~43 characters',
-        troubleshooting: 'Update SQUARE_WEBHOOK_SIGNATURE_KEY in Vercel with the correct key from Square Dashboard → Webhooks → Show Signature Key. Key must be exactly as shown in Square Dashboard (typically 43 characters).',
-        debug: process.env.NODE_ENV === 'development' ? debugInfo : undefined // Only show debug in dev
+        error: 'Invalid signature',
+        retryable: false
       });
     }
     
@@ -6454,36 +4707,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     // Parse event with error handling
-    // Use parsedBody if we have it, otherwise parse from rawBody or req.body
     let event: WebhookEvent;
     try {
-      if (parsedBody) {
-        event = parsedBody;
-      } else if (typeof req.body === 'string') {
-        event = JSON.parse(req.body);
-      } else {
-        event = req.body;
-      }
-      const debugBodyLength = typeof req.body === 'string' 
-        ? req.body.length 
-        : req.body !== undefined && req.body !== null
-          ? (JSON.stringify(req.body) || '').length
-          : 0;
-      
+      event = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       logger.debug('Event parsed successfully', LogCategory.WEBHOOK, {
         bodyType: typeof req.body,
-        bodyLength: debugBodyLength
+        bodyLength: typeof req.body === 'string' ? req.body.length : JSON.stringify(req.body).length
       });
     } catch (parseError) {
-      const bodyPreview = typeof req.body === 'string' 
-        ? req.body.substring(0, 500)
-        : req.body !== undefined && req.body !== null
-          ? (JSON.stringify(req.body) || '').substring(0, 500)
-          : 'N/A';
-      
       logger.error('Failed to parse webhook event body', LogCategory.WEBHOOK, {
         error: parseError instanceof Error ? parseError.message : String(parseError),
-        bodyPreview: bodyPreview
+        bodyPreview: typeof req.body === 'string' ? req.body.substring(0, 500) : JSON.stringify(req.body).substring(0, 500)
       }, parseError instanceof Error ? parseError : new Error(String(parseError)));
       // 400: Invalid JSON - permanent error, don't retry
       return res.status(400).json({ 
@@ -6494,39 +4728,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     const eventType = event.type || 'unknown';
     const payment = event.data?.object?.payment;
-    const payout = (event.data?.object as any)?.payout;
     const paymentId = payment?.id || undefined;
     const paymentStatus = payment?.status || undefined;
     const paymentAmount = payment?.amount_money ? (payment.amount_money.amount || 0) / 100 : undefined;
-    
-    // CRITICAL: Validate we're using PRODUCTION IDs (not sandbox/test)
-    const merchantId = (event as any).merchant_id;
-    const locationId = payout?.location_id || (payment as any)?.location_id || (event as any).location_id;
-    
-    // Production merchant ID: X0F2ZVNVX1ZED
-    // Production location ID: LA09STPQW6HC0
-    // Sandbox/test IDs would be different
-    const PRODUCTION_MERCHANT_ID = 'X0F2ZVNVX1ZED';
-    const PRODUCTION_LOCATION_ID = 'LA09STPQW6HC0';
-    
-    const isProductionMerchant = merchantId === PRODUCTION_MERCHANT_ID;
-    const isProductionLocation = locationId === PRODUCTION_LOCATION_ID;
-    
-    if (merchantId && !isProductionMerchant) {
-      logger.warn('Non-production merchant ID detected', LogCategory.WEBHOOK, {
-        merchantId,
-        expected: PRODUCTION_MERCHANT_ID,
-        isProduction: isProductionMerchant
-      });
-    }
-    
-    if (locationId && !isProductionLocation) {
-      logger.warn('Non-production location ID detected', LogCategory.WEBHOOK, {
-        locationId,
-        expected: PRODUCTION_LOCATION_ID,
-        isProduction: isProductionLocation
-      });
-    }
     
     // CRITICAL: Log event details immediately (this MUST show up in logs)
     logger.info('Webhook event received', LogCategory.WEBHOOK, {
@@ -6535,16 +4739,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       paymentId,
       paymentStatus,
       paymentAmount,
-      merchantId,
-      locationId,
-      isProductionMerchant,
-      isProductionLocation,
       eventStructure: {
         hasData: !!event.data,
         hasObject: !!event.data?.object,
         objectKeys: event.data?.object ? Object.keys(event.data.object) : [],
         hasPayment: !!event.data?.object?.payment,
-        hasPayout: !!payout,
         objectType: (event.data?.object as any)?.type || 'unknown'
       }
     });
@@ -6605,45 +4804,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Handle both string and object cases (Redis may return either)
           let previousResult: any;
           if (typeof existingResult === 'string') {
-            // Check if it's valid JSON (starts with { or [) before parsing
+            // Check if it's valid JSON before parsing
             if (existingResult.trim().startsWith('{') || existingResult.trim().startsWith('[')) {
-              try {
-                previousResult = JSON.parse(existingResult);
-              } catch (parseErr) {
-                // If parsing fails even though it looks like JSON, log and continue
-                logger.warn('Failed to parse existingResult as JSON, treating as new processing', LogCategory.WEBHOOK, {
-                  paymentId: payment.id,
-                  existingResultType: typeof existingResult,
-                  existingResultPreview: existingResult.substring(0, 100),
-                  error: parseErr instanceof Error ? parseErr.message : String(parseErr)
-                });
-                // Continue with processing - don't return early
-                previousResult = null;
-              }
+              previousResult = JSON.parse(existingResult);
             } else {
-              // If it's "[object Object]" or similar, it's not valid JSON
-              logger.warn('Invalid existingResult format (not JSON), treating as new processing', LogCategory.WEBHOOK, {
+              // Invalid format - continue processing
+              logger.warn('Invalid cached result format (not JSON), reprocessing', LogCategory.WEBHOOK, {
                 paymentId: payment.id,
-                existingResultType: typeof existingResult,
                 existingResultPreview: existingResult.substring(0, 100)
               });
-              // Continue with processing - don't return early
               previousResult = null;
             }
           } else if (existingResult && typeof existingResult === 'object') {
-            // Already an object, use it directly
+            // Already an object
             previousResult = existingResult;
           } else {
-            // Unexpected type, log and continue
-            logger.warn('Unexpected existingResult type, reprocessing', LogCategory.WEBHOOK, {
-              paymentId: payment.id,
-              existingResultType: typeof existingResult
-            });
+            // Unexpected type
             previousResult = null;
           }
           
-          // Only return early if we successfully got a previous result
-          if (previousResult && typeof previousResult === 'object') {
+          if (previousResult) {
             return res.status(200).json({ 
               success: true, 
               ...previousResult,
@@ -6651,7 +4831,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               message: 'Payment already processed - duplicate event ignored'
             });
           }
-          // If we couldn't parse it, continue with processing below
         } catch (parseError) {
           logger.warn('Failed to parse cached payment result, reprocessing', LogCategory.WEBHOOK, {
             paymentId: payment.id,
@@ -6683,34 +4862,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             action: 'idempotent_concurrent'
           });
           try {
-            // Safely parse retry result - handle both string and object cases
+            // Handle both string and object cases (Redis may return either)
             let previousResult: any;
             if (typeof retryResult === 'string') {
-              // Check if it's valid JSON (starts with { or [)
+              // Check if it's valid JSON before parsing
               if (retryResult.trim().startsWith('{') || retryResult.trim().startsWith('[')) {
                 previousResult = JSON.parse(retryResult);
               } else {
-                // If it's "[object Object]" or similar, can't parse it
-                logger.warn('Invalid retryResult format (not JSON), continuing with processing', LogCategory.WEBHOOK, {
-                  paymentId: payment.id,
-                  retryResultPreview: retryResult.substring(0, 100)
-                });
-                throw new Error('Invalid retryResult format');
+                // Invalid format - continue processing
+                previousResult = null;
               }
             } else if (retryResult && typeof retryResult === 'object') {
               // Already an object
               previousResult = retryResult;
             } else {
-              throw new Error('Unexpected retryResult type');
+              // Unexpected type
+              previousResult = null;
             }
             
-            return res.status(200).json({ 
-              success: true, 
-              ...previousResult,
-              idempotent: true,
-              message: 'Payment processed by concurrent request'
-            });
-          } catch (parseError) {
+            if (previousResult) {
+              return res.status(200).json({ 
+                success: true, 
+                ...previousResult,
+                idempotent: true,
+                message: 'Payment processed by concurrent request'
+              });
+            }
+          } catch {
             // Continue if we can't parse
           }
         }
@@ -6821,352 +4999,85 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     // Handle payment events that confirm money has cleared
-    // payment.fail: Payment failed - log and do not process deposits
-    if (eventType === 'payment.fail' || eventType === 'payment.failed') {
+    // payment.paid and payment.sent: These events indicate payment has cleared (no status check needed)
+    // payment.updated: Only process if status is COMPLETED (Square sometimes sends this instead of payment.sent)
+    if (eventType === 'payment.paid' || eventType === 'payment.sent') {
       const payment = event.data?.object?.payment;
-      logger.warn('Received payment.fail event - payment failed', LogCategory.WEBHOOK, {
+      logger.debug('Extracted payment from event', LogCategory.WEBHOOK, {
         eventType,
+        hasPayment: !!payment,
         paymentId: payment?.id,
         paymentStatus: payment?.status,
-        paymentAmount: payment?.amount_money ? (payment.amount_money.amount || 0) / 100 : undefined,
-        message: 'Payment failed - no deposits will be executed'
+        paymentAmount: payment?.amount_money ? (payment.amount_money.amount || 0) / 100 : undefined
+      });
+      
+      return await processPaymentEvent(payment, eventType, false);
+
+      
+    }
+
+    // Handle payout.sent events - Square sends these when batch payouts are sent to merchant bank
+    // NOTE: payout.sent is about Square's payout to merchant, NOT individual payments
+    // Individual payments should still trigger payment.sent or payment.paid events
+    if (eventType === 'payout.sent') {
+      const payout = (event.data?.object as any)?.payout;
+      logger.warn('Received payout.sent event (batch payout, not individual payment)', LogCategory.WEBHOOK, {
+        eventType,
+        eventId: event.id,
+        payoutId: payout?.id,
+        payoutAmount: payout?.amount_money ? (payout.amount_money.amount || 0) / 100 : undefined,
+        payoutStatus: payout?.status,
+        message: 'payout.sent does not contain individual payment data - individual payments should trigger payment.sent/payment.paid events',
+        recommendation: 'Check Square webhook configuration - ensure payment.sent and payment.paid events are enabled'
       });
       
       return res.status(200).json({
         success: true,
         action: 'logged',
         eventType,
-        paymentId: payment?.id,
-        paymentStatus: payment?.status,
-        message: 'Payment failed - no deposits executed'
+        message: `payout.sent event logged - individual payments should trigger payment.sent/payment.paid events`
       });
     }
 
-    // payment.created and payment.updated: These are the events that trigger Morpho/Aave/GMX deposits
-    // payment.created: Published when a Payment is created
-    // payment.updated: Published when a Payment is updated (status changes)
-    // We check payment status to ensure it's COMPLETED before processing deposits
-    if (eventType === 'payment.created' || eventType === 'payment.updated') {
-      const payment = event.data?.object?.payment;
-      const paymentStatus = payment?.status;
-      
-      logger.info('✅ RECEIVED payment.created/payment.updated event', LogCategory.WEBHOOK, {
-        eventType,
-        hasPayment: !!payment,
-        paymentId: payment?.id,
-        paymentStatus,
-        paymentAmount: payment?.amount_money ? (payment.amount_money.amount || 0) / 100 : undefined,
-        paymentNote: payment?.note || 'no note',
-        willProcess: paymentStatus === 'COMPLETED',
-        message: paymentStatus === 'COMPLETED' ? 'Payment is COMPLETED - will trigger Morpho/Aave/GMX deposits' : `Payment status is ${paymentStatus} - waiting for COMPLETED status`
-      });
-      
-      console.log(`[Webhook] ========================================`);
-      console.log(`[Webhook] ✅ RECEIVED ${eventType} - Payment Status: ${paymentStatus}`);
-      console.log(`[Webhook] Payment ID: ${payment?.id}`);
-      console.log(`[Webhook] Payment Amount: $${payment?.amount_money ? (payment.amount_money.amount || 0) / 100 : 0}`);
-      console.log(`[Webhook] Payment Note: ${payment?.note || 'no note'}`);
-      console.log(`[Webhook] Will Process: ${paymentStatus === 'COMPLETED' ? 'YES' : 'NO (waiting for COMPLETED status)'}`);
-      console.log(`[Webhook] ========================================`);
-      
-      // Store payment ID in pending_payments list for payout event processing
-      // This allows payout.sent/payout.paid to find and process the payment
-      if (paymentStatus === 'COMPLETED' && payment?.id) {
-        const redis = getRedis();
-        // @ts-ignore
-        const pendingPaymentsKey = 'pending_payments';
-        // @ts-ignore
-        const existingPending = await redis.get(pendingPaymentsKey);
-        const pendingList = existingPending 
-          ? (typeof existingPending === 'string' ? JSON.parse(existingPending) : existingPending)
-          : [];
-        
-        // Add payment ID if not already in list
-        if (!pendingList.includes(payment.id)) {
-          pendingList.push(payment.id);
-          // Keep only last 100 payments to prevent list from growing too large
-          const trimmedList = pendingList.slice(-100);
-          // @ts-ignore
-          await redis.set(pendingPaymentsKey, JSON.stringify(trimmedList), { ex: 24 * 60 * 60 }); // 24 hour TTL
-        }
-        
-        // Also store mapping from Square payment ID to frontend payment ID (if note contains frontend payment ID)
-        // The note from frontend typically contains the frontend payment ID in format: "payment_id:xxx wallet:0x... risk:xxx"
-        if (payment.note && payment.note !== payment.id) {
-          // Parse the note to extract just the payment ID (not the entire note string)
-          const parsedNote = parsePaymentNote(payment.note);
-          const frontendPaymentIdFromNote = parsedNote.paymentId;
-          
-          if (frontendPaymentIdFromNote && frontendPaymentIdFromNote !== payment.id) {
-            // @ts-ignore
-            await redis.set(`square_to_frontend:${payment.id}`, frontendPaymentIdFromNote, { ex: 86400 * 7 }); // 7 days expiry
-            logger.info('Stored Square to frontend payment ID mapping', LogCategory.WEBHOOK, {
-              squarePaymentId: payment.id,
-              frontendPaymentId: frontendPaymentIdFromNote,
-              fullNote: payment.note
-            });
-          } else {
-            logger.warn('Could not extract frontend payment ID from note', LogCategory.WEBHOOK, {
-              squarePaymentId: payment.id,
-              note: payment.note,
-              parsedPaymentId: frontendPaymentIdFromNote
-            });
-          }
-        }
-      }
-      
-      // Only process if payment status is COMPLETED
-      // payment.created might fire before payment is completed
-      // payment.updated fires when status changes (including to COMPLETED)
-      // NOTE: We're NOT processing deposits here - we wait for payout.sent/payout.paid
-      if (paymentStatus === 'COMPLETED') {
-        // Just log that payment is completed - payout event will trigger actual processing
-        logger.info('Payment COMPLETED - waiting for payout event to process deposit', LogCategory.WEBHOOK, {
-          eventType,
-          paymentId: payment?.id,
-          paymentStatus,
-          action: 'waiting_for_payout'
-        });
-        
-        return res.status(200).json({
-          success: true,
-          action: 'waiting_for_payout',
-          eventType,
-          paymentId: payment?.id,
-          paymentStatus,
-          message: `Payment status is COMPLETED. Waiting for payout.sent or payout.paid event to trigger Morpho/Aave/GMX deposits.`
-        });
-      } else {
-        // Payment not completed yet - log and return 200 (Square will send payment.updated when status changes)
-        logger.info('Payment not COMPLETED yet - waiting for status update', LogCategory.WEBHOOK, {
-          eventType,
-          paymentId: payment?.id,
-          paymentStatus,
-          action: 'waiting'
-        });
-        
-        return res.status(200).json({
-          success: true,
-          action: 'waiting',
-          eventType,
-          paymentId: payment?.id,
-          paymentStatus,
-          message: `Payment status is ${paymentStatus}. Waiting for COMPLETED status. Square will send payment.updated when status changes.`
-        });
-      }
-    }
-
-    // Handle payout.sent and payout.paid events - These trigger Morpho/Aave/GMX deposits
-    // When payout arrives, we find the most recent unprocessed payment and process it
-    if (eventType === 'payout.sent' || eventType === 'payout.paid') {
+    // Handle payout.paid events - Square sends these when batch payouts are completed and paid to merchant bank
+    // NOTE: payout.paid is about Square's payout to merchant being completed, NOT individual payments
+    // Individual payments should still trigger payment.sent or payment.paid events
+    if (eventType === 'payout.paid') {
       const payout = (event.data?.object as any)?.payout;
-      const payoutAmount = payout?.amount_money ? (payout.amount_money.amount || 0) / 100 : 0;
-      const payoutId = payout?.id;
-      
-      logger.info('✅ RECEIVED payout.sent/payout.paid event - WILL TRIGGER DEPOSITS', LogCategory.WEBHOOK, {
+      logger.info('Received payout.paid event (batch payout completed, not individual payment)', LogCategory.WEBHOOK, {
         eventType,
         eventId: event.id,
-        payoutId,
-        payoutAmount,
+        payoutId: payout?.id,
+        payoutAmount: payout?.amount_money ? (payout.amount_money.amount || 0) / 100 : undefined,
         payoutStatus: payout?.status,
         payoutType: payout?.type,
         arrivalDate: payout?.arrival_date,
-        message: 'payout event received - will find matching unprocessed payment and execute Morpho/Aave/GMX deposits'
+        message: 'payout.paid indicates Square has completed transferring funds to merchant bank - individual payments should trigger payment.sent/payment.paid events'
       });
       
-      console.log(`[Webhook] ========================================`);
-      console.log(`[Webhook] ✅ RECEIVED ${eventType} - PROCESSING DEPOSIT`);
-      console.log(`[Webhook] Payout ID: ${payoutId}`);
-      console.log(`[Webhook] Payout Amount: $${payoutAmount}`);
-      console.log(`[Webhook] ========================================`);
-      
-      // Find the most recent unprocessed payment
-      // Payouts typically happen ~6 minutes after payment, so we look for payments in the last 15 minutes
-      const redis = getRedis();
-      const now = Date.now();
-      const fifteenMinutesAgo = now - (15 * 60 * 1000);
-      
-      try {
-        // Strategy: Look for payment_info entries that were created recently and haven't been processed
-        // We'll check payment.created/payment.updated events that stored payment info
-        // Since we can't easily scan Redis keys, we'll use a different approach:
-        // When payment.created/payment.updated is received, we store a "pending_payments" list
-        // But for now, let's try to find payment_info by checking recent payment IDs from Square
-        
-        // Alternative: Use the payout amount to find matching payment
-        // But payout amounts are batch totals, so this won't work reliably
-        
-        // Best approach: Store payment IDs in a sorted set when payment.created/payment.updated is received
-        // For now, we'll try to process payments that were created but not yet processed
-        // by checking if we have payment_info entries without corresponding payment_processed entries
-        
-        // Since Redis doesn't support efficient key scanning, we'll use a simpler approach:
-        // When payment.created/payment.updated arrives with COMPLETED status, we mark it as "pending_payout"
-        // Then when payout arrives, we process the most recent "pending_payout" payment
-        
-        // For now, let's implement a workaround: Check if there's a recent payment_info entry
-        // that hasn't been processed yet. We'll use a timestamp-based lookup.
-        
-        // Get list of recent pending payments (stored when payment.created/payment.updated is received)
-        // @ts-ignore
-        const pendingPaymentsKey = 'pending_payments';
-        // @ts-ignore
-        const pendingPayments = await redis.get(pendingPaymentsKey);
-        
-        let paymentIdToProcess: string | null = null;
-        
-        if (pendingPayments) {
-          const pendingList = typeof pendingPayments === 'string' 
-            ? JSON.parse(pendingPayments) 
-            : pendingPayments;
-          
-          // Find the most recent unprocessed payment
-          for (const pendingPaymentId of pendingList.reverse()) {
-            // @ts-ignore
-            const isProcessed = await redis.exists(`payment_processed:${pendingPaymentId}`);
-            if (!isProcessed) {
-              paymentIdToProcess = pendingPaymentId;
-              break;
-            }
-          }
-        }
-        
-        if (!paymentIdToProcess) {
-          // Fallback: Try to find payment_info entries that haven't been processed
-          // This is a best-effort approach since we can't efficiently scan Redis keys
-          logger.warn('No pending payment found for payout - may need to process manually', LogCategory.WEBHOOK, {
-            eventType,
-            payoutId,
-            payoutAmount,
-            recommendation: 'Check recent payment.created/payment.updated events to find matching payment ID'
-          });
-          
-          return res.status(200).json({
-            success: true,
-            action: 'no_payment_found',
-            eventType,
-            payoutId,
-            payoutAmount,
-            message: 'payout event received but no matching unprocessed payment found. Payment may have already been processed, or payment.created/payment.updated events were not received.'
-          });
-        }
-        
-        // Get payment info from Redis
-        // First, try to find the frontend payment ID using the mapping
-        // @ts-ignore
-        const frontendPaymentIdMapping = await redis.get(`square_to_frontend:${paymentIdToProcess}`);
-        let frontendPaymentId: string | null = null;
-        
-        if (frontendPaymentIdMapping) {
-          const mappingValue = typeof frontendPaymentIdMapping === 'string' ? frontendPaymentIdMapping : String(frontendPaymentIdMapping);
-          
-          // Check if mapping contains the full note (backwards compatibility) or just the payment ID
-          // If it contains spaces or "wallet:", it's the full note - parse it
-          if (mappingValue.includes(' ') || mappingValue.includes('wallet:') || mappingValue.includes('payment_id:')) {
-            // It's the full note string - parse it to extract payment ID
-            const parsed = parsePaymentNote(mappingValue);
-            frontendPaymentId = parsed.paymentId || null;
-            logger.info('Parsed payment ID from full note in mapping (backwards compatibility)', LogCategory.WEBHOOK, {
-              squarePaymentId: paymentIdToProcess,
-              extractedPaymentId: frontendPaymentId,
-              fullNote: mappingValue
-            });
-          } else {
-            // It's just the payment ID (new format)
-            frontendPaymentId = mappingValue;
-          }
-        }
-        
-        // Try multiple keys: frontend payment ID (if mapped), Square payment ID
-        const paymentInfoKeys = [
-          frontendPaymentId ? `payment_info:${frontendPaymentId}` : null,
-          `payment_info:${paymentIdToProcess}`,
-        ].filter(Boolean) as string[];
-        
-        let paymentInfoData: any = null;
-        let foundKey: string | null = null;
-        
-        for (const key of paymentInfoKeys) {
-          // @ts-ignore
-          const data = await redis.get(key);
-          if (data) {
-            paymentInfoData = data;
-            foundKey = key;
-            break;
-          }
-        }
-        
-        if (!paymentInfoData) {
-          logger.error('Payment info not found for pending payment', LogCategory.WEBHOOK, {
-            paymentId: paymentIdToProcess,
-            frontendPaymentId,
-            payoutId,
-            keysTried: paymentInfoKeys,
-            recommendation: 'Check if payment_info was stored with correct payment ID. Frontend should call /api/wallet/store-payment-info before payment is processed.'
-          });
-          
-          return res.status(200).json({
-            success: false,
-            action: 'payment_info_not_found',
-            eventType,
-            payoutId,
-            paymentId: paymentIdToProcess,
-            frontendPaymentId,
-            keysTried: paymentInfoKeys,
-            message: 'Found pending payment but payment_info not found in Redis. Tried keys: ' + paymentInfoKeys.join(', ')
-          });
-        }
-        
-        const paymentInfo = typeof paymentInfoData === 'string' 
-          ? JSON.parse(paymentInfoData) 
-          : paymentInfoData;
-        
-        logger.info('Found matching payment for payout - processing deposit', LogCategory.WEBHOOK, {
-          eventType,
-          payoutId,
-          paymentId: paymentIdToProcess,
-          walletAddress: paymentInfo.walletAddress,
-          riskProfile: paymentInfo.riskProfile,
-          amount: paymentInfo.amount
-        });
-        
-        // Create a mock payment object from the payment info
-        // We need to call handlePaymentCleared, which expects a SquarePayment object
-        // Since we don't have the full Square payment object, we'll construct what we need
-        const mockPayment: SquarePayment = {
-          id: paymentIdToProcess,
-          status: 'COMPLETED', // Payout means payment is completed
-          amount_money: {
-            amount: Math.round(paymentInfo.amount * 100), // Convert to cents
-            currency: 'USD'
-          },
-          note: paymentIdToProcess // Use payment ID as note for lookup
-        };
-        
-        // Process the payment (this will execute Morpho/Aave/GMX deposits)
-        return await handlePaymentCleared(mockPayment);
-        
-      } catch (error) {
-        logger.error('Error processing payout event:', LogCategory.WEBHOOK, {
-          eventType,
-          payoutId,
-          payoutAmount,
-          error: error instanceof Error ? error.message : String(error)
-        });
-        
-        return res.status(500).json({
-          success: false,
-          action: 'error',
-          eventType,
-          payoutId,
-          payoutAmount,
-          error: 'Failed to process payout event due to internal error'
-        });
-      }
+      return res.status(200).json({
+        success: true,
+        action: 'logged',
+        eventType,
+        payoutId: payout?.id,
+        payoutAmount: payout?.amount_money ? (payout.amount_money.amount || 0) / 100 : undefined,
+        message: 'payout.paid event logged - individual payments should trigger payment.sent/payment.paid events when they complete'
+      });
     }
 
-    // Note: payment.updated is now handled above with payment.created
-    // This block removed to avoid duplicate handling
+    // Handle payment.updated - check if status is COMPLETED and process it
+    // Square sometimes sends payment.updated with COMPLETED status instead of payment.sent
+    if (eventType === 'payment.updated' || eventType === 'payment.completed') {
+      const payment = event.data?.object?.payment;
+      logger.debug('Received payment.updated event', LogCategory.WEBHOOK, {
+        eventType,
+        paymentId: payment?.id,
+        paymentStatus: payment?.status
+      });
+      
+      // Use consolidated processing function (requires COMPLETED status)
+      return await processPaymentEvent(payment, eventType, true);
+    }
 
     // Handle order.created events - informational only, no payment data
     // Square sends this when an order is created, but payment processing happens via payment.sent/payment.paid events
@@ -7212,30 +5123,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Handle bank_account.* events - informational/test events from Square dashboard
-    // These are used for testing webhook connectivity and don't contain payment data
-    if (eventType && eventType.startsWith('bank_account.')) {
-      const bankAccountData = (event.data?.object as any)?.bank_account;
-      logger.info('Received bank_account event (informational/test only)', LogCategory.WEBHOOK, {
+    // Handle payment.created events - payment is created but not yet completed
+    // Square sends this when a payment is first created, but we wait for payment.sent/payment.paid for processing
+    if (eventType === 'payment.created') {
+      const payment = event.data?.object?.payment;
+      logger.info('Received payment.created event (waiting for completion)', LogCategory.WEBHOOK, {
         eventType,
         eventId: event.id,
-        bankAccountId: bankAccountData?.id,
-        bankAccountStatus: bankAccountData?.status,
-        locationId: bankAccountData?.location_id,
-        message: 'bank_account.* events are informational/test events - no payment processing needed'
+        paymentId: payment?.id,
+        paymentStatus: payment?.status,
+        message: 'payment.created indicates payment was created but not yet completed - waiting for payment.sent or payment.paid events'
       });
       
       return res.status(200).json({
         success: true,
         action: 'logged',
         eventType,
-        bankAccountId: bankAccountData?.id,
-        message: 'bank_account event logged - test event received successfully'
+        paymentId: payment?.id,
+        paymentStatus: payment?.status,
+        message: 'payment.created event logged - payment processing will occur via payment.sent/payment.paid events when payment completes'
       });
     }
-
-    // Note: payment.created is now handled above with payment.updated
-    // This block removed to avoid duplicate handling
 
     // Log all other event types for debugging
     const possiblePayment = (event.data?.object as any)?.payment;
