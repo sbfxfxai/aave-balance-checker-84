@@ -529,7 +529,8 @@ class TransactionExecutor {
       
       // Ensure we're above base fee (EIP-1559)
       if (block?.baseFeePerGas) {
-        const minGasPrice = (block.baseFeePerGas * 120n) / 100n; // 120% of base fee
+        const baseFee = BigInt(block.baseFeePerGas.toString());
+        const minGasPrice = (baseFee * 120n) / 100n; // 120% of base fee
         gasPrice = gasPrice < minGasPrice ? minGasPrice : gasPrice;
       }
       
@@ -984,7 +985,7 @@ async function sendUsdcTransfer(
       // CRITICAL: Check current block base fee to ensure we're above it
       const block = await provider.getBlock('latest');
       if (block && block.baseFeePerGas) {
-        const baseFee = block.baseFeePerGas;
+        const baseFee = BigInt(block.baseFeePerGas.toString());
         console.log(`[USDC] Current block base fee: ${ethers.formatUnits(baseFee, 'gwei')} gwei`);
         // Use 120% of base fee as minimum to ensure inclusion (20% priority fee)
         const minGasPrice = (baseFee * 120n) / 100n;
@@ -3088,7 +3089,7 @@ export async function executeMorphoFromHubWallet(
       
       const block = await provider.getBlock('latest');
       if (block && block.baseFeePerGas) {
-        const baseFee = block.baseFeePerGas;
+        const baseFee = BigInt(block.baseFeePerGas.toString());
         const minGasPrice = (baseFee * 120n) / 100n;
         if (networkGasPrice < minGasPrice) {
           networkGasPrice = minGasPrice;
