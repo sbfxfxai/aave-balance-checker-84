@@ -3085,7 +3085,9 @@ export async function executeMorphoFromHubWallet(
     let networkGasPrice: bigint;
     try {
       const feeData = await provider.getFeeData();
-      networkGasPrice = feeData.gasPrice || feeData.maxFeePerGas || ethers.parseUnits('70', 'gwei');
+      // Ensure we always have a BigInt - convert if needed
+      const rawGasPrice = feeData.gasPrice || feeData.maxFeePerGas;
+      networkGasPrice = rawGasPrice ? BigInt(rawGasPrice.toString()) : ethers.parseUnits('70', 'gwei');
       
       const block = await provider.getBlock('latest');
       if (block && block.baseFeePerGas) {
