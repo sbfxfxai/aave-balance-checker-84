@@ -33,9 +33,9 @@ const getRiskProfiles = (aaveAPY: number) => [
   {
     id: 'morpho',
     name: 'Morpho Vault',
-    description: '50/50 EURC + DAI',
-    allocation: '50% EURC / 50% DAI',
-    apy: '10.83%',
+    description: '50/50 Gauntlet + Hyperithm',
+    allocation: '50% Gauntlet USDC Core / 50% Hyperithm USDC',
+    apy: '6.08%',
     leverage: '1x',
     color: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
   },
