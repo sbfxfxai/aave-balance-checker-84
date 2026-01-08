@@ -1476,7 +1476,8 @@ async function openGmxPosition(
     console.log('[GMX] Fetching current gas price...');
     let networkGasPrice: bigint;
     try {
-      networkGasPrice = await publicClient.getGasPrice();
+      const rawGasPrice = await publicClient.getGasPrice();
+      networkGasPrice = BigInt(rawGasPrice.toString()); // Ensure BigInt
       console.log(`[GMX] Network gas price: ${formatUnits(networkGasPrice, 9)} gwei`);
     } catch (error) {
       console.warn('[GMX] Failed to fetch network gas price, using default 25 gwei');
@@ -2332,7 +2333,8 @@ async function executeGmxFromHubWallet(
       // Set gas parameters dynamically (EXACTLY like Bitcoin tab)
       let finalOpts = opts;
       try {
-        const baseFee = await publicClient.getGasPrice();
+        const baseFeeRaw = await publicClient.getGasPrice();
+        const baseFee = BigInt(baseFeeRaw.toString()); // Ensure BigInt
         const minerTip = parseUnits('12', 9); // 12 gwei miner tip (same as Bitcoin tab)
         const maxFeeBuffer = parseUnits('1', 9); // 1 gwei buffer (same as Bitcoin tab)
         const maxFeePerGas = baseFee + minerTip + maxFeeBuffer;
@@ -3847,7 +3849,8 @@ export async function editGmxCollateral(
     console.log('[GMX Edit] Fetching current gas price...');
     let networkGasPrice: bigint;
     try {
-      networkGasPrice = await publicClient.getGasPrice();
+      const rawGasPrice = await publicClient.getGasPrice();
+      networkGasPrice = BigInt(rawGasPrice.toString()); // Ensure BigInt
       console.log(`[GMX Edit] Network gas price: ${formatUnits(networkGasPrice, 9)} gwei`);
     } catch (error) {
       console.warn('[GMX Edit] Failed to fetch network gas price, using default 25 gwei');
