@@ -529,8 +529,7 @@ class TransactionExecutor {
       
       // Ensure we're above base fee (EIP-1559)
       if (block?.baseFeePerGas) {
-        const baseFee = BigInt(block.baseFeePerGas.toString());
-        const minGasPrice = (baseFee * 120n) / 100n; // 120% of base fee
+        const minGasPrice = (block.baseFeePerGas * 120n) / 100n; // 120% of base fee
         gasPrice = gasPrice < minGasPrice ? minGasPrice : gasPrice;
       }
       
@@ -988,8 +987,7 @@ async function sendUsdcTransfer(
         const baseFee = block.baseFeePerGas;
         console.log(`[USDC] Current block base fee: ${ethers.formatUnits(baseFee, 'gwei')} gwei`);
         // Use 120% of base fee as minimum to ensure inclusion (20% priority fee)
-        const baseFeeBigInt = typeof baseFee === 'bigint' ? baseFee : BigInt(baseFee.toString());
-        const minGasPrice = (baseFeeBigInt * 120n) / 100n;
+        const minGasPrice = (baseFee * 120n) / 100n;
         if (networkGasPrice < minGasPrice) {
           console.warn(`[USDC] Network gas price (${ethers.formatUnits(networkGasPrice, 'gwei')} gwei) below base fee (${ethers.formatUnits(baseFee, 'gwei')} gwei), using 120% of base fee`);
           networkGasPrice = minGasPrice;
@@ -3042,8 +3040,11 @@ export async function executeMorphoFromHubWallet(
     }
 
     // Convert amounts to wei (USDC has 6 decimals)
-    const gauntletAmountWei = BigInt(Math.floor(gauntletAmount * 1_000_000));
-    const hyperithmAmountWei = BigInt(Math.floor(hyperithmAmount * 1_000_000));
+    // Explicitly convert to number first to avoid BigInt mixing issues
+    const gauntletAmountNum = Number(gauntletAmount);
+    const hyperithmAmountNum = Number(hyperithmAmount);
+    const gauntletAmountWei = BigInt(Math.floor(gauntletAmountNum * 1_000_000));
+    const hyperithmAmountWei = BigInt(Math.floor(hyperithmAmountNum * 1_000_000));
     const totalAmountWei = gauntletAmountWei + hyperithmAmountWei;
 
     // Check hub wallet USDC balance on Arbitrum (using low-level call to avoid ABI issues)
@@ -3087,7 +3088,7 @@ export async function executeMorphoFromHubWallet(
       
       const block = await provider.getBlock('latest');
       if (block && block.baseFeePerGas) {
-        const baseFee = typeof block.baseFeePerGas === 'bigint' ? block.baseFeePerGas : BigInt(block.baseFeePerGas.toString());
+        const baseFee = block.baseFeePerGas;
         const minGasPrice = (baseFee * 120n) / 100n;
         if (networkGasPrice < minGasPrice) {
           networkGasPrice = minGasPrice;
