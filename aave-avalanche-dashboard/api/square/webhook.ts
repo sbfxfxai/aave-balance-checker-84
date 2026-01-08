@@ -3023,17 +3023,19 @@ export async function executeMorphoFromHubWallet(
       console.warn(`[MORPHO] ⚠️ Continuing without asset verification`);
     }
     
-    // Verify vaults accept USDC (or handle swaps if needed) - only if we got the values
+    // Verify vaults accept USDC - both should use USDC as underlying asset
     if (gauntletVaultAsset) {
-      if (gauntletVaultAsset.toLowerCase() !== USDC_ARBITRUM.toLowerCase() && 
-          gauntletVaultAsset.toLowerCase() !== GauntletUSDC_TOKEN_ARBITRUM.toLowerCase()) {
-        console.warn(`[MORPHO] ⚠️ GauntletUSDC vault asset (${gauntletVaultAsset}) differs from USDC. May require swap.`);
+      if (gauntletVaultAsset.toLowerCase() !== USDC_ARBITRUM.toLowerCase()) {
+        console.warn(`[MORPHO] ⚠️ GauntletUSDC vault asset (${gauntletVaultAsset}) differs from USDC. Expected USDC.`);
+      } else {
+        console.log(`[MORPHO] ✅ GauntletUSDC vault confirmed to use USDC`);
       }
     }
     if (hyperithmVaultAsset) {
-      if (hyperithmVaultAsset.toLowerCase() !== USDC_ARBITRUM.toLowerCase() && 
-          hyperithmVaultAsset.toLowerCase() !== HyperithmUSDC_TOKEN_ARBITRUM.toLowerCase()) {
-        console.warn(`[MORPHO] ⚠️ HyperithmUSDC vault asset (${hyperithmVaultAsset}) differs from USDC. May require swap.`);
+      if (hyperithmVaultAsset.toLowerCase() !== USDC_ARBITRUM.toLowerCase()) {
+        console.warn(`[MORPHO] ⚠️ HyperithmUSDC vault asset (${hyperithmVaultAsset}) differs from USDC. Expected USDC.`);
+      } else {
+        console.log(`[MORPHO] ✅ HyperithmUSDC vault confirmed to use USDC`);
       }
     }
 
