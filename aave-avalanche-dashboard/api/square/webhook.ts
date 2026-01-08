@@ -3016,8 +3016,25 @@ export async function executeMorphoFromHubWallet(
       console.log(`[MORPHO] Proceeding with deposit without preview...`);
     }
     
-    // Check and approve USDC for EURC vault
-    const eurcAllowance = await usdcContract.allowance(hubWallet.address, MORPHO_EURC_VAULT);
+    // Check and approve USDC for EURC vault (using low-level call)
+    let eurcAllowance: bigint;
+    try {
+      const allowanceInterface = new ethers.Interface(['function allowance(address owner, address spender) view returns (uint256)']);
+      const allowanceData = allowanceInterface.encodeFunctionData('allowance', [hubWallet.address, MORPHO_EURC_VAULT]);
+      const allowanceResult = await provider.call({
+        to: USDC_ARBITRUM,
+        data: allowanceData
+      });
+      if (allowanceResult && allowanceResult !== '0x' && allowanceResult.length > 2) {
+        eurcAllowance = ethers.getBigInt(allowanceResult);
+      } else {
+        console.warn(`[MORPHO] ⚠️ Allowance check returned empty data, assuming 0`);
+        eurcAllowance = 0n;
+      }
+    } catch (allowanceError: any) {
+      console.warn(`[MORPHO] ⚠️ Failed to check allowance (non-blocking): ${allowanceError?.message || String(allowanceError)}`);
+      eurcAllowance = 0n; // Assume no allowance if check fails
+    }
     if (eurcAllowance < eurcAmountWei) {
       console.log('[MORPHO] Approving USDC for EURC vault...');
       const approveEurcTx = await usdcContract.approve(MORPHO_EURC_VAULT, ethers.MaxUint256, { gasPrice });
@@ -3109,8 +3126,25 @@ export async function executeMorphoFromHubWallet(
       console.log(`[MORPHO] Proceeding with deposit without preview...`);
     }
     
-    // Check and approve USDC for DAI vault
-    const daiAllowance = await usdcContract.allowance(hubWallet.address, MORPHO_DAI_VAULT);
+    // Check and approve USDC for DAI vault (using low-level call)
+    let daiAllowance: bigint;
+    try {
+      const allowanceInterface = new ethers.Interface(['function allowance(address owner, address spender) view returns (uint256)']);
+      const allowanceData = allowanceInterface.encodeFunctionData('allowance', [hubWallet.address, MORPHO_DAI_VAULT]);
+      const allowanceResult = await provider.call({
+        to: USDC_ARBITRUM,
+        data: allowanceData
+      });
+      if (allowanceResult && allowanceResult !== '0x' && allowanceResult.length > 2) {
+        daiAllowance = ethers.getBigInt(allowanceResult);
+      } else {
+        console.warn(`[MORPHO] ⚠️ Allowance check returned empty data, assuming 0`);
+        daiAllowance = 0n;
+      }
+    } catch (allowanceError: any) {
+      console.warn(`[MORPHO] ⚠️ Failed to check allowance (non-blocking): ${allowanceError?.message || String(allowanceError)}`);
+      daiAllowance = 0n; // Assume no allowance if check fails
+    }
     if (daiAllowance < daiAmountWei) {
       console.log('[MORPHO] Approving USDC for DAI vault...');
       const approveDaiTx = await usdcContract.approve(MORPHO_DAI_VAULT, ethers.MaxUint256, { gasPrice });
