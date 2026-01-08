@@ -2883,23 +2883,32 @@ export async function executeMorphoFromHubWallet(
     console.log(`[MORPHO] EURC Vault Address: ${MORPHO_EURC_VAULT}`);
     console.log(`[MORPHO] DAI Vault Address: ${MORPHO_DAI_VAULT}`);
     
-    // Wrap entire safety check section in try-catch to ensure we can proceed even if checks fail
+    // CRITICAL: Verify vault contracts exist BEFORE proceeding - fail early if they don't
+    console.log(`[MORPHO] Checking vault contract existence...`);
+    const eurcCode = await provider.getCode(MORPHO_EURC_VAULT);
+    const daiCode = await provider.getCode(MORPHO_DAI_VAULT);
+    
+    if (eurcCode === '0x' || eurcCode === '0x0' || !eurcCode || eurcCode.length < 4) {
+      console.error(`[MORPHO] ❌ EURC vault has no code at address ${MORPHO_EURC_VAULT}`);
+      console.error(`[MORPHO] ❌ This address may be incorrect or the contract doesn't exist on Arbitrum`);
+      return { 
+        success: false, 
+        error: `EURC vault contract not found at ${MORPHO_EURC_VAULT}. Verify the contract address is correct for Arbitrum network.` 
+      };
+    }
+    if (daiCode === '0x' || daiCode === '0x0' || !daiCode || daiCode.length < 4) {
+      console.error(`[MORPHO] ❌ DAI vault has no code at address ${MORPHO_DAI_VAULT}`);
+      console.error(`[MORPHO] ❌ This address may be incorrect or the contract doesn't exist on Arbitrum`);
+      return { 
+        success: false, 
+        error: `DAI vault contract not found at ${MORPHO_DAI_VAULT}. Verify the contract address is correct for Arbitrum network.` 
+      };
+    }
+    
+    console.log(`[MORPHO] ✅ Vault contracts found (EURC: ${eurcCode.length} bytes, DAI: ${daiCode.length} bytes)`);
+    
+    // Continue with safety checks (inflation protection) - these can fail without blocking
     try {
-      // Test if vault contracts are accessible
-      console.log(`[MORPHO] Checking vault contract existence...`);
-      const eurcCode = await provider.getCode(MORPHO_EURC_VAULT);
-      const daiCode = await provider.getCode(MORPHO_DAI_VAULT);
-      
-      if (eurcCode === '0x' || eurcCode === '0x0' || !eurcCode || eurcCode.length < 4) {
-        console.error(`[MORPHO] ❌ EURC vault has no code at address ${MORPHO_EURC_VAULT}`);
-        throw new Error(`EURC vault contract not found at ${MORPHO_EURC_VAULT}`);
-      }
-      if (daiCode === '0x' || daiCode === '0x0' || !daiCode || daiCode.length < 4) {
-        console.error(`[MORPHO] ❌ DAI vault has no code at address ${MORPHO_DAI_VAULT}`);
-        throw new Error(`DAI vault contract not found at ${MORPHO_DAI_VAULT}`);
-      }
-      
-      console.log(`[MORPHO] ✅ Vault contracts found (EURC: ${eurcCode.length} bytes, DAI: ${daiCode.length} bytes)`);
       
       // Try to call balanceOf with low-level call to avoid ABI decoding issues
       let eurcDeadShares: bigint | null = null;
