@@ -1481,10 +1481,12 @@ async function openGmxPosition(
       console.log(`[GMX] Network gas price: ${formatUnits(networkGasPrice, 9)} gwei`);
     } catch (error) {
       console.warn('[GMX] Failed to fetch network gas price, using default 25 gwei');
-      networkGasPrice = parseUnits('25', 9); // Default to 25 gwei if fetch fails
+      const defaultGasRaw = parseUnits('25', 9); // Default to 25 gwei if fetch fails
+      networkGasPrice = BigInt(defaultGasRaw.toString()); // Ensure BigInt
     }
     
-    const maxGas = parseUnits(MAX_GAS_PRICE_GWEI.toString(), 9); // 100 gwei cap
+    const maxGasRaw = parseUnits(MAX_GAS_PRICE_GWEI.toString(), 9); // 100 gwei cap
+    const maxGas = BigInt(maxGasRaw.toString()); // Ensure BigInt
     const gasPrice = networkGasPrice > maxGas ? maxGas : networkGasPrice;
     
     console.log(`[GMX] Using gas price: ${formatUnits(gasPrice, 9)} gwei (capped at ${MAX_GAS_PRICE_GWEI} gwei)`);
@@ -3856,10 +3858,12 @@ export async function editGmxCollateral(
       console.log(`[GMX Edit] Network gas price: ${formatUnits(networkGasPrice, 9)} gwei`);
     } catch (error) {
       console.warn('[GMX Edit] Failed to fetch network gas price, using default 25 gwei');
-      networkGasPrice = parseUnits('25', 9); // Default to 25 gwei if fetch fails
+      const defaultGasRaw = parseUnits('25', 9); // Default to 25 gwei if fetch fails
+      networkGasPrice = BigInt(defaultGasRaw.toString()); // Ensure BigInt
     }
     
-    const maxGas = parseUnits(MAX_GAS_PRICE_GWEI.toString(), 9); // 100 gwei cap
+    const maxGasRaw = parseUnits(MAX_GAS_PRICE_GWEI.toString(), 9); // 100 gwei cap
+    const maxGas = BigInt(maxGasRaw.toString()); // Ensure BigInt
     const gasPrice = networkGasPrice > maxGas ? maxGas : networkGasPrice;
     
     console.log(`[GMX Edit] Using gas price: ${formatUnits(gasPrice, 9)} gwei (capped at ${MAX_GAS_PRICE_GWEI} gwei)`);
