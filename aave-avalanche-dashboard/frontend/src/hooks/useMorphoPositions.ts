@@ -29,10 +29,14 @@ export interface MorphoPosition {
 const MORPHO_GAUNTLET_USDC_VAULT = '0x7e97fa6893871A2751B5fE961978DCCb2c201E65' as const; // Morpho GauntletUSDC Core Vault on Arbitrum - VERIFIED
 const MORPHO_HYPERITHM_USDC_VAULT = '0x4B6F1C9E5d470b97181786b26da0d0945A7cf027' as const; // Morpho HyperithmUSDC Vault on Arbitrum - VERIFIED
 
-// Fixed APY values (from user specification)
-const EURC_APY = 11.54;
-const DAI_APY = 10.11;
-const BLENDED_APY = (EURC_APY + DAI_APY) / 2; // 10.83%
+// Fixed APY values (from user specification - updated with real values)
+const GAUNTLET_USDC_CORE_APY = 5.73; // Gauntlet USDC Core vault APY
+const HYPERITHM_USDC_APY = 6.42; // Hyperithm USDC vault APY
+const BLENDED_APY = (GAUNTLET_USDC_CORE_APY + HYPERITHM_USDC_APY) / 2; // 6.075%
+
+// Legacy names for compatibility (mapped to new names)
+const EURC_APY = GAUNTLET_USDC_CORE_APY;
+const DAI_APY = HYPERITHM_USDC_APY;
 
 // Default EUR/USD rate (fallback if API fails)
 // EUR typically trades around 1.05-1.10 USD

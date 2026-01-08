@@ -314,14 +314,14 @@ export function SimpleDashboard() {
             </div>
             {parseFloat(morphoPositions.eurcUsdValue) > 0 && (
               <div className="p-4 rounded-lg bg-green-500/5 border border-green-500/20">
-                <p className="font-medium text-green-500">EURC Vault</p>
+                <p className="font-medium text-green-500">Gauntlet USDC Core</p>
                 <p className="text-2xl font-bold">${parseFloat(morphoPositions.eurcUsdValue).toFixed(2)}</p>
                 <p className="text-sm text-gray-600">Earning {morphoPositions.eurcApy.toFixed(2)}% APY</p>
               </div>
             )}
             {parseFloat(morphoPositions.daiUsdValue) > 0 && (
               <div className="p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
-                <p className="font-medium text-blue-500">DAI Vault</p>
+                <p className="font-medium text-blue-500">Hyperithm USDC</p>
                 <p className="text-2xl font-bold">${parseFloat(morphoPositions.daiUsdValue).toFixed(2)}</p>
                 <p className="text-sm text-gray-600">Earning {morphoPositions.daiApy.toFixed(2)}% APY</p>
               </div>

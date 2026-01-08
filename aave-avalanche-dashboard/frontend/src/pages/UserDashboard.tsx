@@ -666,8 +666,8 @@ export default function UserDashboard() {
                     {parseFloat(morphoData.eurcUsdValue) > 0 && (
                       <div className="p-4 rounded-lg bg-muted flex justify-between items-center">
                         <div>
-                          <p className="font-medium">EURC Vault</p>
-                          <p className="text-sm text-muted-foreground">Morpho Gauntlet</p>
+                          <p className="font-medium">Gauntlet USDC Core</p>
+                          <p className="text-sm text-muted-foreground">Morpho Vault</p>
                         </div>
                         <div className="text-right">
                           <p className="font-mono">${parseFloat(morphoData.eurcUsdValue).toFixed(2)}</p>
@@ -678,8 +678,8 @@ export default function UserDashboard() {
                     {parseFloat(morphoData.daiUsdValue) > 0 && (
                       <div className="p-4 rounded-lg bg-muted flex justify-between items-center">
                         <div>
-                          <p className="font-medium">DAI Vault</p>
-                          <p className="text-sm text-muted-foreground">Morpho Spark</p>
+                          <p className="font-medium">Hyperithm USDC</p>
+                          <p className="text-sm text-muted-foreground">Morpho Vault</p>
                         </div>
                         <div className="text-right">
                           <p className="font-mono">${parseFloat(morphoData.daiUsdValue).toFixed(2)}</p>
