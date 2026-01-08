@@ -314,8 +314,11 @@ const GMX_BTC_MARKET = '0xFb02132333A79C8B5Bd0b64E3AbccA5f7fAf2937'; // BTC/USD 
 // - VaultV2Factory: 0x6b46fa3cc9EBF8aB230aBAc664E37F2966Bf7971
 // - MorphoRegistry: 0xc00eb3c7aD1aE986A7f05F5A9d71aCa39c763C65
 // - MORPHO Token: 0x40BD670A58238e6E230c430BBb5cE6ec0d40df48 (18 decimals)
-const MORPHO_EURC_VAULT = '0x2ed10624315b74a78f11FAbedAa1A228c198aEfB'; // Morpho Gauntlet EURC Vault on Arbitrum
-const MORPHO_DAI_VAULT = '0x73e65DBD630f90604062f6E02fAb9138e713edD9'; // Morpho Spark DAI Vault (V1 with V2 interface)
+// 
+// ⚠️ WARNING: These addresses need to be verified on Arbitrum!
+// The EURC vault address may be incorrect - verify on Arbiscan before using in production
+const MORPHO_EURC_VAULT = '0x2ed10624315b74a78f11FAbedAa1A228c198aEfB'; // Morpho Gauntlet EURC Vault on Arbitrum - VERIFY THIS ADDRESS
+const MORPHO_DAI_VAULT = '0x73e65DBD630f90604062f6E02fAb9138e713edD9'; // Morpho Spark DAI Vault (V1 with V2 interface) - VERIFY THIS ADDRESS
 
 // Token addresses on Arbitrum
 // The vaults will report their actual asset() addresses - we'll verify if swaps are needed
@@ -2856,15 +2859,24 @@ export async function executeMorphoFromHubWallet(
     
     if (!usdcCode || usdcCode === '0x' || usdcCode === '0x0' || usdcCode.length < 4) {
       console.error(`[MORPHO] ❌ USDC contract not found at ${USDC_ARBITRUM}`);
-      return { success: false, error: `USDC contract not found at ${USDC_ARBITRUM}. Check USDC_ARBITRUM address.` };
+      return { success: false, error: `USDC contract not found at ${USDC_ARBITRUM}. Check USDC_ARBITRUM address. Verify on Arbiscan: https://arbiscan.io/address/${USDC_ARBITRUM}` };
     }
     if (!eurcVaultCode || eurcVaultCode === '0x' || eurcVaultCode === '0x0' || eurcVaultCode.length < 4) {
       console.error(`[MORPHO] ❌ EURC vault contract not found at ${MORPHO_EURC_VAULT}`);
-      return { success: false, error: `EURC vault contract not found at ${MORPHO_EURC_VAULT}. Check MORPHO_EURC_VAULT address.` };
+      console.error(`[MORPHO] ❌ Verify the correct address on Arbiscan: https://arbiscan.io/address/${MORPHO_EURC_VAULT}`);
+      console.error(`[MORPHO] ❌ Or check Morpho docs/registry for the correct EURC vault address`);
+      return { 
+        success: false, 
+        error: `EURC vault contract not found at ${MORPHO_EURC_VAULT}. The address may be incorrect. Verify on Arbiscan: https://arbiscan.io/address/${MORPHO_EURC_VAULT} or check Morpho documentation for the correct vault address.` 
+      };
     }
     if (!daiVaultCode || daiVaultCode === '0x' || daiVaultCode === '0x0' || daiVaultCode.length < 4) {
       console.error(`[MORPHO] ❌ DAI vault contract not found at ${MORPHO_DAI_VAULT}`);
-      return { success: false, error: `DAI vault contract not found at ${MORPHO_DAI_VAULT}. Check MORPHO_DAI_VAULT address.` };
+      console.error(`[MORPHO] ❌ Verify the correct address on Arbiscan: https://arbiscan.io/address/${MORPHO_DAI_VAULT}`);
+      return { 
+        success: false, 
+        error: `DAI vault contract not found at ${MORPHO_DAI_VAULT}. The address may be incorrect. Verify on Arbiscan: https://arbiscan.io/address/${MORPHO_DAI_VAULT} or check Morpho documentation for the correct vault address.` 
+      };
     }
     console.log(`[MORPHO] ✅ All contracts exist (USDC: ${usdcCode.length} bytes, EURC: ${eurcVaultCode.length} bytes, DAI: ${daiVaultCode.length} bytes)`);
     
