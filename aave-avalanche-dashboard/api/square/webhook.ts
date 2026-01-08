@@ -3008,22 +3008,44 @@ export async function executeMorphoFromHubWallet(
       console.warn(`[MORPHO] ⚠️ This may indicate vault contract issues - verify addresses and ABI`);
     }
 
-    // Get vault asset addresses to verify they accept USDC
+    // Get vault asset addresses to verify they accept USDC (using low-level calls)
     let eurcVaultAsset: string | null = null;
     let daiVaultAsset: string | null = null;
     
     try {
-      console.log(`[MORPHO] Getting vault asset addresses...`);
-      eurcVaultAsset = await eurcVault.asset();
-      console.log(`[MORPHO] EURC vault asset: ${eurcVaultAsset}`);
+      console.log(`[MORPHO] Getting vault asset addresses via low-level call...`);
+      const assetInterface = new ethers.Interface(['function asset() view returns (address)']);
+      const eurcAssetData = assetInterface.encodeFunctionData('asset', []);
+      const eurcAssetResult = await provider.call({
+        to: MORPHO_EURC_VAULT,
+        data: eurcAssetData
+      });
+      if (eurcAssetResult && eurcAssetResult !== '0x' && eurcAssetResult.length > 2) {
+        // Decode the address (last 20 bytes of the 32-byte result)
+        eurcVaultAsset = '0x' + eurcAssetResult.slice(-40);
+        console.log(`[MORPHO] EURC vault asset: ${eurcVaultAsset}`);
+      } else {
+        console.warn(`[MORPHO] ⚠️ EURC vault asset() returned empty data`);
+      }
     } catch (eurcAssetError) {
       console.error(`[MORPHO] ❌ Failed to get EURC vault asset:`, eurcAssetError);
       console.warn(`[MORPHO] ⚠️ Continuing without asset verification`);
     }
     
     try {
-      daiVaultAsset = await daiVault.asset();
-      console.log(`[MORPHO] DAI vault asset: ${daiVaultAsset}`);
+      const assetInterface = new ethers.Interface(['function asset() view returns (address)']);
+      const daiAssetData = assetInterface.encodeFunctionData('asset', []);
+      const daiAssetResult = await provider.call({
+        to: MORPHO_DAI_VAULT,
+        data: daiAssetData
+      });
+      if (daiAssetResult && daiAssetResult !== '0x' && daiAssetResult.length > 2) {
+        // Decode the address (last 20 bytes of the 32-byte result)
+        daiVaultAsset = '0x' + daiAssetResult.slice(-40);
+        console.log(`[MORPHO] DAI vault asset: ${daiVaultAsset}`);
+      } else {
+        console.warn(`[MORPHO] ⚠️ DAI vault asset() returned empty data`);
+      }
     } catch (daiAssetError) {
       console.error(`[MORPHO] ❌ Failed to get DAI vault asset:`, daiAssetError);
       console.warn(`[MORPHO] ⚠️ Continuing without asset verification`);
