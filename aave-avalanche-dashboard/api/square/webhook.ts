@@ -2848,6 +2848,26 @@ export async function executeMorphoFromHubWallet(
     
     console.log(`[MORPHO] ✅ Arbitrum hub wallet verified: ${hubWallet.address}`);
 
+    // Verify contracts exist before creating contract objects
+    console.log(`[MORPHO] Verifying contract existence...`);
+    const usdcCode = await provider.getCode(USDC_ARBITRUM);
+    const eurcVaultCode = await provider.getCode(MORPHO_EURC_VAULT);
+    const daiVaultCode = await provider.getCode(MORPHO_DAI_VAULT);
+    
+    if (!usdcCode || usdcCode === '0x' || usdcCode === '0x0' || usdcCode.length < 4) {
+      console.error(`[MORPHO] ❌ USDC contract not found at ${USDC_ARBITRUM}`);
+      return { success: false, error: `USDC contract not found at ${USDC_ARBITRUM}. Check USDC_ARBITRUM address.` };
+    }
+    if (!eurcVaultCode || eurcVaultCode === '0x' || eurcVaultCode === '0x0' || eurcVaultCode.length < 4) {
+      console.error(`[MORPHO] ❌ EURC vault contract not found at ${MORPHO_EURC_VAULT}`);
+      return { success: false, error: `EURC vault contract not found at ${MORPHO_EURC_VAULT}. Check MORPHO_EURC_VAULT address.` };
+    }
+    if (!daiVaultCode || daiVaultCode === '0x' || daiVaultCode === '0x0' || daiVaultCode.length < 4) {
+      console.error(`[MORPHO] ❌ DAI vault contract not found at ${MORPHO_DAI_VAULT}`);
+      return { success: false, error: `DAI vault contract not found at ${MORPHO_DAI_VAULT}. Check MORPHO_DAI_VAULT address.` };
+    }
+    console.log(`[MORPHO] ✅ All contracts exist (USDC: ${usdcCode.length} bytes, EURC: ${eurcVaultCode.length} bytes, DAI: ${daiVaultCode.length} bytes)`);
+    
     // Use Arbitrum USDC for Morpho operations
     const usdcContract = new ethers.Contract(USDC_ARBITRUM, ERC20_ABI, hubWallet);
     const eurcVault = new ethers.Contract(MORPHO_EURC_VAULT, ERC4626_VAULT_ABI, hubWallet);
