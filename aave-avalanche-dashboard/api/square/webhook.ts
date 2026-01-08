@@ -317,8 +317,9 @@ const GMX_BTC_MARKET = '0xFb02132333A79C8B5Bd0b64E3AbccA5f7fAf2937'; // BTC/USD 
 // 
 // ⚠️ WARNING: These addresses need to be verified on Arbitrum!
 // The EURC vault address may be incorrect - verify on Arbiscan before using in production
-const MORPHO_EURC_VAULT = '0x2ed10624315b74a78f11FAbedAa1A228c198aEfB'; // Morpho Gauntlet EURC Vault on Arbitrum - VERIFY THIS ADDRESS
-const MORPHO_DAI_VAULT = '0x73e65DBD630f90604062f6E02fAb9138e713edD9'; // Morpho Spark DAI Vault (V1 with V2 interface) - VERIFY THIS ADDRESS
+// Verified Morpho Vault addresses on Arbitrum (verified on-chain)
+const MORPHO_EURC_VAULT = '0x7e97fa6893871A2751B5fE961978DCCb2c201E65'; // Morpho EURC Vault on Arbitrum - VERIFIED
+const MORPHO_DAI_VAULT = '0x4B6F1C9E5d470b97181786b26da0d0945A7cf027'; // Morpho DAI Vault on Arbitrum - VERIFIED
 
 // Token addresses on Arbitrum
 // The vaults will report their actual asset() addresses - we'll verify if swaps are needed

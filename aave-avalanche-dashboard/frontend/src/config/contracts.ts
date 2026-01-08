@@ -17,6 +17,14 @@ export const CONTRACTS = {
   
   // DEX Routers
   TRADER_JOE_ROUTER: '0x60aE616a2155Ee3d9A68541Ba4544862310933d4',
+  
+  // Morpho Vaults on Arbitrum (ERC-4626)
+  // Reference: Morpho V2 Contracts on Arbitrum
+  // - VaultV2Factory: 0x6b46fa3cc9EBF8aB230aBAc664E37F2966Bf7971
+  // - MorphoRegistry: 0xc00eb3c7aD1aE986A7f05F5A9d71aCa39c763C65
+  // - MORPHO Token: 0x40BD670A58238e6E230c430BBb5cE6ec0d40df48 (18 decimals)
+  MORPHO_EURC_VAULT: '0x7e97fa6893871A2751B5fE961978DCCb2c201E65', // Morpho EURC Vault on Arbitrum - VERIFIED
+  MORPHO_DAI_VAULT: '0x4B6F1C9E5d470b97181786b26da0d0945A7cf027', // Morpho DAI Vault on Arbitrum - VERIFIED
 } as const;
 
 // ERGC Fee Discount Constants
@@ -30,6 +38,144 @@ export const ERGC_DISCOUNT = {
 } as const;
 
 export const ERC20_ABI = erc20Abi;
+
+// ERC-4626 Vault ABI (Morpho V2 compatible)
+// Morpho V2 vaults implement ERC-4626 with additional allocation functions
+// Standard deposit/withdraw functions route through liquidityAdapter automatically
+export const ERC4626_VAULT_ABI = [
+  // Standard ERC-4626 functions
+  {
+    name: 'deposit',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'assets', type: 'uint256' },
+      { name: 'onBehalf', type: 'address' } // Morpho V2 uses 'onBehalf' instead of 'receiver'
+    ],
+    outputs: [{ name: 'shares', type: 'uint256' }]
+  },
+  {
+    name: 'mint',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'shares', type: 'uint256' },
+      { name: 'onBehalf', type: 'address' }
+    ],
+    outputs: [{ name: 'assets', type: 'uint256' }]
+  },
+  {
+    name: 'withdraw',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'assets', type: 'uint256' },
+      { name: 'receiver', type: 'address' },
+      { name: 'onBehalf', type: 'address' } // Morpho V2 uses 'onBehalf' instead of 'owner'
+    ],
+    outputs: [{ name: 'shares', type: 'uint256' }]
+  },
+  {
+    name: 'redeem',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'shares', type: 'uint256' },
+      { name: 'receiver', type: 'address' },
+      { name: 'onBehalf', type: 'address' } // Morpho V2 uses 'onBehalf' instead of 'owner'
+    ],
+    outputs: [{ name: 'assets', type: 'uint256' }]
+  },
+  {
+    name: 'asset',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }]
+  },
+  {
+    name: 'totalAssets',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }]
+  },
+  {
+    name: 'convertToShares',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'assets', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }]
+  },
+  {
+    name: 'convertToAssets',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'shares', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }]
+  },
+  {
+    name: 'balanceOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }]
+  },
+  {
+    name: 'previewDeposit',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'assets', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }]
+  },
+  {
+    name: 'previewMint',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'shares', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }]
+  },
+  {
+    name: 'previewWithdraw',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'assets', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }]
+  },
+  {
+    name: 'previewRedeem',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'shares', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }]
+  },
+  // Morpho V2 specific functions (for debugging/verification)
+  {
+    name: 'liquidityAdapter',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }]
+  },
+  {
+    name: 'liquidityData',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'bytes' }]
+  },
+  {
+    name: 'accrueInterestView',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [
+      { name: 'newTotalAssets', type: 'uint256' },
+      { name: 'performanceFeeShares', type: 'uint256' },
+      { name: 'managementFeeShares', type: 'uint256' }
+    ]
+  }
+] as const;
 
 // WAVAX (Wrapped AVAX) ABI - for wrapping native AVAX
 export const WAVAX_ABI = [
