@@ -8,8 +8,8 @@
  * POST /api/square/test-morpho
  * Body: {
  *   "walletAddress": "0x...",
- *   "gauntletAmount": "1",
- *   "hyperithmAmount": "1",
+ *   "gauntletAmount": "1",  // GauntletUSDC Core vault amount
+ *   "hyperithmAmount": "1", // HyperithmUSDC vault amount
  *   "paymentId": "test-123"
  * }
  * 
