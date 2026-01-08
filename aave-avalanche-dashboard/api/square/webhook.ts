@@ -2335,8 +2335,10 @@ async function executeGmxFromHubWallet(
       try {
         const baseFeeRaw = await publicClient.getGasPrice();
         const baseFee = BigInt(baseFeeRaw.toString()); // Ensure BigInt
-        const minerTip = parseUnits('12', 9); // 12 gwei miner tip (same as Bitcoin tab)
-        const maxFeeBuffer = parseUnits('1', 9); // 1 gwei buffer (same as Bitcoin tab)
+        const minerTipRaw = parseUnits('12', 9); // 12 gwei miner tip (same as Bitcoin tab)
+        const minerTip = BigInt(minerTipRaw.toString()); // Ensure BigInt
+        const maxFeeBufferRaw = parseUnits('1', 9); // 1 gwei buffer (same as Bitcoin tab)
+        const maxFeeBuffer = BigInt(maxFeeBufferRaw.toString()); // Ensure BigInt
         const maxFeePerGas = baseFee + minerTip + maxFeeBuffer;
         
         console.log(`[GMX Hub SDK] Gas parameters (dynamic, like Bitcoin tab):`, {
