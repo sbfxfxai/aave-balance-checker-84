@@ -140,13 +140,13 @@ export function useMorphoPositions() {
     return () => clearInterval(interval);
   }, []);
 
-  // Get EURC vault shares (balanceOf) - on Arbitrum
+  // Get GauntletUSDC Core vault shares (balanceOf) - on Arbitrum
   const {
-    data: eurcSharesRaw,
-    isLoading: eurcSharesLoading,
-    error: eurcSharesError,
+    data: gauntletSharesRaw,
+    isLoading: gauntletSharesLoading,
+    error: gauntletSharesError,
   } = useReadContract({
-    address: MORPHO_EURC_VAULT as `0x${string}`,
+    address: MORPHO_GAUNTLET_USDC_VAULT as `0x${string}`,
     abi: ERC4626_VAULT_ABI,
     functionName: 'balanceOf',
     args: address ? [address as `0x${string}`] : undefined,
@@ -157,13 +157,13 @@ export function useMorphoPositions() {
     },
   });
 
-  // Get DAI vault shares (balanceOf) - on Arbitrum
+  // Get HyperithmUSDC vault shares (balanceOf) - on Arbitrum
   const {
-    data: daiSharesRaw,
-    isLoading: daiSharesLoading,
-    error: daiSharesError,
+    data: hyperithmSharesRaw,
+    isLoading: hyperithmSharesLoading,
+    error: hyperithmSharesError,
   } = useReadContract({
-    address: MORPHO_DAI_VAULT as `0x${string}`,
+    address: MORPHO_HYPERITHM_USDC_VAULT as `0x${string}`,
     abi: ERC4626_VAULT_ABI,
     functionName: 'balanceOf',
     args: address ? [address as `0x${string}`] : undefined,
@@ -174,43 +174,43 @@ export function useMorphoPositions() {
     },
   });
 
-  // Convert EURC shares to assets - on Arbitrum
+  // Convert GauntletUSDC shares to assets - on Arbitrum
   const {
-    data: eurcAssetsRaw,
-    isLoading: eurcAssetsLoading,
+    data: gauntletAssetsRaw,
+    isLoading: gauntletAssetsLoading,
   } = useReadContract({
-    address: MORPHO_EURC_VAULT as `0x${string}`,
+    address: MORPHO_GAUNTLET_USDC_VAULT as `0x${string}`,
     abi: ERC4626_VAULT_ABI,
     functionName: 'convertToAssets',
-    args: eurcSharesRaw ? [eurcSharesRaw as bigint] : undefined,
+    args: gauntletSharesRaw ? [gauntletSharesRaw as bigint] : undefined,
     chainId: arbitrum.id, // CRITICAL: Read from Arbitrum
     query: {
-      enabled: isConnected && !!address && !!eurcSharesRaw && eurcSharesRaw > 0n,
+      enabled: isConnected && !!address && !!gauntletSharesRaw && gauntletSharesRaw > 0n,
       refetchInterval: 60_000,
     },
   });
 
-  // Convert DAI shares to assets - on Arbitrum
+  // Convert HyperithmUSDC shares to assets - on Arbitrum
   const {
-    data: daiAssetsRaw,
-    isLoading: daiAssetsLoading,
+    data: hyperithmAssetsRaw,
+    isLoading: hyperithmAssetsLoading,
   } = useReadContract({
-    address: MORPHO_DAI_VAULT as `0x${string}`,
+    address: MORPHO_HYPERITHM_USDC_VAULT as `0x${string}`,
     abi: ERC4626_VAULT_ABI,
     functionName: 'convertToAssets',
-    args: daiSharesRaw ? [daiSharesRaw as bigint] : undefined,
+    args: hyperithmSharesRaw ? [hyperithmSharesRaw as bigint] : undefined,
     chainId: arbitrum.id, // CRITICAL: Read from Arbitrum
     query: {
-      enabled: isConnected && !!address && !!daiSharesRaw && daiSharesRaw > 0n,
+      enabled: isConnected && !!address && !!hyperithmSharesRaw && hyperithmSharesRaw > 0n,
       refetchInterval: 60_000,
     },
   });
 
   // Get vault asset addresses to determine decimals - on Arbitrum
   const {
-    data: eurcVaultAsset,
+    data: gauntletVaultAsset,
   } = useReadContract({
-    address: MORPHO_EURC_VAULT as `0x${string}`,
+    address: MORPHO_GAUNTLET_USDC_VAULT as `0x${string}`,
     abi: ERC4626_VAULT_ABI,
     functionName: 'asset',
     chainId: arbitrum.id, // CRITICAL: Read from Arbitrum
@@ -220,9 +220,9 @@ export function useMorphoPositions() {
   });
 
   const {
-    data: daiVaultAsset,
+    data: hyperithmVaultAsset,
   } = useReadContract({
-    address: MORPHO_DAI_VAULT as `0x${string}`,
+    address: MORPHO_HYPERITHM_USDC_VAULT as `0x${string}`,
     abi: ERC4626_VAULT_ABI,
     functionName: 'asset',
     chainId: arbitrum.id, // CRITICAL: Read from Arbitrum
@@ -233,46 +233,40 @@ export function useMorphoPositions() {
 
   // Calculate position data
   const position = useMemo((): MorphoPosition => {
-    const isLoading = eurcSharesLoading || daiSharesLoading || eurcAssetsLoading || daiAssetsLoading || eurRateLoading;
-    const error = eurcSharesError?.message || daiSharesError?.message || eurRateError || undefined;
+    const isLoading = gauntletSharesLoading || hyperithmSharesLoading || gauntletAssetsLoading || hyperithmAssetsLoading;
+    const error = gauntletSharesError?.message || hyperithmSharesError?.message || undefined;
 
-    // EURC vault typically uses 6 decimals (USDC/EURC standard)
-    // DAI vault typically uses 18 decimals (DAI standard)
-    // We'll use 6 for EURC and 18 for DAI as defaults
-    const eurcDecimals = 6;
-    const daiDecimals = 18;
+    // Both vaults use USDC (6 decimals) as underlying asset
+    const usdcDecimals = 6;
 
-    const eurcShares = eurcSharesRaw ? formatUnits(eurcSharesRaw as bigint, 18) : '0';
-    const daiShares = daiSharesRaw ? formatUnits(daiSharesRaw as bigint, 18) : '0';
+    const gauntletShares = gauntletSharesRaw ? formatUnits(gauntletSharesRaw as bigint, 18) : '0';
+    const hyperithmShares = hyperithmSharesRaw ? formatUnits(hyperithmSharesRaw as bigint, 18) : '0';
 
-    const eurcAssets = eurcAssetsRaw ? formatUnits(eurcAssetsRaw as bigint, eurcDecimals) : '0';
-    const daiAssets = daiAssetsRaw ? formatUnits(daiAssetsRaw as bigint, daiDecimals) : '0';
+    const gauntletAssets = gauntletAssetsRaw ? formatUnits(gauntletAssetsRaw as bigint, usdcDecimals) : '0';
+    const hyperithmAssets = hyperithmAssetsRaw ? formatUnits(hyperithmAssetsRaw as bigint, usdcDecimals) : '0';
 
-    // Convert to USD
-    // EURC is Euro stablecoin - multiply by EUR/USD exchange rate
-    // DAI is USD stablecoin - 1:1 with USD
-    const eurcValueEur = parseFloat(eurcAssets);
-    const daiValueUsd = parseFloat(daiAssets);
-    const eurcValueUsd = eurcValueEur * eurUsdRate;
+    // Both vaults use USDC, so 1:1 with USD
+    const gauntletValueUsd = parseFloat(gauntletAssets);
+    const hyperithmValueUsd = parseFloat(hyperithmAssets);
     
-    const eurcUsdValue = eurcValueUsd.toFixed(2);
-    const daiUsdValue = daiValueUsd.toFixed(2);
-    const totalUsdValue = (eurcValueUsd + daiValueUsd).toFixed(2);
+    const gauntletUsdValue = gauntletValueUsd.toFixed(2);
+    const hyperithmUsdValue = hyperithmValueUsd.toFixed(2);
+    const totalUsdValue = (gauntletValueUsd + hyperithmValueUsd).toFixed(2);
 
-    // Calculate weighted APY (weighted by USD value, not EUR value)
-    const totalUsd = eurcValueUsd + daiValueUsd;
+    // Calculate weighted APY (weighted by USD value)
+    const totalUsd = gauntletValueUsd + hyperithmValueUsd;
     const blendedApy = totalUsd > 0
-      ? ((eurcValueUsd * EURC_APY) + (daiValueUsd * DAI_APY)) / totalUsd
+      ? ((gauntletValueUsd * EURC_APY) + (hyperithmValueUsd * DAI_APY)) / totalUsd
       : BLENDED_APY;
 
     return {
-      eurcShares,
-      eurcAssets,
-      eurcUsdValue,
+      eurcShares: gauntletShares, // Keep interface names for compatibility
+      eurcAssets: gauntletAssets,
+      eurcUsdValue: gauntletUsdValue,
       eurcApy: EURC_APY,
-      daiShares,
-      daiAssets,
-      daiUsdValue,
+      daiShares: hyperithmShares, // Keep interface names for compatibility
+      daiAssets: hyperithmAssets,
+      daiUsdValue: hyperithmUsdValue,
       daiApy: DAI_APY,
       totalUsdValue,
       blendedApy,
@@ -280,18 +274,16 @@ export function useMorphoPositions() {
       error: error,
     };
   }, [
-    eurcSharesRaw,
-    daiSharesRaw,
-    eurcAssetsRaw,
-    daiAssetsRaw,
-    eurcSharesLoading,
-    daiSharesLoading,
-    eurcAssetsLoading,
-    daiAssetsLoading,
-    eurcSharesError,
-    daiSharesError,
-    eurRateError,
-    eurUsdRate,
+    gauntletSharesRaw,
+    hyperithmSharesRaw,
+    gauntletAssetsRaw,
+    hyperithmAssetsRaw,
+    gauntletSharesLoading,
+    hyperithmSharesLoading,
+    gauntletAssetsLoading,
+    hyperithmAssetsLoading,
+    gauntletSharesError,
+    hyperithmSharesError,
   ]);
 
   return position;
