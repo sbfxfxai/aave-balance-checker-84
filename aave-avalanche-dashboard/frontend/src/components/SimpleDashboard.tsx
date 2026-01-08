@@ -83,19 +83,21 @@ export function SimpleDashboard() {
   }, [authenticated, ready, wallets, user, wagmiAddress, isEthereumAddress]);
 
   // Check if user has any wallet connected (Privy or wagmi)
-  const hasWallet = Boolean(walletAddress && (authenticated || isWagmiConnected));
+  // Prioritize connection status - if MetaMask is connected, show dashboard immediately
+  const hasWallet = Boolean(isWagmiConnected || (authenticated && walletAddress) || walletAddress);
 
   const { avaxBalance, usdcBalance, usdcEBalance, ergcBalance, needsMigration, isLoading: balanceLoading } = useWalletBalances();
   const positions = useAavePositions();
   const morphoPositions = useMorphoPositions();
 
   // Direct test read of WAVAX reserve data to debug
-  const hasRequiredArgs = !!(walletAddress && CONTRACTS.WAVAX);
+  const effectiveAddress = walletAddress || wagmiAddress;
+  const hasRequiredArgs = !!(effectiveAddress && CONTRACTS.WAVAX);
   const { data: directWavaxData, error: directWavaxError } = useReadContract({
     address: CONTRACTS.AAVE_POOL_DATA_PROVIDER as `0x${string}`,
     abi: AAVE_DATA_PROVIDER_ABI,
     functionName: 'getUserReserveData',
-    args: hasRequiredArgs ? [CONTRACTS.WAVAX as `0x${string}`, walletAddress as `0x${string}`] : undefined,
+    args: hasRequiredArgs ? [CONTRACTS.WAVAX as `0x${string}`, effectiveAddress as `0x${string}`] : undefined,
     query: {
       enabled: Boolean(hasWallet && hasRequiredArgs),
     },
@@ -202,6 +204,10 @@ export function SimpleDashboard() {
     );
   }
 
+  // Use wagmiAddress as fallback if walletAddress isn't ready yet
+  const displayAddress = walletAddress || wagmiAddress || 'Connecting...';
+  const effectiveWalletAddress = walletAddress || wagmiAddress;
+
   return (
     <div className="space-y-6">
       {/* Wallet Info */}
@@ -223,7 +229,7 @@ export function SimpleDashboard() {
             </p>
           </div>
           <p className="font-mono text-sm sm:text-base break-all">
-            {walletAddress}
+            {displayAddress}
           </p>
         </div>
       </Card>
@@ -285,7 +291,7 @@ export function SimpleDashboard() {
       </Card>
 
       {/* GMX Positions */}
-      <GmxPositionCard walletAddress={walletAddress} onRefresh={handleRefresh} />
+      <GmxPositionCard walletAddress={effectiveWalletAddress} onRefresh={handleRefresh} />
 
       {/* Morpho Positions */}
       {parseFloat(morphoPositions.totalUsdValue) > 0 && (
@@ -395,6 +401,21 @@ export function SimpleDashboard() {
           onClose={() => setActiveAction(null)}
           action={activeAction}
         />
+      )}
+
+      {/* Email Login Button - Small button at bottom when MetaMask is connected */}
+      {isWagmiConnected && !authenticated && (
+        <div className="flex justify-center pt-6 border-t border-border/50">
+          <Button
+            onClick={() => login()}
+            variant="outline"
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <Wallet className="h-4 w-4" />
+            <span className="text-sm">Sign Up with Email</span>
+          </Button>
+        </div>
       )}
     </div>
   );
