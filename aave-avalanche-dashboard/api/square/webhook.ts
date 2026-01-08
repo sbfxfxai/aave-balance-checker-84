@@ -535,50 +535,70 @@ function verifySignature(payload: string, signature: string, notificationUrl?: s
   }
 
   try {
-    // Extract base64 signature
+    // Extract base64 signature - Square sends as base64 string (no prefix in newer versions)
     let signatureBase64 = signature;
     if (signature.startsWith('sha256=')) {
       signatureBase64 = signature.substring(7);
-    } else if (signature.includes('=') && signature.indexOf('=') < 10) {
-      // If = is near the start, it might be a prefix
-      signatureBase64 = signature.substring(signature.indexOf('=') + 1);
+      console.log('[Webhook] Extracted signature from sha256= prefix');
+    } else {
+      // Signature is already base64 (newer Square format)
+      console.log('[Webhook] Using signature as-is (base64 format)');
     }
 
     // Square includes notification URL in signature: HMAC-SHA256(notification_url + body)
+    // Try multiple URL variants - Square uses the exact URL configured in their dashboard
     const notificationUrlVariants = [
       notificationUrl || 'https://www.tiltvault.com/api/square/webhook',
       'https://www.tiltvault.com/api/square/webhook',
       'https://tiltvault.com/api/square/webhook',
+      'https://www.tiltvault.com/api/square/webhook/', // With trailing slash
+      'https://tiltvault.com/api/square/webhook/', // With trailing slash
     ].filter((url, index, self) => self.indexOf(url) === index);
 
-    // Try multiple payload formats
-    const payloadVariants: string[] = [payload]; // Start with payload as-is
+    // Try multiple payload formats - Square sends compact JSON (no whitespace, sorted keys)
+    const payloadVariants: Array<{ name: string; value: string }> = [];
     
-    // Try deterministic stringify if payload is JSON
+    // 1. Payload as-is (already deterministic stringified in handler)
+    payloadVariants.push({ name: 'as-is', value: payload });
+    
+    // Try parsing and re-stringifying in different formats
     try {
       const parsed = typeof payload === 'string' ? JSON.parse(payload) : payload;
-      payloadVariants.push(deterministicStringify(parsed));
       
-      // Try compact with sorted keys
+      // 2. Deterministic stringify (sorted keys, compact) - most likely to match
+      payloadVariants.push({ name: 'deterministic', value: deterministicStringify(parsed) });
+      
+      // 3. Compact with sorted keys (manual)
       const sortedKeys = Object.keys(parsed).sort();
       const sortedObj = sortedKeys.reduce((acc: any, key) => {
         acc[key] = parsed[key];
         return acc;
       }, {});
-      payloadVariants.push(JSON.stringify(sortedObj).replace(/\s+/g, ''));
+      payloadVariants.push({ name: 'sorted-compact', value: JSON.stringify(sortedObj).replace(/\s+/g, '') });
       
-      // Try compact
-      payloadVariants.push(JSON.stringify(parsed).replace(/\s+/g, ''));
+      // 4. Compact (no spaces, original key order)
+      payloadVariants.push({ name: 'compact', value: JSON.stringify(parsed).replace(/\s+/g, '') });
+      
+      // 5. Standard JSON.stringify (with spaces)
+      payloadVariants.push({ name: 'standard', value: JSON.stringify(parsed) });
+      
+      // 6. Compact with sorted keys using JSON.stringify replacer
+      payloadVariants.push({ name: 'sorted-standard', value: JSON.stringify(parsed, sortedKeys) });
+      
+      // 7. Try with different spacing (no spaces vs single space)
+      payloadVariants.push({ name: 'minimal', value: JSON.stringify(parsed).replace(/\s+/g, '').replace(/:/g, ':').replace(/,/g, ',') });
     } catch (e) {
-      // Payload might not be JSON, that's okay
+      console.warn('[Webhook] Could not parse payload for variant generation:', e);
     }
 
     // Try each combination of URL + payload
+    let attemptCount = 0;
     for (const url of notificationUrlVariants) {
       for (const payloadVariant of payloadVariants) {
-        // Square signs: notification_url + body
+        attemptCount++;
+        // Square signs: notification_url + body (concatenated as strings)
         const hmac = crypto.createHmac('sha256', SQUARE_WEBHOOK_SIGNATURE_KEY);
-        hmac.update(url + payloadVariant);
+        hmac.update(url + payloadVariant.value);
         const expectedSignature = hmac.digest('base64');
 
         try {
@@ -592,20 +612,29 @@ function verifySignature(payload: string, signature: string, notificationUrl?: s
             );
 
             if (isValid) {
-              console.log(`[Webhook] ✅ Signature verified with URL: ${url}`);
+              console.log(`[Webhook] ✅ Signature verified! URL: ${url}, Payload format: ${payloadVariant.name}`);
               return true;
+            }
+          } else {
+            // Log first few mismatches for debugging
+            if (attemptCount <= 3) {
+              console.log(`[Webhook] Attempt ${attemptCount}: Length mismatch - received: ${signatureBuffer.length}, expected: ${expectedBuffer.length}, format: ${payloadVariant.name}`);
             }
           }
         } catch (bufferError) {
           // Continue to next variant
+          if (attemptCount <= 3) {
+            console.warn(`[Webhook] Attempt ${attemptCount}: Buffer error:`, bufferError);
+          }
         }
       }
     }
 
     // Also try without notification URL (some Square versions might not include it)
     for (const payloadVariant of payloadVariants) {
+      attemptCount++;
       const hmac = crypto.createHmac('sha256', SQUARE_WEBHOOK_SIGNATURE_KEY);
-      hmac.update(payloadVariant);
+      hmac.update(payloadVariant.value);
       const expectedSignature = hmac.digest('base64');
 
       try {
@@ -619,7 +648,7 @@ function verifySignature(payload: string, signature: string, notificationUrl?: s
           );
 
           if (isValid) {
-            console.log(`[Webhook] ✅ Signature verified without URL`);
+            console.log(`[Webhook] ✅ Signature verified without URL! Payload format: ${payloadVariant.name}`);
             return true;
           }
         }
@@ -628,7 +657,13 @@ function verifySignature(payload: string, signature: string, notificationUrl?: s
       }
     }
 
-    console.log(`[Webhook] ❌ Signature verification failed - tried ${payloadVariants.length} payload variants × ${notificationUrlVariants.length} URL variants`);
+    // Log detailed failure info for debugging
+    console.log(`[Webhook] ❌ Signature verification failed after ${attemptCount} attempts`);
+    console.log(`[Webhook] Signature (first 30 chars): ${signature.substring(0, 30)}...`);
+    console.log(`[Webhook] Payload length: ${payload.length}, Payload preview: ${payload.substring(0, 100)}...`);
+    console.log(`[Webhook] Notification URL variants tried: ${notificationUrlVariants.length}`);
+    console.log(`[Webhook] Payload format variants tried: ${payloadVariants.length}`);
+    
     return false;
   } catch (error) {
     console.error('[Webhook] Signature verification error:', error);
@@ -4691,19 +4726,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Get raw body for signature verification
       // CRITICAL: Square signs the exact raw JSON they send (compact, sorted keys)
-      // Vercel parses JSON, so we need to reconstruct it in Square's format
+      // Vercel parses JSON automatically, so we need to reconstruct it in Square's format
+      // Try to get raw body first (if available in Vercel runtime)
       let rawBody: string;
-      if (typeof req.body === 'string') {
+      
+      // Check if rawBody is available (some Vercel configurations expose this)
+      const rawBodyFromRequest = (req as any).rawBody || (req as any).body?.raw;
+      
+      if (rawBodyFromRequest && typeof rawBodyFromRequest === 'string') {
+        rawBody = rawBodyFromRequest;
+        console.log('[Webhook] ✅ Using raw body from request (unparsed)');
+      } else if (typeof req.body === 'string') {
         // Body is already a string - use it directly
         rawBody = req.body;
+        console.log('[Webhook] Body is string - using directly');
       } else if (Buffer.isBuffer(req.body)) {
         // Body is a buffer - convert to string
         rawBody = req.body.toString('utf-8');
+        console.log('[Webhook] Body is buffer - converted to string');
       } else {
         // Body was parsed to object - reconstruct using deterministic stringify
         // This matches Square's format: compact JSON with sorted keys
         try {
           rawBody = deterministicStringify(req.body);
+          console.log('[Webhook] Reconstructed body using deterministic stringify');
         } catch (e) {
           // Fallback: compact JSON with sorted keys manually
           try {
@@ -4713,12 +4759,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               return acc;
             }, {});
             rawBody = JSON.stringify(sortedObj).replace(/\s+/g, '');
+            console.log('[Webhook] Reconstructed body using sorted compact JSON');
           } catch (e2) {
             // Last resort: compact JSON
             rawBody = JSON.stringify(req.body).replace(/\s+/g, '');
+            console.log('[Webhook] Reconstructed body using compact JSON (last resort)');
           }
         }
       }
+      
+      // Log body info for debugging signature issues
+      console.log(`[Webhook] Raw body length: ${rawBody.length}, preview: ${rawBody.substring(0, 150)}...`);
       const signature = req.headers['x-square-signature'] as string || '';
 
     // CRITICAL SECURITY: Signature verification is MANDATORY
