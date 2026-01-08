@@ -2946,30 +2946,26 @@ export async function executeMorphoFromHubWallet(
     const daiAmountWei = BigInt(Math.floor(daiAmount * 1_000_000));
     const totalAmountWei = eurcAmountWei + daiAmountWei;
 
-    // Check hub wallet USDC balance on Arbitrum (with error handling)
+    // Check hub wallet USDC balance on Arbitrum (using low-level call to avoid ABI issues)
     let hubBalance: bigint;
     try {
-      hubBalance = await usdcContract.balanceOf(hubWallet.address);
+      console.log(`[MORPHO] Checking hub wallet USDC balance via low-level call...`);
+      const balanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
+      const balanceData = balanceOfInterface.encodeFunctionData('balanceOf', [hubWallet.address]);
+      const balanceResult = await provider.call({
+        to: USDC_ARBITRUM,
+        data: balanceData
+      });
+      if (balanceResult && balanceResult !== '0x' && balanceResult.length > 2) {
+        hubBalance = ethers.getBigInt(balanceResult);
+        console.log(`[MORPHO] ✅ Hub balance retrieved: ${hubBalance.toString()}`);
+      } else {
+        console.error(`[MORPHO] ❌ Hub balance check returned empty data (0x)`);
+        return { success: false, error: `Failed to check hub wallet USDC balance: Contract returned empty data. Is USDC contract address correct?` };
+      }
     } catch (balanceError: any) {
       console.error(`[MORPHO] ❌ Failed to check hub wallet USDC balance: ${balanceError?.message || String(balanceError)}`);
-      // Try alternative method using low-level call
-      try {
-        const balanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
-        const balanceData = balanceOfInterface.encodeFunctionData('balanceOf', [hubWallet.address]);
-        const balanceResult = await provider.call({
-          to: USDC_ARBITRUM,
-          data: balanceData
-        });
-        if (balanceResult && balanceResult !== '0x' && balanceResult.length > 2) {
-          hubBalance = ethers.getBigInt(balanceResult);
-          console.log(`[MORPHO] ✅ Hub balance retrieved via low-level call: ${hubBalance.toString()}`);
-        } else {
-          throw new Error('Balance check returned empty data');
-        }
-      } catch (fallbackError: any) {
-        console.error(`[MORPHO] ❌ Both balance check methods failed: ${fallbackError?.message || String(fallbackError)}`);
-        return { success: false, error: `Failed to check hub wallet USDC balance: ${balanceError?.message || String(balanceError)}` };
-      }
+      return { success: false, error: `Failed to check hub wallet USDC balance: ${balanceError?.message || String(balanceError)}` };
     }
     
     const hubBalanceFormatted = ethers.formatUnits(hubBalance, 6);
