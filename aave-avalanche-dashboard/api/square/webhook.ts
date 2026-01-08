@@ -3008,8 +3008,15 @@ export async function executeMorphoFromHubWallet(
       console.log('[MORPHO] EURC vault approval confirmed');
     }
 
-    // Get balance before deposit to calculate shares received
-    const eurcSharesBefore = await eurcVault.balanceOf(walletAddress);
+    // Get balance before deposit to calculate shares received (non-blocking)
+    let eurcSharesBefore: bigint | null = null;
+    try {
+      eurcSharesBefore = await eurcVault.balanceOf(walletAddress);
+      console.log(`[MORPHO] EURC shares before deposit: ${eurcSharesBefore.toString()}`);
+    } catch (balanceError: any) {
+      console.warn(`[MORPHO] ⚠️ Could not get EURC shares before deposit (non-blocking): ${balanceError?.message || String(balanceError)}`);
+      console.log(`[MORPHO] Proceeding with deposit (shares verification will be skipped)...`);
+    }
     
     // Deposit to EURC vault (Morpho V2 ERC-4626: deposit assets, receive shares)
     // Morpho V2 signature: deposit(uint256 assets, address onBehalf)
@@ -3021,13 +3028,22 @@ export async function executeMorphoFromHubWallet(
       throw new Error(`EURC vault deposit failed. Status: ${depositEurcReceipt?.status}`);
     }
     
-    // Verify shares received (slippage check)
-    const eurcSharesAfter = await eurcVault.balanceOf(walletAddress);
-    const eurcSharesReceived = eurcSharesAfter - eurcSharesBefore;
-    console.log(`[MORPHO] EURC shares received: ${eurcSharesReceived.toString()} (balance: ${eurcSharesAfter.toString()})`);
-    if (expectedEurcShares !== null && eurcSharesReceived < expectedEurcShares * 99n / 100n) {
-      // Allow 1% slippage tolerance
-      console.warn(`[MORPHO] ⚠️ EURC shares received (${eurcSharesReceived}) less than expected (${expectedEurcShares})`);
+    // Verify shares received (slippage check) - non-blocking
+    if (eurcSharesBefore !== null) {
+      try {
+        const eurcSharesAfter = await eurcVault.balanceOf(walletAddress);
+        const eurcSharesReceived = eurcSharesAfter - eurcSharesBefore;
+        console.log(`[MORPHO] EURC shares received: ${eurcSharesReceived.toString()} (balance: ${eurcSharesAfter.toString()})`);
+        if (expectedEurcShares !== null && eurcSharesReceived < expectedEurcShares * 99n / 100n) {
+          // Allow 1% slippage tolerance
+          console.warn(`[MORPHO] ⚠️ EURC shares received (${eurcSharesReceived}) less than expected (${expectedEurcShares})`);
+        }
+      } catch (balanceError: any) {
+        console.warn(`[MORPHO] ⚠️ Could not verify EURC shares after deposit (non-blocking): ${balanceError?.message || String(balanceError)}`);
+        console.log(`[MORPHO] Deposit succeeded, but shares verification skipped`);
+      }
+    } else {
+      console.log(`[MORPHO] Skipping EURC shares verification (balance check unavailable)`);
     }
     
     txHashes.push(depositEurcTx.hash);
@@ -3058,8 +3074,15 @@ export async function executeMorphoFromHubWallet(
       console.log('[MORPHO] DAI vault approval confirmed');
     }
 
-    // Get balance before deposit to calculate shares received
-    const daiSharesBefore = await daiVault.balanceOf(walletAddress);
+    // Get balance before deposit to calculate shares received (non-blocking)
+    let daiSharesBefore: bigint | null = null;
+    try {
+      daiSharesBefore = await daiVault.balanceOf(walletAddress);
+      console.log(`[MORPHO] DAI shares before deposit: ${daiSharesBefore.toString()}`);
+    } catch (balanceError: any) {
+      console.warn(`[MORPHO] ⚠️ Could not get DAI shares before deposit (non-blocking): ${balanceError?.message || String(balanceError)}`);
+      console.log(`[MORPHO] Proceeding with deposit (shares verification will be skipped)...`);
+    }
     
     // Deposit to DAI vault (Morpho V2 ERC-4626: deposit assets, receive shares)
     // Morpho V2 signature: deposit(uint256 assets, address onBehalf)
@@ -3071,13 +3094,22 @@ export async function executeMorphoFromHubWallet(
       throw new Error(`DAI vault deposit failed. Status: ${depositDaiReceipt?.status}`);
     }
     
-    // Verify shares received (slippage check)
-    const daiSharesAfter = await daiVault.balanceOf(walletAddress);
-    const daiSharesReceived = daiSharesAfter - daiSharesBefore;
-    console.log(`[MORPHO] DAI shares received: ${daiSharesReceived.toString()} (balance: ${daiSharesAfter.toString()})`);
-    if (expectedDaiShares !== null && daiSharesReceived < expectedDaiShares * 99n / 100n) {
-      // Allow 1% slippage tolerance
-      console.warn(`[MORPHO] ⚠️ DAI shares received (${daiSharesReceived}) less than expected (${expectedDaiShares})`);
+    // Verify shares received (slippage check) - non-blocking
+    if (daiSharesBefore !== null) {
+      try {
+        const daiSharesAfter = await daiVault.balanceOf(walletAddress);
+        const daiSharesReceived = daiSharesAfter - daiSharesBefore;
+        console.log(`[MORPHO] DAI shares received: ${daiSharesReceived.toString()} (balance: ${daiSharesAfter.toString()})`);
+        if (expectedDaiShares !== null && daiSharesReceived < expectedDaiShares * 99n / 100n) {
+          // Allow 1% slippage tolerance
+          console.warn(`[MORPHO] ⚠️ DAI shares received (${daiSharesReceived}) less than expected (${expectedDaiShares})`);
+        }
+      } catch (balanceError: any) {
+        console.warn(`[MORPHO] ⚠️ Could not verify DAI shares after deposit (non-blocking): ${balanceError?.message || String(balanceError)}`);
+        console.log(`[MORPHO] Deposit succeeded, but shares verification skipped`);
+      }
+    } else {
+      console.log(`[MORPHO] Skipping DAI shares verification (balance check unavailable)`);
     }
     
     txHashes.push(depositDaiTx.hash);
