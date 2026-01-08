@@ -84,7 +84,29 @@ export function SimpleDashboard() {
 
   // Check if user has any wallet connected (Privy or wagmi)
   // Prioritize connection status - if MetaMask is connected, show dashboard immediately
-  const hasWallet = Boolean(isWagmiConnected || (authenticated && walletAddress) || walletAddress);
+  // Also check if we have any address available (wagmiAddress or walletAddress)
+  const windowWallet = (window as TiltVaultWindow).tiltvaultWallet?.address;
+  const hasWallet = Boolean(
+    isWagmiConnected || 
+    !!wagmiAddress ||
+    authenticated || 
+    !!walletAddress ||
+    !!windowWallet
+  );
+  
+  // Debug logging (remove in production)
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[SimpleDashboard] Wallet check:', {
+        isWagmiConnected,
+        wagmiAddress,
+        authenticated,
+        walletAddress,
+        windowWallet,
+        hasWallet
+      });
+    }
+  }, [isWagmiConnected, wagmiAddress, authenticated, walletAddress, windowWallet, hasWallet]);
 
   const { avaxBalance, usdcBalance, usdcEBalance, ergcBalance, needsMigration, isLoading: balanceLoading } = useWalletBalances();
   const positions = useAavePositions();
