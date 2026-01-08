@@ -2972,11 +2972,33 @@ export async function executeMorphoFromHubWallet(
         console.warn(`[MORPHO] ⚠️ Failed to check DAI vault inflation protection: ${errorMsg}`);
       }
       
-      if (eurcDeadShares !== null && daiDeadShares !== null) {
-        console.log(`[MORPHO] ✅ Inflation protection verified: EURC=${eurcDeadShares}, DAI=${daiDeadShares}`);
+      // Enforce inflation protection per Morpho docs: fail if inadequate protection
+      if (eurcDeadShares !== null) {
+        if (eurcDeadShares < MIN_DEAD_SHARES) {
+          console.error(`[MORPHO] ❌ EURC vault lacks required inflation protection: ${eurcDeadShares} < ${MIN_DEAD_SHARES}`);
+          return { 
+            success: false, 
+            error: `EURC vault lacks required inflation protection (${eurcDeadShares} < ${MIN_DEAD_SHARES}). Vault may be unsafe.` 
+          };
+        }
+        console.log(`[MORPHO] ✅ EURC vault inflation protection verified: ${eurcDeadShares} shares`);
       } else {
-        console.warn(`[MORPHO] ⚠️ Could not verify inflation protection (contract call failed), but continuing with deposit`);
-        console.warn(`[MORPHO] ⚠️ This may indicate an ABI mismatch - verify vault addresses are correct`);
+        console.warn(`[MORPHO] ⚠️ Could not verify EURC vault inflation protection (contract call failed)`);
+        console.warn(`[MORPHO] ⚠️ Proceeding with deposit but verify vault safety manually`);
+      }
+      
+      if (daiDeadShares !== null) {
+        if (daiDeadShares < MIN_DEAD_SHARES) {
+          console.error(`[MORPHO] ❌ DAI vault lacks required inflation protection: ${daiDeadShares} < ${MIN_DEAD_SHARES}`);
+          return { 
+            success: false, 
+            error: `DAI vault lacks required inflation protection (${daiDeadShares} < ${MIN_DEAD_SHARES}). Vault may be unsafe.` 
+          };
+        }
+        console.log(`[MORPHO] ✅ DAI vault inflation protection verified: ${daiDeadShares} shares`);
+      } else {
+        console.warn(`[MORPHO] ⚠️ Could not verify DAI vault inflation protection (contract call failed)`);
+        console.warn(`[MORPHO] ⚠️ Proceeding with deposit but verify vault safety manually`);
       }
     } catch (safetyCheckError) {
       // CRITICAL: Don't block deposit if safety checks fail - log and continue
@@ -3152,16 +3174,41 @@ export async function executeMorphoFromHubWallet(
     }
     
     // Deposit to EURC vault (Morpho V2 ERC-4626: deposit assets, receive shares)
-    // Morpho V2 signature: deposit(uint256 assets, address onBehalf)
-    // The vault routes deposits through liquidityAdapter automatically
-    // onBehalf is the user wallet address so they receive the vault shares
+    // Per Morpho docs: deposit(uint256 assets, address receiver) returns (uint256 shares)
+    // onBehalf/receiver is the user wallet address so they receive the vault shares
+    console.log(`[MORPHO] Executing EURC vault deposit: ${ethers.formatUnits(eurcAmountWei, 6)} USDC`);
     const depositEurcTx = await eurcVault.deposit(eurcAmountWei, walletAddress, { gasPrice });
     const depositEurcReceipt = await depositEurcTx.wait();
     if (depositEurcReceipt?.status !== 1) {
       throw new Error(`EURC vault deposit failed. Status: ${depositEurcReceipt?.status}`);
     }
     
-    // Verify shares received (slippage check) - non-blocking, use low-level call
+    // Capture shares returned from deposit (per Morpho docs pattern)
+    // The deposit function returns the number of shares minted
+    let eurcSharesMinted: bigint | null = null;
+    try {
+      // Parse the transaction receipt logs to get shares minted
+      // ERC4626 Deposit event: Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)
+      const depositInterface = new ethers.Interface(['event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)']);
+      const depositLog = depositEurcReceipt.logs.find(log => {
+        try {
+          const parsed = depositInterface.parseLog(log);
+          return parsed && parsed.args.owner.toLowerCase() === walletAddress.toLowerCase();
+        } catch {
+          return false;
+        }
+      });
+      if (depositLog) {
+        const parsed = depositInterface.parseLog(depositLog);
+        eurcSharesMinted = parsed.args.shares;
+        console.log(`[MORPHO] EURC shares minted (from event): ${eurcSharesMinted.toString()}`);
+      }
+    } catch (eventError) {
+      console.warn(`[MORPHO] ⚠️ Could not parse deposit event, will verify via balance check`);
+    }
+    
+    // Verify shares received and enforce slippage tolerance (per Morpho docs)
+    // Use low-level call to avoid ABI decoding issues
     if (eurcSharesBefore !== null) {
       try {
         const balanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
@@ -3174,19 +3221,49 @@ export async function executeMorphoFromHubWallet(
           const eurcSharesAfter = ethers.getBigInt(balanceResult);
           const eurcSharesReceived = eurcSharesAfter - eurcSharesBefore;
           console.log(`[MORPHO] EURC shares received: ${eurcSharesReceived.toString()} (balance: ${eurcSharesAfter.toString()})`);
-          if (expectedEurcShares !== null && eurcSharesReceived < expectedEurcShares * 99n / 100n) {
-            // Allow 1% slippage tolerance
-            console.warn(`[MORPHO] ⚠️ EURC shares received (${eurcSharesReceived}) less than expected (${expectedEurcShares})`);
+          
+          // Enforce slippage tolerance per Morpho docs (1% tolerance = 99% of expected)
+          if (expectedEurcShares !== null) {
+            const minShares = expectedEurcShares * 99n / 100n;
+            if (eurcSharesReceived < minShares) {
+              console.error(`[MORPHO] ❌ Slippage tolerance exceeded: received ${eurcSharesReceived}, expected at least ${minShares}`);
+              return { 
+                success: false, 
+                error: `EURC deposit slippage tolerance exceeded: received ${eurcSharesReceived} shares, expected at least ${minShares} (1% tolerance)` 
+              };
+            }
+            console.log(`[MORPHO] ✅ EURC slippage check passed: ${eurcSharesReceived} >= ${minShares}`);
           }
         } else {
           console.warn(`[MORPHO] ⚠️ Could not verify EURC shares after deposit (empty response)`);
         }
       } catch (balanceError: any) {
-        console.warn(`[MORPHO] ⚠️ Could not verify EURC shares after deposit (non-blocking): ${balanceError?.message || String(balanceError)}`);
-        console.log(`[MORPHO] Deposit succeeded, but shares verification skipped`);
+        console.warn(`[MORPHO] ⚠️ Could not verify EURC shares after deposit: ${balanceError?.message || String(balanceError)}`);
+        // If we have shares from event, use that for verification
+        if (eurcSharesMinted !== null && expectedEurcShares !== null) {
+          const minShares = expectedEurcShares * 99n / 100n;
+          if (eurcSharesMinted < minShares) {
+            return { 
+              success: false, 
+              error: `EURC deposit slippage tolerance exceeded: received ${eurcSharesMinted} shares, expected at least ${minShares} (1% tolerance)` 
+            };
+          }
+        }
       }
     } else {
-      console.log(`[MORPHO] Skipping EURC shares verification (balance check unavailable)`);
+      // If we couldn't get shares before, use event data for slippage check
+      if (eurcSharesMinted !== null && expectedEurcShares !== null) {
+        const minShares = expectedEurcShares * 99n / 100n;
+        if (eurcSharesMinted < minShares) {
+          return { 
+            success: false, 
+            error: `EURC deposit slippage tolerance exceeded: received ${eurcSharesMinted} shares, expected at least ${minShares} (1% tolerance)` 
+          };
+        }
+        console.log(`[MORPHO] ✅ EURC slippage check passed (from event): ${eurcSharesMinted} >= ${minShares}`);
+      } else {
+        console.warn(`[MORPHO] ⚠️ Skipping EURC slippage verification (insufficient data)`);
+      }
     }
     
     txHashes.push(depositEurcTx.hash);
@@ -3262,16 +3339,38 @@ export async function executeMorphoFromHubWallet(
     }
     
     // Deposit to DAI vault (Morpho V2 ERC-4626: deposit assets, receive shares)
-    // Morpho V2 signature: deposit(uint256 assets, address onBehalf)
-    // The vault routes deposits through liquidityAdapter automatically
-    // onBehalf is the user wallet address so they receive the vault shares
+    // Per Morpho docs: deposit(uint256 assets, address receiver) returns (uint256 shares)
+    // onBehalf/receiver is the user wallet address so they receive the vault shares
+    console.log(`[MORPHO] Executing DAI vault deposit: ${ethers.formatUnits(daiAmountWei, 6)} USDC`);
     const depositDaiTx = await daiVault.deposit(daiAmountWei, walletAddress, { gasPrice });
     const depositDaiReceipt = await depositDaiTx.wait();
     if (depositDaiReceipt?.status !== 1) {
       throw new Error(`DAI vault deposit failed. Status: ${depositDaiReceipt?.status}`);
     }
     
-    // Verify shares received (slippage check) - non-blocking, use low-level call
+    // Capture shares returned from deposit (per Morpho docs pattern)
+    let daiSharesMinted: bigint | null = null;
+    try {
+      const depositInterface = new ethers.Interface(['event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)']);
+      const depositLog = depositDaiReceipt.logs.find(log => {
+        try {
+          const parsed = depositInterface.parseLog(log);
+          return parsed && parsed.args.owner.toLowerCase() === walletAddress.toLowerCase();
+        } catch {
+          return false;
+        }
+      });
+      if (depositLog) {
+        const parsed = depositInterface.parseLog(depositLog);
+        daiSharesMinted = parsed.args.shares;
+        console.log(`[MORPHO] DAI shares minted (from event): ${daiSharesMinted.toString()}`);
+      }
+    } catch (eventError) {
+      console.warn(`[MORPHO] ⚠️ Could not parse deposit event, will verify via balance check`);
+    }
+    
+    // Verify shares received and enforce slippage tolerance (per Morpho docs)
+    // Use low-level call to avoid ABI decoding issues
     if (daiSharesBefore !== null) {
       try {
         const balanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
@@ -3284,19 +3383,49 @@ export async function executeMorphoFromHubWallet(
           const daiSharesAfter = ethers.getBigInt(balanceResult);
           const daiSharesReceived = daiSharesAfter - daiSharesBefore;
           console.log(`[MORPHO] DAI shares received: ${daiSharesReceived.toString()} (balance: ${daiSharesAfter.toString()})`);
-          if (expectedDaiShares !== null && daiSharesReceived < expectedDaiShares * 99n / 100n) {
-            // Allow 1% slippage tolerance
-            console.warn(`[MORPHO] ⚠️ DAI shares received (${daiSharesReceived}) less than expected (${expectedDaiShares})`);
+          
+          // Enforce slippage tolerance per Morpho docs (1% tolerance = 99% of expected)
+          if (expectedDaiShares !== null) {
+            const minShares = expectedDaiShares * 99n / 100n;
+            if (daiSharesReceived < minShares) {
+              console.error(`[MORPHO] ❌ Slippage tolerance exceeded: received ${daiSharesReceived}, expected at least ${minShares}`);
+              return { 
+                success: false, 
+                error: `DAI deposit slippage tolerance exceeded: received ${daiSharesReceived} shares, expected at least ${minShares} (1% tolerance)` 
+              };
+            }
+            console.log(`[MORPHO] ✅ DAI slippage check passed: ${daiSharesReceived} >= ${minShares}`);
           }
         } else {
           console.warn(`[MORPHO] ⚠️ Could not verify DAI shares after deposit (empty response)`);
         }
       } catch (balanceError: any) {
-        console.warn(`[MORPHO] ⚠️ Could not verify DAI shares after deposit (non-blocking): ${balanceError?.message || String(balanceError)}`);
-        console.log(`[MORPHO] Deposit succeeded, but shares verification skipped`);
+        console.warn(`[MORPHO] ⚠️ Could not verify DAI shares after deposit: ${balanceError?.message || String(balanceError)}`);
+        // If we have shares from event, use that for verification
+        if (daiSharesMinted !== null && expectedDaiShares !== null) {
+          const minShares = expectedDaiShares * 99n / 100n;
+          if (daiSharesMinted < minShares) {
+            return { 
+              success: false, 
+              error: `DAI deposit slippage tolerance exceeded: received ${daiSharesMinted} shares, expected at least ${minShares} (1% tolerance)` 
+            };
+          }
+        }
       }
     } else {
-      console.log(`[MORPHO] Skipping DAI shares verification (balance check unavailable)`);
+      // If we couldn't get shares before, use event data for slippage check
+      if (daiSharesMinted !== null && expectedDaiShares !== null) {
+        const minShares = expectedDaiShares * 99n / 100n;
+        if (daiSharesMinted < minShares) {
+          return { 
+            success: false, 
+            error: `DAI deposit slippage tolerance exceeded: received ${daiSharesMinted} shares, expected at least ${minShares} (1% tolerance)` 
+          };
+        }
+        console.log(`[MORPHO] ✅ DAI slippage check passed (from event): ${daiSharesMinted} >= ${minShares}`);
+      } else {
+        console.warn(`[MORPHO] ⚠️ Skipping DAI slippage verification (insufficient data)`);
+      }
     }
     
     txHashes.push(depositDaiTx.hash);
