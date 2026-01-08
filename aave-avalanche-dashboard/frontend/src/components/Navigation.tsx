@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Bitcoin, Zap, Home, ExternalLink } from 'lucide-react';
 import { OptimizedLogo } from '@/components/OptimizedLogo';
+import { ConnectWalletButton } from '@/components/ConnectWalletButton';
 
 export function Navigation() {
   return (
@@ -29,6 +30,7 @@ export function Navigation() {
               <span>Get ERGC</span>
               <ExternalLink className="h-3 w-3" />
             </a>
+            <ConnectWalletButton />
             <nav className="flex items-center gap-1 sm:gap-2" aria-label="Main navigation">
             <Link to="/" aria-label="Go to Banking page">
               <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Banking">

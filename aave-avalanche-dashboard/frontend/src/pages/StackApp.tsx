@@ -10,6 +10,7 @@ import { ValueDiagram } from '@/components/stack/ValueDiagram';
 import { Footer } from '@/components/Footer';
 import { Link } from 'react-router-dom';
 import { OptimizedLogo } from '@/components/OptimizedLogo';
+import { ConnectWalletButton } from '@/components/ConnectWalletButton';
 
 // Helper to calculate blended APY based on USDC allocation percentage
 const calculateBlendedAPY = (usdcPercent: number, aaveAPY: number, btcLevReturn: number = 15) => {
@@ -30,6 +31,15 @@ const getRiskProfiles = (aaveAPY: number) => [
     color: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
   },
   {
+    id: 'morpho',
+    name: 'Morpho Vault',
+    description: '50/50 EURC + DAI',
+    allocation: '50% EURC / 50% DAI',
+    apy: '10.83%',
+    leverage: '1x',
+    color: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
+  },
+  {
     id: 'aggressive',
     name: 'Aggressive',
     description: '100% Bitcoin 2.5x',
@@ -41,7 +51,7 @@ const getRiskProfiles = (aaveAPY: number) => [
 ] as const;
 
 type DepositType = 'usd' | null;
-type RiskProfileId = 'conservative' | 'aggressive' | null;
+type RiskProfileId = 'conservative' | 'morpho' | 'aggressive' | null;
 
 const StackApp = () => {
   const [selectedDepositType, setSelectedDepositType] = useState<DepositType>(null);
@@ -130,20 +140,23 @@ const StackApp = () => {
                 <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Automated Investing</p>
               </div>
             </div>
-            <nav className="flex items-center gap-1 sm:gap-2" aria-label="Main navigation">
-              <Link to="/gmx" aria-label="Go to Bitcoin trading page">
-                <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Bitcoin">
-                  <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
-                  <span className="hidden sm:inline">Bitcoin</span>
-                </Button>
-              </Link>
-              <Link to="/" aria-label="Go to Banking page">
-                <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Banking">
-                  <Landmark className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
-                  <span className="hidden sm:inline">Banking</span>
-                </Button>
-              </Link>
-            </nav>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <ConnectWalletButton />
+              <nav className="flex items-center gap-1 sm:gap-2" aria-label="Main navigation">
+                <Link to="/gmx" aria-label="Go to Bitcoin trading page">
+                  <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Bitcoin">
+                    <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
+                    <span className="hidden sm:inline">Bitcoin</span>
+                  </Button>
+                </Link>
+                <Link to="/" aria-label="Go to Banking page">
+                  <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Banking">
+                    <Landmark className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
+                    <span className="hidden sm:inline">Banking</span>
+                  </Button>
+                </Link>
+              </nav>
+            </div>
           </div>
         </div>
       </header>
@@ -154,27 +167,11 @@ const StackApp = () => {
           {/* Welcome Section */}
           <div className="text-center mb-8 sm:mb-12 px-2">
             <h2 className="text-2xl sm:text-4xl font-bold mb-3 sm:mb-4 bg-gradient-primary bg-clip-text text-transparent">
-              Welcome to Auto Invest
+              Deposit USD, Earn DeFi Returns
             </h2>
             <p className="text-base sm:text-xl text-muted-foreground mb-2">
-              Set your risk tolerance, we handle everything else
+              Use your debit card for instant access—hold 100 ERGC for zero fees
             </p>
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/20 rounded-full text-sm text-green-600 font-medium">
-              <Sparkles className="h-4 w-4" />
-              <span>
-                $1000+ deposits:{' '}
-                <a
-                  href="https://app.aave.com/reserve-overview/?underlyingAsset=0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e&marketName=proto_avalanche_v3"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline hover:text-green-500 font-semibold transition-colors"
-                  title={`Current Aave USDC APY: ${aaveAPY.toFixed(2)}%`}
-                >
-                  {aaveAPY.toFixed(1)}%
-                </a>
-                {' '}USDC - 3.2% fee = {(aaveAPY - 3.2).toFixed(1)}% instant profit
-              </span>
-            </div>
           </div>
 
           {/* Deposit Type Selection */}
@@ -182,11 +179,7 @@ const StackApp = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Zap className="h-5 w-5" />
-                Choose your deposit method
               </CardTitle>
-              <CardDescription>
-                Step 1: Select how you want to deposit funds
-              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 gap-4">

@@ -315,17 +315,12 @@ const GMX_BTC_MARKET = '0xFb02132333A79C8B5Bd0b64E3AbccA5f7fAf2937'; // BTC/USD 
 // - MorphoRegistry: 0xc00eb3c7aD1aE986A7f05F5A9d71aCa39c763C65
 // - MORPHO Token: 0x40BD670A58238e6E230c430BBb5cE6ec0d40df48 (18 decimals)
 // 
-// ⚠️ WARNING: These addresses need to be verified on Arbitrum!
-// The EURC vault address may be incorrect - verify on Arbiscan before using in production
-// Verified Morpho Vault addresses on Arbitrum (verified on-chain)
-const MORPHO_EURC_VAULT = '0x7e97fa6893871A2751B5fE961978DCCb2c201E65'; // Morpho EURC Vault on Arbitrum - VERIFIED
-const MORPHO_DAI_VAULT = '0x4B6F1C9E5d470b97181786b26da0d0945A7cf027'; // Morpho DAI Vault on Arbitrum - VERIFIED
+// Verified Morpho USDC Vault addresses on Arbitrum (verified on-chain)
+// Both vaults accept USDC as their underlying asset
+const MORPHO_GAUNTLET_USDC_VAULT = '0x7e97fa6893871A2751B5fE961978DCCb2c201E65'; // Morpho GauntletUSDC Core Vault on Arbitrum - VERIFIED
+const MORPHO_HYPERITHM_USDC_VAULT = '0x4B6F1C9E5d470b97181786b26da0d0945A7cf027'; // Morpho HyperithmUSDC Vault on Arbitrum - VERIFIED
 
 // Token addresses on Arbitrum
-// The vaults will report their actual asset() addresses - we'll verify if swaps are needed
-// If vaults accept USDC directly, these token addresses may not be used
-const EURC_TOKEN_ARBITRUM = '0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c'; // EURC token on Arbitrum (6 decimals)
-const DAI_TOKEN_ARBITRUM = '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1'; // DAI token on Arbitrum (18 decimals)
 const USDC_ARBITRUM = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'; // Native USDC on Arbitrum (6 decimals)
 
 // GMX minimum requirements
@@ -2761,20 +2756,20 @@ async function executeAaveViaPrivy(
  * 2. If Morpho profile selected → this function called
  * 3. Connects to Arbitrum RPC
  * 4. Uses hub wallet's Arbitrum USDC balance
- * 5. Deposits 50/50 split to Morpho Gauntlet EURC (11.54% APY) and Morpho Spark DAI (10.11% APY)
+ * 5. Deposits 50/50 split to Morpho Gauntlet GauntletUSDC (11.54% APY) and Morpho Spark HyperithmUSDC (10.11% APY)
  * 6. Vault shares credited to user's wallet address on Arbitrum
  * 
  * NOTE: Hub wallet must have USDC on Arbitrum (funded separately from Square payments)
  */
 export async function executeMorphoFromHubWallet(
   walletAddress: string,
-  eurcAmount: number,
-  daiAmount: number,
+  gauntletAmount: number,
+  hyperithmAmount: number,
   paymentId: string
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
   console.log(`[MORPHO] Executing Morpho strategy from hub wallet for ${walletAddress}...`);
-  console.log(`[MORPHO] EURC vault amount: $${eurcAmount}, DAI vault amount: $${daiAmount}`);
-  console.log(`[MORPHO] Target APY: EURC=11.54%, DAI=10.11%, Blended=10.83%`);
+  console.log(`[MORPHO] GauntletUSDC Core vault amount: $${gauntletAmount}, HyperithmUSDC vault amount: $${hyperithmAmount}`);
+  console.log(`[MORPHO] Both vaults use USDC as underlying asset`);
 
   // Validate Arbitrum hub wallet
   if (!ARBITRUM_HUB_WALLET_PRIVATE_KEY || ARBITRUM_HUB_WALLET_PRIVATE_KEY === '') {
@@ -2796,7 +2791,7 @@ export async function executeMorphoFromHubWallet(
   console.log(`[MORPHO] Arbitrum hub wallet private key configured: ${!!ARBITRUM_HUB_WALLET_PRIVATE_KEY && ARBITRUM_HUB_WALLET_PRIVATE_KEY.length > 0}`);
 
   // Check minimum amounts (same as Aave minimum)
-  if (eurcAmount < AAVE_MIN_SUPPLY_USD || daiAmount < AAVE_MIN_SUPPLY_USD) {
+  if (gauntletAmount < AAVE_MIN_SUPPLY_USD || hyperithmAmount < AAVE_MIN_SUPPLY_USD) {
     console.log(`[MORPHO] Amount below minimum $${AAVE_MIN_SUPPLY_USD}, skipping`);
     return { success: false, error: `Minimum deposit is $${AAVE_MIN_SUPPLY_USD} per vault` };
   }
@@ -2831,16 +2826,16 @@ export async function executeMorphoFromHubWallet(
     if (!USDC_ARBITRUM || !USDC_ARBITRUM.startsWith('0x') || USDC_ARBITRUM.length !== 42) {
       return { success: false, error: `Invalid USDC_ARBITRUM address: ${USDC_ARBITRUM}` };
     }
-    if (!MORPHO_EURC_VAULT || !MORPHO_EURC_VAULT.startsWith('0x') || MORPHO_EURC_VAULT.length !== 42) {
-      return { success: false, error: `Invalid MORPHO_EURC_VAULT address: ${MORPHO_EURC_VAULT}` };
+    if (!MORPHO_GAUNTLET_USDC_VAULT || !MORPHO_GAUNTLET_USDC_VAULT.startsWith('0x') || MORPHO_GAUNTLET_USDC_VAULT.length !== 42) {
+      return { success: false, error: `Invalid MORPHO_GAUNTLET_USDC_VAULT address: ${MORPHO_GAUNTLET_USDC_VAULT}` };
     }
-    if (!MORPHO_DAI_VAULT || !MORPHO_DAI_VAULT.startsWith('0x') || MORPHO_DAI_VAULT.length !== 42) {
-      return { success: false, error: `Invalid MORPHO_DAI_VAULT address: ${MORPHO_DAI_VAULT}` };
+    if (!MORPHO_HYPERITHM_USDC_VAULT || !MORPHO_HYPERITHM_USDC_VAULT.startsWith('0x') || MORPHO_HYPERITHM_USDC_VAULT.length !== 42) {
+      return { success: false, error: `Invalid MORPHO_HYPERITHM_USDC_VAULT address: ${MORPHO_HYPERITHM_USDC_VAULT}` };
     }
     console.log(`[MORPHO] ✅ Contract addresses validated`);
     console.log(`[MORPHO] USDC: ${USDC_ARBITRUM}`);
-    console.log(`[MORPHO] EURC Vault: ${MORPHO_EURC_VAULT}`);
-    console.log(`[MORPHO] DAI Vault: ${MORPHO_DAI_VAULT}`);
+    console.log(`[MORPHO] GauntletUSDC Core Vault: ${MORPHO_GAUNTLET_USDC_VAULT}`);
+    console.log(`[MORPHO] HyperithmUSDC Vault: ${MORPHO_HYPERITHM_USDC_VAULT}`);
     
     const hubWallet = new ethers.Wallet(cleanArbitrumKey, provider);
     
@@ -2855,36 +2850,35 @@ export async function executeMorphoFromHubWallet(
     // Verify contracts exist before creating contract objects
     console.log(`[MORPHO] Verifying contract existence...`);
     const usdcCode = await provider.getCode(USDC_ARBITRUM);
-    const eurcVaultCode = await provider.getCode(MORPHO_EURC_VAULT);
-    const daiVaultCode = await provider.getCode(MORPHO_DAI_VAULT);
+    const gauntletVaultCode = await provider.getCode(MORPHO_GAUNTLET_USDC_VAULT);
+    const hyperithmVaultCode = await provider.getCode(MORPHO_HYPERITHM_USDC_VAULT);
     
     if (!usdcCode || usdcCode === '0x' || usdcCode === '0x0' || usdcCode.length < 4) {
       console.error(`[MORPHO] ❌ USDC contract not found at ${USDC_ARBITRUM}`);
       return { success: false, error: `USDC contract not found at ${USDC_ARBITRUM}. Check USDC_ARBITRUM address. Verify on Arbiscan: https://arbiscan.io/address/${USDC_ARBITRUM}` };
     }
-    if (!eurcVaultCode || eurcVaultCode === '0x' || eurcVaultCode === '0x0' || eurcVaultCode.length < 4) {
-      console.error(`[MORPHO] ❌ EURC vault contract not found at ${MORPHO_EURC_VAULT}`);
-      console.error(`[MORPHO] ❌ Verify the correct address on Arbiscan: https://arbiscan.io/address/${MORPHO_EURC_VAULT}`);
-      console.error(`[MORPHO] ❌ Or check Morpho docs/registry for the correct EURC vault address`);
+    if (!gauntletVaultCode || gauntletVaultCode === '0x' || gauntletVaultCode === '0x0' || gauntletVaultCode.length < 4) {
+      console.error(`[MORPHO] ❌ GauntletUSDC Core vault contract not found at ${MORPHO_GAUNTLET_USDC_VAULT}`);
+      console.error(`[MORPHO] ❌ Verify the correct address on Arbiscan: https://arbiscan.io/address/${MORPHO_GAUNTLET_USDC_VAULT}`);
       return { 
         success: false, 
-        error: `EURC vault contract not found at ${MORPHO_EURC_VAULT}. The address may be incorrect. Verify on Arbiscan: https://arbiscan.io/address/${MORPHO_EURC_VAULT} or check Morpho documentation for the correct vault address.` 
+        error: `GauntletUSDC Core vault contract not found at ${MORPHO_GAUNTLET_USDC_VAULT}. The address may be incorrect. Verify on Arbiscan: https://arbiscan.io/address/${MORPHO_GAUNTLET_USDC_VAULT} or check Morpho documentation for the correct vault address.` 
       };
     }
-    if (!daiVaultCode || daiVaultCode === '0x' || daiVaultCode === '0x0' || daiVaultCode.length < 4) {
-      console.error(`[MORPHO] ❌ DAI vault contract not found at ${MORPHO_DAI_VAULT}`);
-      console.error(`[MORPHO] ❌ Verify the correct address on Arbiscan: https://arbiscan.io/address/${MORPHO_DAI_VAULT}`);
+    if (!hyperithmVaultCode || hyperithmVaultCode === '0x' || hyperithmVaultCode === '0x0' || hyperithmVaultCode.length < 4) {
+      console.error(`[MORPHO] ❌ HyperithmUSDC vault contract not found at ${MORPHO_HYPERITHM_USDC_VAULT}`);
+      console.error(`[MORPHO] ❌ Verify the correct address on Arbiscan: https://arbiscan.io/address/${MORPHO_HYPERITHM_USDC_VAULT}`);
       return { 
         success: false, 
-        error: `DAI vault contract not found at ${MORPHO_DAI_VAULT}. The address may be incorrect. Verify on Arbiscan: https://arbiscan.io/address/${MORPHO_DAI_VAULT} or check Morpho documentation for the correct vault address.` 
+        error: `HyperithmUSDC vault contract not found at ${MORPHO_HYPERITHM_USDC_VAULT}. The address may be incorrect. Verify on Arbiscan: https://arbiscan.io/address/${MORPHO_HYPERITHM_USDC_VAULT} or check Morpho documentation for the correct vault address.` 
       };
     }
-    console.log(`[MORPHO] ✅ All contracts exist (USDC: ${usdcCode.length} bytes, EURC: ${eurcVaultCode.length} bytes, DAI: ${daiVaultCode.length} bytes)`);
+    console.log(`[MORPHO] ✅ All contracts exist (USDC: ${usdcCode.length} bytes, Gauntlet: ${gauntletVaultCode.length} bytes, Hyperithm: ${hyperithmVaultCode.length} bytes)`);
     
     // Use Arbitrum USDC for Morpho operations
     const usdcContract = new ethers.Contract(USDC_ARBITRUM, ERC20_ABI, hubWallet);
-    const eurcVault = new ethers.Contract(MORPHO_EURC_VAULT, ERC4626_VAULT_ABI, hubWallet);
-    const daiVault = new ethers.Contract(MORPHO_DAI_VAULT, ERC4626_VAULT_ABI, hubWallet);
+    const gauntletVault = new ethers.Contract(MORPHO_GAUNTLET_USDC_VAULT, ERC4626_VAULT_ABI, hubWallet);
+    const hyperithmVault = new ethers.Contract(MORPHO_HYPERITHM_USDC_VAULT, ERC4626_VAULT_ABI, hubWallet);
 
     // CRITICAL: Check inflation attack protection (dead deposit)
     // NOTE: This is a safety check - if it fails, we'll log a warning but continue with deposit
@@ -2893,112 +2887,90 @@ export async function executeMorphoFromHubWallet(
     const MIN_DEAD_SHARES = 1_000_000_000n; // 1e9 shares minimum
     
     console.log(`[MORPHO] Testing vault connectivity...`);
-    console.log(`[MORPHO] EURC Vault Address: ${MORPHO_EURC_VAULT}`);
-    console.log(`[MORPHO] DAI Vault Address: ${MORPHO_DAI_VAULT}`);
+    console.log(`[MORPHO] GauntletUSDC Core Vault Address: ${MORPHO_GAUNTLET_USDC_VAULT}`);
+    console.log(`[MORPHO] HyperithmUSDC Vault Address: ${MORPHO_HYPERITHM_USDC_VAULT}`);
     
-    // CRITICAL: Verify vault contracts exist BEFORE proceeding - fail early if they don't
-    console.log(`[MORPHO] Checking vault contract existence...`);
-    const eurcCode = await provider.getCode(MORPHO_EURC_VAULT);
-    const daiCode = await provider.getCode(MORPHO_DAI_VAULT);
-    
-    if (eurcCode === '0x' || eurcCode === '0x0' || !eurcCode || eurcCode.length < 4) {
-      console.error(`[MORPHO] ❌ EURC vault has no code at address ${MORPHO_EURC_VAULT}`);
-      console.error(`[MORPHO] ❌ This address may be incorrect or the contract doesn't exist on Arbitrum`);
-      return { 
-        success: false, 
-        error: `EURC vault contract not found at ${MORPHO_EURC_VAULT}. Verify the contract address is correct for Arbitrum network.` 
-      };
-    }
-    if (daiCode === '0x' || daiCode === '0x0' || !daiCode || daiCode.length < 4) {
-      console.error(`[MORPHO] ❌ DAI vault has no code at address ${MORPHO_DAI_VAULT}`);
-      console.error(`[MORPHO] ❌ This address may be incorrect or the contract doesn't exist on Arbitrum`);
-      return { 
-        success: false, 
-        error: `DAI vault contract not found at ${MORPHO_DAI_VAULT}. Verify the contract address is correct for Arbitrum network.` 
-      };
-    }
-    
-    console.log(`[MORPHO] ✅ Vault contracts found (EURC: ${eurcCode.length} bytes, DAI: ${daiCode.length} bytes)`);
+    console.log(`[MORPHO] ✅ Vault contracts found (GauntletUSDC: ${gauntletVaultCode.length} bytes, HyperithmUSDC: ${hyperithmVaultCode.length} bytes)`);
     
     // Continue with safety checks (inflation protection) - these can fail without blocking
     try {
       
       // Try to call balanceOf with low-level call to avoid ABI decoding issues
-      let eurcDeadShares: bigint | null = null;
-      let daiDeadShares: bigint | null = null;
+      let gauntletDeadShares: bigint | null = null;
+      let hyperithmDeadShares: bigint | null = null;
       
       try {
-        console.log(`[MORPHO] Checking EURC vault inflation protection...`);
-        const eurcBalanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
-        const eurcData = eurcBalanceOfInterface.encodeFunctionData('balanceOf', [DEAD_ADDRESS]);
-        const eurcResult = await provider.call({
-          to: MORPHO_EURC_VAULT,
-          data: eurcData
+        console.log(`[MORPHO] Checking GauntletUSDC vault inflation protection...`);
+        const gauntletBalanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
+        const gauntletData = gauntletBalanceOfInterface.encodeFunctionData('balanceOf', [DEAD_ADDRESS]);
+        const gauntletResult = await provider.call({
+          to: MORPHO_GAUNTLET_USDC_VAULT,
+          data: gauntletData
         });
         
-        if (eurcResult && eurcResult !== '0x' && eurcResult.length > 2) {
-          eurcDeadShares = ethers.getBigInt(eurcResult);
-          console.log(`[MORPHO] EURC dead shares: ${eurcDeadShares.toString()}`);
-          if (eurcDeadShares < MIN_DEAD_SHARES) {
-            console.warn(`[MORPHO] ⚠️ EURC vault has low inflation protection (${eurcDeadShares} < ${MIN_DEAD_SHARES})`);
+        if (gauntletResult && gauntletResult !== '0x' && gauntletResult.length > 2) {
+          gauntletDeadShares = ethers.getBigInt(gauntletResult);
+          console.log(`[MORPHO] GauntletUSDC dead shares: ${gauntletDeadShares.toString()}`);
+          if (gauntletDeadShares < MIN_DEAD_SHARES) {
+            console.warn(`[MORPHO] ⚠️ GauntletUSDC vault has low inflation protection (${gauntletDeadShares} < ${MIN_DEAD_SHARES})`);
           }
         } else {
-          console.warn(`[MORPHO] ⚠️ EURC vault balanceOf returned empty data - skipping check`);
+          console.warn(`[MORPHO] ⚠️ GauntletUSDC vault balanceOf returned empty data - skipping check`);
         }
-      } catch (eurcError: any) {
-        const errorMsg = eurcError instanceof Error ? eurcError.message : String(eurcError);
-        console.warn(`[MORPHO] ⚠️ Failed to check EURC vault inflation protection: ${errorMsg}`);
+      } catch (gauntletError: any) {
+        const errorMsg = gauntletError instanceof Error ? gauntletError.message : String(gauntletError);
+        console.warn(`[MORPHO] ⚠️ Failed to check GauntletUSDC vault inflation protection: ${errorMsg}`);
       }
       
       try {
-        console.log(`[MORPHO] Checking DAI vault inflation protection...`);
-        const daiBalanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
-        const daiData = daiBalanceOfInterface.encodeFunctionData('balanceOf', [DEAD_ADDRESS]);
-        const daiResult = await provider.call({
-          to: MORPHO_DAI_VAULT,
-          data: daiData
+        console.log(`[MORPHO] Checking HyperithmUSDC vault inflation protection...`);
+        const hyperithmBalanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
+        const hyperithmData = hyperithmBalanceOfInterface.encodeFunctionData('balanceOf', [DEAD_ADDRESS]);
+        const hyperithmResult = await provider.call({
+          to: MORPHO_HYPERITHM_USDC_VAULT,
+          data: hyperithmData
         });
         
-        if (daiResult && daiResult !== '0x' && daiResult.length > 2) {
-          daiDeadShares = ethers.getBigInt(daiResult);
-          console.log(`[MORPHO] DAI dead shares: ${daiDeadShares.toString()}`);
-          if (daiDeadShares < MIN_DEAD_SHARES) {
-            console.warn(`[MORPHO] ⚠️ DAI vault has low inflation protection (${daiDeadShares} < ${MIN_DEAD_SHARES})`);
+        if (hyperithmResult && hyperithmResult !== '0x' && hyperithmResult.length > 2) {
+          hyperithmDeadShares = ethers.getBigInt(hyperithmResult);
+          console.log(`[MORPHO] HyperithmUSDC dead shares: ${hyperithmDeadShares.toString()}`);
+          if (hyperithmDeadShares < MIN_DEAD_SHARES) {
+            console.warn(`[MORPHO] ⚠️ HyperithmUSDC vault has low inflation protection (${hyperithmDeadShares} < ${MIN_DEAD_SHARES})`);
           }
         } else {
-          console.warn(`[MORPHO] ⚠️ DAI vault balanceOf returned empty data - skipping check`);
+          console.warn(`[MORPHO] ⚠️ HyperithmUSDC vault balanceOf returned empty data - skipping check`);
         }
-      } catch (daiError: any) {
-        const errorMsg = daiError instanceof Error ? daiError.message : String(daiError);
-        console.warn(`[MORPHO] ⚠️ Failed to check DAI vault inflation protection: ${errorMsg}`);
+      } catch (hyperithmError: any) {
+        const errorMsg = hyperithmError instanceof Error ? hyperithmError.message : String(hyperithmError);
+        console.warn(`[MORPHO] ⚠️ Failed to check HyperithmUSDC vault inflation protection: ${errorMsg}`);
       }
       
       // Enforce inflation protection per Morpho docs: fail if inadequate protection
-      if (eurcDeadShares !== null) {
-        if (eurcDeadShares < MIN_DEAD_SHARES) {
-          console.error(`[MORPHO] ❌ EURC vault lacks required inflation protection: ${eurcDeadShares} < ${MIN_DEAD_SHARES}`);
+      if (gauntletDeadShares !== null) {
+        if (gauntletDeadShares < MIN_DEAD_SHARES) {
+          console.error(`[MORPHO] ❌ GauntletUSDC vault lacks required inflation protection: ${gauntletDeadShares} < ${MIN_DEAD_SHARES}`);
           return { 
             success: false, 
-            error: `EURC vault lacks required inflation protection (${eurcDeadShares} < ${MIN_DEAD_SHARES}). Vault may be unsafe.` 
+            error: `GauntletUSDC vault lacks required inflation protection (${gauntletDeadShares} < ${MIN_DEAD_SHARES}). Vault may be unsafe.` 
           };
         }
-        console.log(`[MORPHO] ✅ EURC vault inflation protection verified: ${eurcDeadShares} shares`);
+        console.log(`[MORPHO] ✅ GauntletUSDC vault inflation protection verified: ${gauntletDeadShares} shares`);
       } else {
-        console.warn(`[MORPHO] ⚠️ Could not verify EURC vault inflation protection (contract call failed)`);
+        console.warn(`[MORPHO] ⚠️ Could not verify GauntletUSDC vault inflation protection (contract call failed)`);
         console.warn(`[MORPHO] ⚠️ Proceeding with deposit but verify vault safety manually`);
       }
       
-      if (daiDeadShares !== null) {
-        if (daiDeadShares < MIN_DEAD_SHARES) {
-          console.error(`[MORPHO] ❌ DAI vault lacks required inflation protection: ${daiDeadShares} < ${MIN_DEAD_SHARES}`);
+      if (hyperithmDeadShares !== null) {
+        if (hyperithmDeadShares < MIN_DEAD_SHARES) {
+          console.error(`[MORPHO] ❌ HyperithmUSDC vault lacks required inflation protection: ${hyperithmDeadShares} < ${MIN_DEAD_SHARES}`);
           return { 
             success: false, 
-            error: `DAI vault lacks required inflation protection (${daiDeadShares} < ${MIN_DEAD_SHARES}). Vault may be unsafe.` 
+            error: `HyperithmUSDC vault lacks required inflation protection (${hyperithmDeadShares} < ${MIN_DEAD_SHARES}). Vault may be unsafe.` 
           };
         }
-        console.log(`[MORPHO] ✅ DAI vault inflation protection verified: ${daiDeadShares} shares`);
+        console.log(`[MORPHO] ✅ HyperithmUSDC vault inflation protection verified: ${hyperithmDeadShares} shares`);
       } else {
-        console.warn(`[MORPHO] ⚠️ Could not verify DAI vault inflation protection (contract call failed)`);
+        console.warn(`[MORPHO] ⚠️ Could not verify HyperithmUSDC vault inflation protection (contract call failed)`);
         console.warn(`[MORPHO] ⚠️ Proceeding with deposit but verify vault safety manually`);
       }
     } catch (safetyCheckError) {
@@ -3009,26 +2981,26 @@ export async function executeMorphoFromHubWallet(
     }
 
     // Get vault asset addresses to verify they accept USDC (using low-level calls)
-    let eurcVaultAsset: string | null = null;
-    let daiVaultAsset: string | null = null;
+    let gauntletVaultAsset: string | null = null;
+    let hyperithmVaultAsset: string | null = null;
     
     try {
       console.log(`[MORPHO] Getting vault asset addresses via low-level call...`);
       const assetInterface = new ethers.Interface(['function asset() view returns (address)']);
       const eurcAssetData = assetInterface.encodeFunctionData('asset', []);
       const eurcAssetResult = await provider.call({
-        to: MORPHO_EURC_VAULT,
+        to: MORPHO_GAUNTLET_USDC_VAULT,
         data: eurcAssetData
       });
       if (eurcAssetResult && eurcAssetResult !== '0x' && eurcAssetResult.length > 2) {
         // Decode the address (last 20 bytes of the 32-byte result)
-        eurcVaultAsset = '0x' + eurcAssetResult.slice(-40);
-        console.log(`[MORPHO] EURC vault asset: ${eurcVaultAsset}`);
+        gauntletVaultAsset = '0x' + eurcAssetResult.slice(-40);
+        console.log(`[MORPHO] GauntletUSDC vault asset: ${gauntletVaultAsset}`);
       } else {
-        console.warn(`[MORPHO] ⚠️ EURC vault asset() returned empty data`);
+        console.warn(`[MORPHO] ⚠️ GauntletUSDC vault asset() returned empty data`);
       }
     } catch (eurcAssetError) {
-      console.error(`[MORPHO] ❌ Failed to get EURC vault asset:`, eurcAssetError);
+      console.error(`[MORPHO] ❌ Failed to get GauntletUSDC vault asset:`, eurcAssetError);
       console.warn(`[MORPHO] ⚠️ Continuing without asset verification`);
     }
     
@@ -3036,39 +3008,39 @@ export async function executeMorphoFromHubWallet(
       const assetInterface = new ethers.Interface(['function asset() view returns (address)']);
       const daiAssetData = assetInterface.encodeFunctionData('asset', []);
       const daiAssetResult = await provider.call({
-        to: MORPHO_DAI_VAULT,
+        to: MORPHO_HYPERITHM_USDC_VAULT,
         data: daiAssetData
       });
       if (daiAssetResult && daiAssetResult !== '0x' && daiAssetResult.length > 2) {
         // Decode the address (last 20 bytes of the 32-byte result)
-        daiVaultAsset = '0x' + daiAssetResult.slice(-40);
-        console.log(`[MORPHO] DAI vault asset: ${daiVaultAsset}`);
+        hyperithmVaultAsset = '0x' + daiAssetResult.slice(-40);
+        console.log(`[MORPHO] HyperithmUSDC vault asset: ${hyperithmVaultAsset}`);
       } else {
-        console.warn(`[MORPHO] ⚠️ DAI vault asset() returned empty data`);
+        console.warn(`[MORPHO] ⚠️ HyperithmUSDC vault asset() returned empty data`);
       }
     } catch (daiAssetError) {
-      console.error(`[MORPHO] ❌ Failed to get DAI vault asset:`, daiAssetError);
+      console.error(`[MORPHO] ❌ Failed to get HyperithmUSDC vault asset:`, daiAssetError);
       console.warn(`[MORPHO] ⚠️ Continuing without asset verification`);
     }
     
     // Verify vaults accept USDC (or handle swaps if needed) - only if we got the values
-    if (eurcVaultAsset) {
-      if (eurcVaultAsset.toLowerCase() !== USDC_ARBITRUM.toLowerCase() && 
-          eurcVaultAsset.toLowerCase() !== EURC_TOKEN_ARBITRUM.toLowerCase()) {
-        console.warn(`[MORPHO] ⚠️ EURC vault asset (${eurcVaultAsset}) differs from USDC. May require swap.`);
+    if (gauntletVaultAsset) {
+      if (gauntletVaultAsset.toLowerCase() !== USDC_ARBITRUM.toLowerCase() && 
+          gauntletVaultAsset.toLowerCase() !== GauntletUSDC_TOKEN_ARBITRUM.toLowerCase()) {
+        console.warn(`[MORPHO] ⚠️ GauntletUSDC vault asset (${gauntletVaultAsset}) differs from USDC. May require swap.`);
       }
     }
-    if (daiVaultAsset) {
-      if (daiVaultAsset.toLowerCase() !== USDC_ARBITRUM.toLowerCase() && 
-          daiVaultAsset.toLowerCase() !== DAI_TOKEN_ARBITRUM.toLowerCase()) {
-        console.warn(`[MORPHO] ⚠️ DAI vault asset (${daiVaultAsset}) differs from USDC. May require swap.`);
+    if (hyperithmVaultAsset) {
+      if (hyperithmVaultAsset.toLowerCase() !== USDC_ARBITRUM.toLowerCase() && 
+          hyperithmVaultAsset.toLowerCase() !== HyperithmUSDC_TOKEN_ARBITRUM.toLowerCase()) {
+        console.warn(`[MORPHO] ⚠️ HyperithmUSDC vault asset (${hyperithmVaultAsset}) differs from USDC. May require swap.`);
       }
     }
 
     // Convert amounts to wei (USDC has 6 decimals)
-    const eurcAmountWei = BigInt(Math.floor(eurcAmount * 1_000_000));
-    const daiAmountWei = BigInt(Math.floor(daiAmount * 1_000_000));
-    const totalAmountWei = eurcAmountWei + daiAmountWei;
+    const gauntletAmountWei = BigInt(Math.floor(gauntletAmount * 1_000_000));
+    const hyperithmAmountWei = BigInt(Math.floor(hyperithmAmount * 1_000_000));
+    const totalAmountWei = gauntletAmountWei + hyperithmAmountWei;
 
     // Check hub wallet USDC balance on Arbitrum (using low-level call to avoid ABI issues)
     let hubBalance: bigint;
@@ -3095,11 +3067,11 @@ export async function executeMorphoFromHubWallet(
     const hubBalanceFormatted = ethers.formatUnits(hubBalance, 6);
     console.log(`[MORPHO] Hub wallet Arbitrum USDC balance: $${hubBalanceFormatted}`);
     console.log(`[MORPHO] Hub wallet address: ${hubWallet.address}`);
-    console.log(`[MORPHO] Required amount: $${eurcAmount + daiAmount}`);
+    console.log(`[MORPHO] Required amount: $${gauntletAmount + hyperithmAmount}`);
     
     if (hubBalance < totalAmountWei) {
-      console.error(`[MORPHO] ❌ Insufficient USDC balance on Arbitrum. Have: $${hubBalanceFormatted}, Need: $${eurcAmount + daiAmount}`);
-      return { success: false, error: `Insufficient USDC balance in hub wallet on Arbitrum. Have: $${hubBalanceFormatted}, Need: $${eurcAmount + daiAmount}` };
+      console.error(`[MORPHO] ❌ Insufficient USDC balance on Arbitrum. Have: $${hubBalanceFormatted}, Need: $${gauntletAmount + hyperithmAmount}`);
+      return { success: false, error: `Insufficient USDC balance in hub wallet on Arbitrum. Have: $${hubBalanceFormatted}, Need: $${gauntletAmount + hyperithmAmount}` };
     }
     console.log(`[MORPHO] ✅ Sufficient USDC balance on Arbitrum: $${hubBalanceFormatted}`);
 
@@ -3127,93 +3099,93 @@ export async function executeMorphoFromHubWallet(
 
     const txHashes: string[] = [];
 
-    // Step 1: Approve and deposit to EURC vault
-    console.log(`[MORPHO] Step 1: Depositing $${eurcAmount} to Morpho Gauntlet EURC vault...`);
+    // Step 1: Approve and deposit to GauntletUSDC vault
+    console.log(`[MORPHO] Step 1: Depositing $${gauntletAmount} to Morpho Gauntlet GauntletUSDC vault...`);
     
     // Preview deposit to estimate shares (slippage protection) - non-blocking
-    let expectedEurcShares: bigint | null = null;
+    let expectedGauntletShares: bigint | null = null;
     try {
-      expectedEurcShares = await eurcVault.previewDeposit(eurcAmountWei);
-      console.log(`[MORPHO] Expected EURC shares: ${expectedEurcShares.toString()}`);
+      expectedGauntletShares = await gauntletVault.previewDeposit(gauntletAmountWei);
+      console.log(`[MORPHO] Expected GauntletUSDC shares: ${expectedGauntletShares.toString()}`);
     } catch (previewError: any) {
-      console.warn(`[MORPHO] ⚠️ Could not preview EURC deposit (non-blocking): ${previewError?.message || String(previewError)}`);
+      console.warn(`[MORPHO] ⚠️ Could not preview GauntletUSDC deposit (non-blocking): ${previewError?.message || String(previewError)}`);
       console.log(`[MORPHO] Proceeding with deposit without preview...`);
     }
     
-    // Check and approve USDC for EURC vault (using low-level call)
-    let eurcAllowance: bigint;
+    // Check and approve USDC for GauntletUSDC vault (using low-level call)
+    let gauntletAllowance: bigint;
     try {
       const allowanceInterface = new ethers.Interface(['function allowance(address owner, address spender) view returns (uint256)']);
-      const allowanceData = allowanceInterface.encodeFunctionData('allowance', [hubWallet.address, MORPHO_EURC_VAULT]);
+      const allowanceData = allowanceInterface.encodeFunctionData('allowance', [hubWallet.address, MORPHO_GAUNTLET_USDC_VAULT]);
       const allowanceResult = await provider.call({
         to: USDC_ARBITRUM,
         data: allowanceData
       });
       if (allowanceResult && allowanceResult !== '0x' && allowanceResult.length > 2) {
-        eurcAllowance = ethers.getBigInt(allowanceResult);
+        gauntletAllowance = ethers.getBigInt(allowanceResult);
       } else {
         console.warn(`[MORPHO] ⚠️ Allowance check returned empty data, assuming 0`);
-        eurcAllowance = 0n;
+        gauntletAllowance = 0n;
       }
     } catch (allowanceError: any) {
       console.warn(`[MORPHO] ⚠️ Failed to check allowance (non-blocking): ${allowanceError?.message || String(allowanceError)}`);
-      eurcAllowance = 0n; // Assume no allowance if check fails
+      gauntletAllowance = 0n; // Assume no allowance if check fails
     }
-    if (eurcAllowance < eurcAmountWei) {
-      console.log('[MORPHO] Approving USDC for EURC vault...');
-      const approveEurcTx = await usdcContract.approve(MORPHO_EURC_VAULT, ethers.MaxUint256, { gasPrice });
-      const approveEurcReceipt = await approveEurcTx.wait();
-      if (approveEurcReceipt?.status !== 1) {
-        throw new Error(`USDC approval for EURC vault failed. Status: ${approveEurcReceipt?.status}`);
+    if (gauntletAllowance < gauntletAmountWei) {
+      console.log('[MORPHO] Approving USDC for GauntletUSDC vault...');
+      const approveGauntletTx = await usdcContract.approve(MORPHO_GAUNTLET_USDC_VAULT, ethers.MaxUint256, { gasPrice });
+      const approveGauntletReceipt = await approveGauntletTx.wait();
+      if (approveGauntletReceipt?.status !== 1) {
+        throw new Error(`USDC approval for GauntletUSDC vault failed. Status: ${approveGauntletReceipt?.status}`);
       }
-      console.log('[MORPHO] EURC vault approval confirmed');
+      console.log('[MORPHO] GauntletUSDC vault approval confirmed');
     }
 
     // Get balance before deposit to calculate shares received (non-blocking)
     // Use low-level call to avoid ABI decoding issues
-    let eurcSharesBefore: bigint | null = null;
+    let gauntletSharesBefore: bigint | null = null;
     try {
-      console.log(`[MORPHO] Calling balanceOf on EURC vault at ${MORPHO_EURC_VAULT} for wallet ${walletAddress}...`);
+      console.log(`[MORPHO] Calling balanceOf on GauntletUSDC vault at ${MORPHO_GAUNTLET_USDC_VAULT} for wallet ${walletAddress}...`);
       const balanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
       const balanceData = balanceOfInterface.encodeFunctionData('balanceOf', [walletAddress]);
       const balanceResult = await provider.call({
-        to: MORPHO_EURC_VAULT,
+        to: MORPHO_GAUNTLET_USDC_VAULT,
         data: balanceData
       });
       if (balanceResult && balanceResult !== '0x' && balanceResult.length > 2) {
-        eurcSharesBefore = ethers.getBigInt(balanceResult);
-        console.log(`[MORPHO] EURC shares before deposit: ${eurcSharesBefore.toString()}`);
+        gauntletSharesBefore = ethers.getBigInt(balanceResult);
+        console.log(`[MORPHO] GauntletUSDC shares before deposit: ${gauntletSharesBefore.toString()}`);
       } else {
-        console.warn(`[MORPHO] ⚠️ EURC vault balanceOf returned empty data, assuming 0 shares`);
-        eurcSharesBefore = 0n;
+        console.warn(`[MORPHO] ⚠️ GauntletUSDC vault balanceOf returned empty data, assuming 0 shares`);
+        gauntletSharesBefore = 0n;
       }
     } catch (balanceError: any) {
       const errorMsg = balanceError?.message || String(balanceError);
       const errorCode = balanceError?.code || 'UNKNOWN';
-      console.error(`[MORPHO] ❌ balanceOf failed for EURC vault: ${errorMsg} (code: ${errorCode})`);
-      console.error(`[MORPHO] Vault address: ${MORPHO_EURC_VAULT}, Wallet: ${walletAddress}`);
-      console.warn(`[MORPHO] ⚠️ Could not get EURC shares before deposit (non-blocking) - assuming 0 and proceeding...`);
-      eurcSharesBefore = 0n; // Assume 0 shares if we can't check
+      console.error(`[MORPHO] ❌ balanceOf failed for GauntletUSDC vault: ${errorMsg} (code: ${errorCode})`);
+      console.error(`[MORPHO] Vault address: ${MORPHO_GAUNTLET_USDC_VAULT}, Wallet: ${walletAddress}`);
+      console.warn(`[MORPHO] ⚠️ Could not get GauntletUSDC shares before deposit (non-blocking) - assuming 0 and proceeding...`);
+      gauntletSharesBefore = 0n; // Assume 0 shares if we can't check
     }
     
-    // Deposit to EURC vault (Morpho V2 ERC-4626: deposit assets, receive shares)
+    // Deposit to GauntletUSDC vault (Morpho V2 ERC-4626: deposit assets, receive shares)
     // Per Morpho docs: deposit(uint256 assets, address receiver) returns (uint256 shares)
     // onBehalf/receiver is the user wallet address so they receive the vault shares
-    console.log(`[MORPHO] Executing EURC vault deposit: ${ethers.formatUnits(eurcAmountWei, 6)} USDC`);
-    const depositEurcTx = await eurcVault.deposit(eurcAmountWei, walletAddress, { gasPrice });
-    const depositEurcReceipt = await depositEurcTx.wait();
-    if (depositEurcReceipt?.status !== 1) {
-      throw new Error(`EURC vault deposit failed. Status: ${depositEurcReceipt?.status}`);
+    console.log(`[MORPHO] Executing GauntletUSDC vault deposit: ${ethers.formatUnits(gauntletAmountWei, 6)} USDC`);
+    const depositGauntletTx = await gauntletVault.deposit(gauntletAmountWei, walletAddress, { gasPrice });
+    const depositGauntletReceipt = await depositGauntletTx.wait();
+    if (depositGauntletReceipt?.status !== 1) {
+      throw new Error(`GauntletUSDC vault deposit failed. Status: ${depositGauntletReceipt?.status}`);
     }
     
     // Capture shares returned from deposit (per Morpho docs pattern)
     // The deposit function returns the number of shares minted
-    let eurcSharesMinted: bigint | null = null;
+    let gauntletSharesMinted: bigint | null = null;
     try {
       // Parse the transaction receipt logs to get shares minted
       // ERC4626 Deposit event: Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)
       const depositInterface = new ethers.Interface(['event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)']);
-      const depositLog = depositEurcReceipt.logs.find(log => {
+      const depositLog = depositGauntletReceipt.logs.find(log => {
         try {
           const parsed = depositInterface.parseLog(log);
           return parsed && parsed.args.owner.toLowerCase() === walletAddress.toLowerCase();
@@ -3223,8 +3195,8 @@ export async function executeMorphoFromHubWallet(
       });
       if (depositLog) {
         const parsed = depositInterface.parseLog(depositLog);
-        eurcSharesMinted = parsed.args.shares;
-        console.log(`[MORPHO] EURC shares minted (from event): ${eurcSharesMinted.toString()}`);
+        gauntletSharesMinted = parsed.args.shares;
+        console.log(`[MORPHO] GauntletUSDC shares minted (from event): ${gauntletSharesMinted.toString()}`);
       }
     } catch (eventError) {
       console.warn(`[MORPHO] ⚠️ Could not parse deposit event, will verify via balance check`);
@@ -3232,150 +3204,150 @@ export async function executeMorphoFromHubWallet(
     
     // Verify shares received and enforce slippage tolerance (per Morpho docs)
     // Use low-level call to avoid ABI decoding issues
-    if (eurcSharesBefore !== null) {
+    if (gauntletSharesBefore !== null) {
       try {
         const balanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
         const balanceData = balanceOfInterface.encodeFunctionData('balanceOf', [walletAddress]);
         const balanceResult = await provider.call({
-          to: MORPHO_EURC_VAULT,
+          to: MORPHO_GAUNTLET_USDC_VAULT,
           data: balanceData
         });
         if (balanceResult && balanceResult !== '0x' && balanceResult.length > 2) {
-          const eurcSharesAfter = ethers.getBigInt(balanceResult);
-          const eurcSharesReceived = eurcSharesAfter - eurcSharesBefore;
-          console.log(`[MORPHO] EURC shares received: ${eurcSharesReceived.toString()} (balance: ${eurcSharesAfter.toString()})`);
+          const gauntletSharesAfter = ethers.getBigInt(balanceResult);
+          const gauntletSharesReceived = gauntletSharesAfter - gauntletSharesBefore;
+          console.log(`[MORPHO] GauntletUSDC shares received: ${gauntletSharesReceived.toString()} (balance: ${gauntletSharesAfter.toString()})`);
           
           // Enforce slippage tolerance per Morpho docs (1% tolerance = 99% of expected)
-          if (expectedEurcShares !== null) {
-            const minShares = expectedEurcShares * 99n / 100n;
-            if (eurcSharesReceived < minShares) {
-              console.error(`[MORPHO] ❌ Slippage tolerance exceeded: received ${eurcSharesReceived}, expected at least ${minShares}`);
+          if (expectedGauntletShares !== null) {
+            const minShares = expectedGauntletShares * 99n / 100n;
+            if (gauntletSharesReceived < minShares) {
+              console.error(`[MORPHO] ❌ Slippage tolerance exceeded: received ${gauntletSharesReceived}, expected at least ${minShares}`);
               return { 
                 success: false, 
-                error: `EURC deposit slippage tolerance exceeded: received ${eurcSharesReceived} shares, expected at least ${minShares} (1% tolerance)` 
+                error: `GauntletUSDC deposit slippage tolerance exceeded: received ${gauntletSharesReceived} shares, expected at least ${minShares} (1% tolerance)` 
               };
             }
-            console.log(`[MORPHO] ✅ EURC slippage check passed: ${eurcSharesReceived} >= ${minShares}`);
+            console.log(`[MORPHO] ✅ GauntletUSDC slippage check passed: ${gauntletSharesReceived} >= ${minShares}`);
           }
         } else {
-          console.warn(`[MORPHO] ⚠️ Could not verify EURC shares after deposit (empty response)`);
+          console.warn(`[MORPHO] ⚠️ Could not verify GauntletUSDC shares after deposit (empty response)`);
         }
       } catch (balanceError: any) {
-        console.warn(`[MORPHO] ⚠️ Could not verify EURC shares after deposit: ${balanceError?.message || String(balanceError)}`);
+        console.warn(`[MORPHO] ⚠️ Could not verify GauntletUSDC shares after deposit: ${balanceError?.message || String(balanceError)}`);
         // If we have shares from event, use that for verification
-        if (eurcSharesMinted !== null && expectedEurcShares !== null) {
-          const minShares = expectedEurcShares * 99n / 100n;
-          if (eurcSharesMinted < minShares) {
+        if (gauntletSharesMinted !== null && expectedGauntletShares !== null) {
+          const minShares = expectedGauntletShares * 99n / 100n;
+          if (gauntletSharesMinted < minShares) {
             return { 
               success: false, 
-              error: `EURC deposit slippage tolerance exceeded: received ${eurcSharesMinted} shares, expected at least ${minShares} (1% tolerance)` 
+              error: `GauntletUSDC deposit slippage tolerance exceeded: received ${gauntletSharesMinted} shares, expected at least ${minShares} (1% tolerance)` 
             };
           }
         }
       }
     } else {
       // If we couldn't get shares before, use event data for slippage check
-      if (eurcSharesMinted !== null && expectedEurcShares !== null) {
-        const minShares = expectedEurcShares * 99n / 100n;
-        if (eurcSharesMinted < minShares) {
+      if (gauntletSharesMinted !== null && expectedGauntletShares !== null) {
+        const minShares = expectedGauntletShares * 99n / 100n;
+        if (gauntletSharesMinted < minShares) {
           return { 
             success: false, 
-            error: `EURC deposit slippage tolerance exceeded: received ${eurcSharesMinted} shares, expected at least ${minShares} (1% tolerance)` 
+            error: `GauntletUSDC deposit slippage tolerance exceeded: received ${gauntletSharesMinted} shares, expected at least ${minShares} (1% tolerance)` 
           };
         }
-        console.log(`[MORPHO] ✅ EURC slippage check passed (from event): ${eurcSharesMinted} >= ${minShares}`);
+        console.log(`[MORPHO] ✅ GauntletUSDC slippage check passed (from event): ${gauntletSharesMinted} >= ${minShares}`);
       } else {
-        console.warn(`[MORPHO] ⚠️ Skipping EURC slippage verification (insufficient data)`);
+        console.warn(`[MORPHO] ⚠️ Skipping GauntletUSDC slippage verification (insufficient data)`);
       }
     }
     
-    txHashes.push(depositEurcTx.hash);
-    console.log(`[MORPHO] ✅ EURC vault deposit confirmed: ${depositEurcTx.hash}`);
+    txHashes.push(depositGauntletTx.hash);
+    console.log(`[MORPHO] ✅ GauntletUSDC vault deposit confirmed: ${depositGauntletTx.hash}`);
 
-    // Step 2: Approve and deposit to DAI vault
-    console.log(`[MORPHO] Step 2: Depositing $${daiAmount} to Morpho Spark DAI vault...`);
+    // Step 2: Approve and deposit to HyperithmUSDC vault
+    console.log(`[MORPHO] Step 2: Depositing $${hyperithmAmount} to Morpho Spark HyperithmUSDC vault...`);
     
     // Preview deposit to estimate shares (slippage protection) - non-blocking
-    let expectedDaiShares: bigint | null = null;
+    let expectedHyperithmShares: bigint | null = null;
     try {
-      expectedDaiShares = await daiVault.previewDeposit(daiAmountWei);
-      console.log(`[MORPHO] Expected DAI shares: ${expectedDaiShares.toString()}`);
+      expectedHyperithmShares = await hyperithmVault.previewDeposit(hyperithmAmountWei);
+      console.log(`[MORPHO] Expected HyperithmUSDC shares: ${expectedHyperithmShares.toString()}`);
     } catch (previewError: any) {
-      console.warn(`[MORPHO] ⚠️ Could not preview DAI deposit (non-blocking): ${previewError?.message || String(previewError)}`);
+      console.warn(`[MORPHO] ⚠️ Could not preview HyperithmUSDC deposit (non-blocking): ${previewError?.message || String(previewError)}`);
       console.log(`[MORPHO] Proceeding with deposit without preview...`);
     }
     
-    // Check and approve USDC for DAI vault (using low-level call)
-    let daiAllowance: bigint;
+    // Check and approve USDC for HyperithmUSDC vault (using low-level call)
+    let hyperithmAllowance: bigint;
     try {
       const allowanceInterface = new ethers.Interface(['function allowance(address owner, address spender) view returns (uint256)']);
-      const allowanceData = allowanceInterface.encodeFunctionData('allowance', [hubWallet.address, MORPHO_DAI_VAULT]);
+      const allowanceData = allowanceInterface.encodeFunctionData('allowance', [hubWallet.address, MORPHO_HYPERITHM_USDC_VAULT]);
       const allowanceResult = await provider.call({
         to: USDC_ARBITRUM,
         data: allowanceData
       });
       if (allowanceResult && allowanceResult !== '0x' && allowanceResult.length > 2) {
-        daiAllowance = ethers.getBigInt(allowanceResult);
+        hyperithmAllowance = ethers.getBigInt(allowanceResult);
       } else {
         console.warn(`[MORPHO] ⚠️ Allowance check returned empty data, assuming 0`);
-        daiAllowance = 0n;
+        hyperithmAllowance = 0n;
       }
     } catch (allowanceError: any) {
       console.warn(`[MORPHO] ⚠️ Failed to check allowance (non-blocking): ${allowanceError?.message || String(allowanceError)}`);
-      daiAllowance = 0n; // Assume no allowance if check fails
+      hyperithmAllowance = 0n; // Assume no allowance if check fails
     }
-    if (daiAllowance < daiAmountWei) {
-      console.log('[MORPHO] Approving USDC for DAI vault...');
-      const approveDaiTx = await usdcContract.approve(MORPHO_DAI_VAULT, ethers.MaxUint256, { gasPrice });
-      const approveDaiReceipt = await approveDaiTx.wait();
-      if (approveDaiReceipt?.status !== 1) {
-        throw new Error(`USDC approval for DAI vault failed. Status: ${approveDaiReceipt?.status}`);
+    if (hyperithmAllowance < hyperithmAmountWei) {
+      console.log('[MORPHO] Approving USDC for HyperithmUSDC vault...');
+      const approveHyperithmTx = await usdcContract.approve(MORPHO_HYPERITHM_USDC_VAULT, ethers.MaxUint256, { gasPrice });
+      const approveHyperithmReceipt = await approveHyperithmTx.wait();
+      if (approveHyperithmReceipt?.status !== 1) {
+        throw new Error(`USDC approval for HyperithmUSDC vault failed. Status: ${approveHyperithmReceipt?.status}`);
       }
-      console.log('[MORPHO] DAI vault approval confirmed');
+      console.log('[MORPHO] HyperithmUSDC vault approval confirmed');
     }
 
     // Get balance before deposit to calculate shares received (non-blocking)
     // Use low-level call to avoid ABI decoding issues
-    let daiSharesBefore: bigint | null = null;
+    let hyperithmSharesBefore: bigint | null = null;
     try {
-      console.log(`[MORPHO] Calling balanceOf on DAI vault at ${MORPHO_DAI_VAULT} for wallet ${walletAddress}...`);
+      console.log(`[MORPHO] Calling balanceOf on HyperithmUSDC vault at ${MORPHO_HYPERITHM_USDC_VAULT} for wallet ${walletAddress}...`);
       const balanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
       const balanceData = balanceOfInterface.encodeFunctionData('balanceOf', [walletAddress]);
       const balanceResult = await provider.call({
-        to: MORPHO_DAI_VAULT,
+        to: MORPHO_HYPERITHM_USDC_VAULT,
         data: balanceData
       });
       if (balanceResult && balanceResult !== '0x' && balanceResult.length > 2) {
-        daiSharesBefore = ethers.getBigInt(balanceResult);
-        console.log(`[MORPHO] DAI shares before deposit: ${daiSharesBefore.toString()}`);
+        hyperithmSharesBefore = ethers.getBigInt(balanceResult);
+        console.log(`[MORPHO] HyperithmUSDC shares before deposit: ${hyperithmSharesBefore.toString()}`);
       } else {
-        console.warn(`[MORPHO] ⚠️ DAI vault balanceOf returned empty data, assuming 0 shares`);
-        daiSharesBefore = 0n;
+        console.warn(`[MORPHO] ⚠️ HyperithmUSDC vault balanceOf returned empty data, assuming 0 shares`);
+        hyperithmSharesBefore = 0n;
       }
     } catch (balanceError: any) {
       const errorMsg = balanceError?.message || String(balanceError);
       const errorCode = balanceError?.code || 'UNKNOWN';
-      console.error(`[MORPHO] ❌ balanceOf failed for DAI vault: ${errorMsg} (code: ${errorCode})`);
-      console.error(`[MORPHO] Vault address: ${MORPHO_DAI_VAULT}, Wallet: ${walletAddress}`);
-      console.warn(`[MORPHO] ⚠️ Could not get DAI shares before deposit (non-blocking) - assuming 0 and proceeding...`);
-      daiSharesBefore = 0n; // Assume 0 shares if we can't check
+      console.error(`[MORPHO] ❌ balanceOf failed for HyperithmUSDC vault: ${errorMsg} (code: ${errorCode})`);
+      console.error(`[MORPHO] Vault address: ${MORPHO_HYPERITHM_USDC_VAULT}, Wallet: ${walletAddress}`);
+      console.warn(`[MORPHO] ⚠️ Could not get HyperithmUSDC shares before deposit (non-blocking) - assuming 0 and proceeding...`);
+      hyperithmSharesBefore = 0n; // Assume 0 shares if we can't check
     }
     
-    // Deposit to DAI vault (Morpho V2 ERC-4626: deposit assets, receive shares)
+    // Deposit to HyperithmUSDC vault (Morpho V2 ERC-4626: deposit assets, receive shares)
     // Per Morpho docs: deposit(uint256 assets, address receiver) returns (uint256 shares)
     // onBehalf/receiver is the user wallet address so they receive the vault shares
-    console.log(`[MORPHO] Executing DAI vault deposit: ${ethers.formatUnits(daiAmountWei, 6)} USDC`);
-    const depositDaiTx = await daiVault.deposit(daiAmountWei, walletAddress, { gasPrice });
-    const depositDaiReceipt = await depositDaiTx.wait();
-    if (depositDaiReceipt?.status !== 1) {
-      throw new Error(`DAI vault deposit failed. Status: ${depositDaiReceipt?.status}`);
+    console.log(`[MORPHO] Executing HyperithmUSDC vault deposit: ${ethers.formatUnits(hyperithmAmountWei, 6)} USDC`);
+    const depositHyperithmTx = await hyperithmVault.deposit(hyperithmAmountWei, walletAddress, { gasPrice });
+    const depositHyperithmReceipt = await depositHyperithmTx.wait();
+    if (depositHyperithmReceipt?.status !== 1) {
+      throw new Error(`HyperithmUSDC vault deposit failed. Status: ${depositHyperithmReceipt?.status}`);
     }
     
     // Capture shares returned from deposit (per Morpho docs pattern)
-    let daiSharesMinted: bigint | null = null;
+    let hyperithmSharesMinted: bigint | null = null;
     try {
       const depositInterface = new ethers.Interface(['event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)']);
-      const depositLog = depositDaiReceipt.logs.find(log => {
+      const depositLog = depositHyperithmReceipt.logs.find(log => {
         try {
           const parsed = depositInterface.parseLog(log);
           return parsed && parsed.args.owner.toLowerCase() === walletAddress.toLowerCase();
@@ -3385,8 +3357,8 @@ export async function executeMorphoFromHubWallet(
       });
       if (depositLog) {
         const parsed = depositInterface.parseLog(depositLog);
-        daiSharesMinted = parsed.args.shares;
-        console.log(`[MORPHO] DAI shares minted (from event): ${daiSharesMinted.toString()}`);
+        hyperithmSharesMinted = parsed.args.shares;
+        console.log(`[MORPHO] HyperithmUSDC shares minted (from event): ${hyperithmSharesMinted.toString()}`);
       }
     } catch (eventError) {
       console.warn(`[MORPHO] ⚠️ Could not parse deposit event, will verify via balance check`);
@@ -3394,71 +3366,71 @@ export async function executeMorphoFromHubWallet(
     
     // Verify shares received and enforce slippage tolerance (per Morpho docs)
     // Use low-level call to avoid ABI decoding issues
-    if (daiSharesBefore !== null) {
+    if (hyperithmSharesBefore !== null) {
       try {
         const balanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
         const balanceData = balanceOfInterface.encodeFunctionData('balanceOf', [walletAddress]);
         const balanceResult = await provider.call({
-          to: MORPHO_DAI_VAULT,
+          to: MORPHO_HYPERITHM_USDC_VAULT,
           data: balanceData
         });
         if (balanceResult && balanceResult !== '0x' && balanceResult.length > 2) {
-          const daiSharesAfter = ethers.getBigInt(balanceResult);
-          const daiSharesReceived = daiSharesAfter - daiSharesBefore;
-          console.log(`[MORPHO] DAI shares received: ${daiSharesReceived.toString()} (balance: ${daiSharesAfter.toString()})`);
+          const hyperithmSharesAfter = ethers.getBigInt(balanceResult);
+          const hyperithmSharesReceived = hyperithmSharesAfter - hyperithmSharesBefore;
+          console.log(`[MORPHO] HyperithmUSDC shares received: ${hyperithmSharesReceived.toString()} (balance: ${hyperithmSharesAfter.toString()})`);
           
           // Enforce slippage tolerance per Morpho docs (1% tolerance = 99% of expected)
-          if (expectedDaiShares !== null) {
-            const minShares = expectedDaiShares * 99n / 100n;
-            if (daiSharesReceived < minShares) {
-              console.error(`[MORPHO] ❌ Slippage tolerance exceeded: received ${daiSharesReceived}, expected at least ${minShares}`);
+          if (expectedHyperithmShares !== null) {
+            const minShares = expectedHyperithmShares * 99n / 100n;
+            if (hyperithmSharesReceived < minShares) {
+              console.error(`[MORPHO] ❌ Slippage tolerance exceeded: received ${hyperithmSharesReceived}, expected at least ${minShares}`);
               return { 
                 success: false, 
-                error: `DAI deposit slippage tolerance exceeded: received ${daiSharesReceived} shares, expected at least ${minShares} (1% tolerance)` 
+                error: `HyperithmUSDC deposit slippage tolerance exceeded: received ${hyperithmSharesReceived} shares, expected at least ${minShares} (1% tolerance)` 
               };
             }
-            console.log(`[MORPHO] ✅ DAI slippage check passed: ${daiSharesReceived} >= ${minShares}`);
+            console.log(`[MORPHO] ✅ HyperithmUSDC slippage check passed: ${hyperithmSharesReceived} >= ${minShares}`);
           }
         } else {
-          console.warn(`[MORPHO] ⚠️ Could not verify DAI shares after deposit (empty response)`);
+          console.warn(`[MORPHO] ⚠️ Could not verify HyperithmUSDC shares after deposit (empty response)`);
         }
       } catch (balanceError: any) {
-        console.warn(`[MORPHO] ⚠️ Could not verify DAI shares after deposit: ${balanceError?.message || String(balanceError)}`);
+        console.warn(`[MORPHO] ⚠️ Could not verify HyperithmUSDC shares after deposit: ${balanceError?.message || String(balanceError)}`);
         // If we have shares from event, use that for verification
-        if (daiSharesMinted !== null && expectedDaiShares !== null) {
-          const minShares = expectedDaiShares * 99n / 100n;
-          if (daiSharesMinted < minShares) {
+        if (hyperithmSharesMinted !== null && expectedHyperithmShares !== null) {
+          const minShares = expectedHyperithmShares * 99n / 100n;
+          if (hyperithmSharesMinted < minShares) {
             return { 
               success: false, 
-              error: `DAI deposit slippage tolerance exceeded: received ${daiSharesMinted} shares, expected at least ${minShares} (1% tolerance)` 
+              error: `HyperithmUSDC deposit slippage tolerance exceeded: received ${hyperithmSharesMinted} shares, expected at least ${minShares} (1% tolerance)` 
             };
           }
         }
       }
     } else {
       // If we couldn't get shares before, use event data for slippage check
-      if (daiSharesMinted !== null && expectedDaiShares !== null) {
-        const minShares = expectedDaiShares * 99n / 100n;
-        if (daiSharesMinted < minShares) {
+      if (hyperithmSharesMinted !== null && expectedHyperithmShares !== null) {
+        const minShares = expectedHyperithmShares * 99n / 100n;
+        if (hyperithmSharesMinted < minShares) {
           return { 
             success: false, 
-            error: `DAI deposit slippage tolerance exceeded: received ${daiSharesMinted} shares, expected at least ${minShares} (1% tolerance)` 
+            error: `HyperithmUSDC deposit slippage tolerance exceeded: received ${hyperithmSharesMinted} shares, expected at least ${minShares} (1% tolerance)` 
           };
         }
-        console.log(`[MORPHO] ✅ DAI slippage check passed (from event): ${daiSharesMinted} >= ${minShares}`);
+        console.log(`[MORPHO] ✅ HyperithmUSDC slippage check passed (from event): ${hyperithmSharesMinted} >= ${minShares}`);
       } else {
-        console.warn(`[MORPHO] ⚠️ Skipping DAI slippage verification (insufficient data)`);
+        console.warn(`[MORPHO] ⚠️ Skipping HyperithmUSDC slippage verification (insufficient data)`);
       }
     }
     
-    txHashes.push(depositDaiTx.hash);
-    console.log(`[MORPHO] ✅ DAI vault deposit confirmed: ${depositDaiTx.hash}`);
+    txHashes.push(depositHyperithmTx.hash);
+    console.log(`[MORPHO] ✅ HyperithmUSDC vault deposit confirmed: ${depositHyperithmTx.hash}`);
 
     // Return success with combined transaction info
     // Use the last transaction hash as the primary hash
     return {
       success: true,
-      txHash: depositDaiTx.hash, // Primary hash (can also return array if needed)
+      txHash: depositHyperithmTx.hash, // Primary hash (can also return array if needed)
     };
 
   } catch (error) {
@@ -4658,8 +4630,8 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
   let aaveAmount: number;
   let gmxAmount: number;
   let morphoAmount: number;
-  let morphoEurcAmount: number;
-  let morphoDaiAmount: number;
+  let morphoGauntletAmount: number;
+  let morphoHyperithmAmount: number;
 
   // Use profile percentages for allocation
   aaveAmount = (depositAmount * profile.aavePercent) / 100;
@@ -4670,13 +4642,13 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
   const morphoDaiPercent = 'morphoDaiPercent' in profile ? profile.morphoDaiPercent : 50;
   morphoAmount = (depositAmount * morphoPercent) / 100;
   
-  // Calculate Morpho split (50/50 EURC/DAI)
+  // Calculate Morpho split (50/50 GauntletUSDC/HyperithmUSDC)
   if (morphoAmount > 0) {
-    morphoEurcAmount = (morphoAmount * morphoEurcPercent) / 100;
-    morphoDaiAmount = (morphoAmount * morphoDaiPercent) / 100;
+    morphoGauntletAmount = (morphoAmount * morphoEurcPercent) / 100;
+    morphoHyperithmAmount = (morphoAmount * morphoDaiPercent) / 100;
   } else {
-    morphoEurcAmount = 0;
-    morphoDaiAmount = 0;
+    morphoGauntletAmount = 0;
+    morphoHyperithmAmount = 0;
   }
   
   console.log(`[Webhook] ===== ALLOCATION =====`);
@@ -4692,15 +4664,15 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
   }));
   console.log(`[Webhook] Split: Aave=$${aaveAmount} (${profile.aavePercent}%), GMX=$${gmxAmount} (${profile.gmxPercent}%), Morpho=$${morphoAmount} (${morphoPercent}%)`);
   if (morphoAmount > 0) {
-    console.log(`[Webhook] Morpho split: EURC=$${morphoEurcAmount} (${morphoEurcPercent}%), DAI=$${morphoDaiAmount} (${morphoDaiPercent}%)`);
+    console.log(`[Webhook] Morpho split: GauntletUSDC=$${morphoGauntletAmount} (${morphoEurcPercent}%), HyperithmUSDC=$${morphoHyperithmAmount} (${morphoDaiPercent}%)`);
   }
   console.log(`[Webhook] Total: $${aaveAmount + gmxAmount + morphoAmount} (should equal $${depositAmount})`);
   
   // DEBUG: Log Morpho execution decision
   console.log(`[WEBHOOK_DEBUG] Morpho execution check:`, {
     morphoAmount,
-    morphoEurcAmount,
-    morphoDaiAmount,
+    morphoGauntletAmount,
+    morphoHyperithmAmount,
     profileMorphoPercent: morphoPercent,
     riskProfile,
     shouldExecute: morphoAmount > 0,
@@ -5317,14 +5289,14 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
       console.log(`[Webhook] Skipping Aave: aaveAmount is 0 or negative`);
     }
 
-    // Execute Morpho strategy (50/50 EURC + DAI)
+    // Execute Morpho strategy (50/50 GauntletUSDC + HyperithmUSDC)
     // CRITICAL: Morpho execution MUST happen for morpho profile, even if other strategies failed
     console.log(`[Webhook] ===== MORPHO EXECUTION CHECK =====`);
     console.log(`[Webhook] riskProfile: "${riskProfile}"`);
     console.log(`[Webhook] isMorphoProfile: ${isMorphoProfile}`);
     console.log(`[Webhook] morphoAmount: $${morphoAmount}`);
-    console.log(`[Webhook] morphoEurcAmount: $${morphoEurcAmount}`);
-    console.log(`[Webhook] morphoDaiAmount: $${morphoDaiAmount}`);
+    console.log(`[Webhook] morphoGauntletAmount: $${morphoGauntletAmount}`);
+    console.log(`[Webhook] morphoHyperithmAmount: $${morphoHyperithmAmount}`);
     console.log(`[Webhook] profileMorphoPercent: ${morphoPercent}%`);
     console.log(`[Webhook] paymentStatus: ${status}`);
     console.log(`[Webhook] shouldExecute: ${morphoAmount > 0 && status === 'COMPLETED'}`);
@@ -5333,7 +5305,7 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
     
     if (morphoAmount > 0) {
       console.log(`[Webhook] ===== MORPHO EXECUTION =====`);
-      console.log(`[Webhook] Executing Morpho: $${morphoAmount} (EURC: $${morphoEurcAmount}, DAI: $${morphoDaiAmount})`);
+      console.log(`[Webhook] Executing Morpho: $${morphoAmount} (GauntletUSDC: $${morphoGauntletAmount}, HyperithmUSDC: $${morphoHyperithmAmount})`);
       console.log(`[Webhook] Wallet address: ${walletAddress}`);
       console.log(`[Webhook] Payment ID: ${lookupPaymentId}`);
       console.log(`[Webhook] ARBITRUM_HUB_WALLET_PRIVATE_KEY configured: ${!!ARBITRUM_HUB_WALLET_PRIVATE_KEY && ARBITRUM_HUB_WALLET_PRIVATE_KEY.length > 0}`);
@@ -5343,8 +5315,8 @@ async function handlePaymentCleared(payment: SquarePayment): Promise<{
         console.log(`[Webhook] Calling executeMorphoFromHubWallet...`);
         morphoResult = await executeMorphoFromHubWallet(
           walletAddress,
-          morphoEurcAmount,
-          morphoDaiAmount,
+          morphoGauntletAmount,
+          morphoHyperithmAmount,
           lookupPaymentId
         );
         

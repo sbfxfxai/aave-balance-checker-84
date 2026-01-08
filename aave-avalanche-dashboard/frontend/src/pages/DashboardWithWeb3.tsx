@@ -8,6 +8,7 @@ import { Web3Providers } from '@/components/Web3Providers';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { PrivyLogin } from '@/components/PrivyLogin';
 import { OptimizedLogo } from '@/components/OptimizedLogo';
+import { ConnectWalletButton } from '@/components/ConnectWalletButton';
 
 function DashboardContent() {
 
@@ -26,20 +27,23 @@ function DashboardContent() {
                 <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Savings & Lending</p>
               </div>
             </div>
-            <nav className="flex items-center gap-1 sm:gap-2" aria-label="Main navigation">
-              <Link to="/gmx" aria-label="Go to Bitcoin trading page">
-                <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Bitcoin">
-                  <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
-                  <span className="hidden sm:inline">Bitcoin</span>
-                </Button>
-              </Link>
-              <Link to="/stack" aria-label="Go to Auto Invest page">
-                <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Auto Invest">
-                  <Zap className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
-                  <span className="hidden sm:inline">Auto</span>
-                </Button>
-              </Link>
-            </nav>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <ConnectWalletButton />
+              <nav className="flex items-center gap-1 sm:gap-2" aria-label="Main navigation">
+                <Link to="/gmx" aria-label="Go to Bitcoin trading page">
+                  <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Bitcoin">
+                    <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
+                    <span className="hidden sm:inline">Bitcoin</span>
+                  </Button>
+                </Link>
+                <Link to="/stack" aria-label="Go to Auto Invest page">
+                  <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Auto Invest">
+                    <Zap className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
+                    <span className="hidden sm:inline">Auto</span>
+                  </Button>
+                </Link>
+              </nav>
+            </div>
           </div>
         </div>
       </header>

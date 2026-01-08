@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, startTransition, useMemo } from 'react';
 import { useAccount } from 'wagmi';
-// @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Wallet as EthersWallet } from 'ethers';
 import {
@@ -21,6 +20,24 @@ import {
 } from '@/lib/square';
 import { SquarePaymentForm } from './SquarePaymentForm';
 import { ERGC_DISCOUNT } from '@/config/contracts';
+import { normalizeWalletAddress, getApiBaseUrl } from '@/lib/utils';
+import { storage } from '@/lib/storage';
+import {
+  ERGC_CONSTANTS,
+  DEPOSIT_LIMITS,
+  COOLDOWN_CONSTANTS,
+  PRICE_CONSTANTS,
+  API_TIMEOUTS,
+  UI_CONSTANTS,
+} from '@/lib/constants';
+import {
+  calculatePlatformFeeRate,
+  calculateEffectiveFeeRate,
+  calculatePlatformFee,
+  calculateTotalAmount,
+  isFreeDeposit,
+} from '@/lib/fees';
+import { createComponentLogger } from '@/lib/logger';
 
 interface DepositModalProps {
   isOpen: boolean;
@@ -40,6 +57,9 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   onClose,
   riskProfile,
 }) => {
+  // Create component-specific logger
+  const log = createComponentLogger('DepositModal');
+  
   const { address: wagmiAddress, isConnected: isWagmiConnected } = useAccount();
   const { authenticated, user, ready } = usePrivy();
   const { wallets } = useWallets();
@@ -50,12 +70,12 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   const [paymentNonce, setPaymentNonce] = useState<string | null>(null);
   const [squareConfig, setSquareConfig] = useState(getSquareConfig());
   const [avaxPrice, setAvaxPrice] = useState<number | null>(null);
-  const [includeErgc, setIncludeErgc] = useState(false); // Buy 100 ERGC option
   const [userErgcBalance, setUserErgcBalance] = useState(0); // User's ERGC balance
   const [isCheckingErgc, setIsCheckingErgc] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [cooldownTime, setCooldownTime] = useState<number>(0);
-  const [storedPaymentId, setStoredPaymentId] = useState<string | null>(null); // Store paymentId from first step
+  const [storedPaymentId, setStoredPaymentId] = useState<string | null>(null); // Store paymentId from first step (for UI display)
+  const paymentIdRef = useRef<string | null>(null); // CRITICAL: Ref stores paymentId synchronously to avoid race conditions
   const [hubUsdcBalance, setHubUsdcBalance] = useState<number | null>(null); // Hub wallet USDC balance
   const [isLoadingHubBalance, setIsLoadingHubBalance] = useState(false);
   const { toast } = useToast();
@@ -76,77 +96,107 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   // Check if user has any wallet connected (Privy or wagmi)
   const isConnected = Boolean(connectedAddress && (authenticated || isWagmiConnected));
 
-  // ERGC purchase cost ($10 for 100 ERGC)
-  const ergcCost = 10;
-  const ergcAmount = 100;
-  
-  // Check if user has enough ERGC for discount (need at least 100)
-  const hasErgcForDiscount = userErgcBalance >= 100;
+  // Check if user has enough ERGC for free deposits
+  const hasErgcForFreeDeposit = userErgcBalance >= ERGC_CONSTANTS.FREE_DEPOSIT_THRESHOLD;
 
-  // Calculate platform fee based on deposit amount tiers
-  const getPlatformFeeRate = (depositAmount: number) => {
-    if (depositAmount >= 1000) return 0.033; // 3.3%
-    if (depositAmount >= 100) return 0.042; // 4.2%
-    if (depositAmount >= 50) return 0.055; // 5.5%
-    if (depositAmount >= 20) return 0.074; // 7.4%
-    return 0.074; // Default 7.4% for amounts < $20
-  };
+  // Parse deposit amount once
+  const depositAmount = parseFloat(amount) || 0;
 
-  const platformFeeRate = getPlatformFeeRate(parseFloat(amount) || 0);
-  
-  // Calculate ERGC discount rates (fixed rates based on tier)
-  const getErgcDiscountRate = (baseRate: number) => {
-    const depositAmount = parseFloat(amount) || 0;
-    if (depositAmount >= 1000) return 0.031; // Fixed 3.1%
-    if (depositAmount >= 100) return 0.04; // Fixed 4.0%
-    if (depositAmount >= 50) return 0.045; // Fixed 4.5%
-    if (depositAmount >= 20) return 0.055; // Fixed 5.5%
-    return 0.055; // Fixed 5.5% for amounts < $20
-  };
+  // Memoize fee calculations to prevent expensive recalculations on every render
+  // Only recalculates when depositAmount or hasErgcForFreeDeposit changes
+  const feeDetails = useMemo(() => {
+    const platformFeeRate = calculatePlatformFeeRate(depositAmount);
+    const effectivePlatformFeeRate = calculateEffectiveFeeRate(depositAmount, hasErgcForFreeDeposit);
+    const platformFee = calculatePlatformFee(depositAmount, hasErgcForFreeDeposit);
+    const totalAmount = calculateTotalAmount(depositAmount, hasErgcForFreeDeposit);
+    const isFree = isFreeDeposit(depositAmount, hasErgcForFreeDeposit);
 
-  const effectivePlatformFeeRate = (includeErgc || hasErgcForDiscount) ? getErgcDiscountRate(platformFeeRate) : platformFeeRate;
-  
-  // Debug logging for fee calculation
-  console.log(`[DepositModal] Fee calculation debug:`, {
-    amount: parseFloat(amount) || 0,
+    // Debug logging for fee calculation (only when values change)
+    log.debug('Fee calculation', {
+      amount: depositAmount,
+      platformFeeRate,
+      hasErgcForFreeDeposit,
+      userErgcBalance,
+      effectivePlatformFeeRate,
+      platformFee,
+      totalAmount,
+      isFreeDeposit: isFree,
+    });
+
+    return {
+      platformFeeRate,
+      effectivePlatformFeeRate,
+      platformFee,
+      totalAmount,
+      isFree,
+    };
+  }, [depositAmount, hasErgcForFreeDeposit, userErgcBalance]);
+
+  // Destructure fee details for easier access
+  const {
     platformFeeRate,
-    hasErgcForDiscount,
-    userErgcBalance,
-    includeErgc,
-    effectivePlatformFeeRate
-  });
+    effectivePlatformFeeRate,
+    platformFee,
+    totalAmount,
+    isFree,
+  } = feeDetails;
 
   // Cooldown logic - 10 minutes between deposits
   useEffect(() => {
     if (!isOpen) return;
 
+    let cancelled = false;
+    let timeoutId: NodeJS.Timeout | null = null;
+
     const checkCooldown = () => {
-      const lastDepositTime = localStorage.getItem(`lastDeposit_${connectedAddress}`);
-      if (lastDepositTime) {
-        const timeSinceLastDeposit = Date.now() - parseInt(lastDepositTime);
-        const cooldownPeriod = 10 * 60 * 1000; // 10 minutes in milliseconds
+      // Check if component is still mounted
+      if (cancelled || !connectedAddress) return;
+
+      const lastDepositTime = storage.getLastDepositTime(connectedAddress);
+      if (lastDepositTime !== null) {
+        const timeSinceLastDeposit = Date.now() - lastDepositTime;
+        const cooldownPeriod = COOLDOWN_CONSTANTS.PERIOD_MS;
         const remainingCooldown = Math.max(0, cooldownPeriod - timeSinceLastDeposit);
         
-        setCooldownTime(remainingCooldown);
+        if (!cancelled) {
+          setCooldownTime(remainingCooldown);
+        }
         
-        if (remainingCooldown > 0) {
-          const timer = setTimeout(() => {
-            setCooldownTime(0);
-          }, remainingCooldown);
+        if (remainingCooldown > 0 && !cancelled) {
+          // Clear any existing timeout
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
           
-          return () => clearTimeout(timer);
+          timeoutId = setTimeout(() => {
+            if (!cancelled) {
+              setCooldownTime(0);
+            }
+          }, remainingCooldown);
         }
       } else {
-        setCooldownTime(0);
+        if (!cancelled) {
+          setCooldownTime(0);
+        }
       }
     };
 
     checkCooldown();
     
-    // Update cooldown every second
-    const interval = setInterval(checkCooldown, 1000);
+    // Update cooldown at regular interval
+    const interval = setInterval(() => {
+      if (!cancelled) {
+        checkCooldown();
+      }
+    }, COOLDOWN_CONSTANTS.CHECK_INTERVAL_MS);
     
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
   }, [isOpen, connectedAddress]);
 
   useEffect(() => {
@@ -172,7 +222,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
           setIsConfigured(configured);
           
           if (!configured) {
-            console.warn('[DepositModal] Square config incomplete:', {
+            log.warn('Square config incomplete', {
               hasAppId,
               hasLocationId,
               configAppId: !!resolvedConfig.applicationId,
@@ -180,7 +230,9 @@ export const DepositModal: React.FC<DepositModalProps> = ({
             });
           }
         } catch (error) {
-          console.error('[DepositModal] Error loading Square config:', error);
+          log.error('Error loading Square config', error);
+          if (cancelled) return;
+          
           // Fallback to env vars if API fails
           const hasAppId = !!import.meta.env.VITE_SQUARE_APPLICATION_ID;
           const hasLocationId = !!import.meta.env.VITE_SQUARE_LOCATION_ID;
@@ -189,16 +241,28 @@ export const DepositModal: React.FC<DepositModalProps> = ({
 
         // Fetch AVAX price for fee calculation
         try {
-          const priceResponse = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=avalanche-2&vs_currencies=usd');
+          const priceResponse = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=avalanche-2&vs_currencies=usd', {
+            signal: AbortSignal.timeout(API_TIMEOUTS.SHORT),
+          });
+          
+          if (!priceResponse.ok) {
+            throw new Error(`AVAX price API returned ${priceResponse.status}: ${priceResponse.statusText}`);
+          }
+          
           const priceData = await priceResponse.json();
-          if (!cancelled && priceData['avalanche-2']?.usd) {
+          
+          if (cancelled) return;
+          
+          if (priceData && priceData['avalanche-2']?.usd && typeof priceData['avalanche-2'].usd === 'number') {
             setAvaxPrice(priceData['avalanche-2'].usd);
-            console.log('[DepositModal] AVAX price fetched:', priceData['avalanche-2'].usd);
+            log.info('AVAX price fetched', { price: priceData['avalanche-2'].usd });
+          } else {
+            throw new Error('Invalid AVAX price data format');
           }
         } catch (error) {
-          console.error('[DepositModal] Failed to fetch AVAX price:', error);
+          log.error('Failed to fetch AVAX price', error);
           if (!cancelled) {
-            setAvaxPrice(30); // Fallback price
+            setAvaxPrice(PRICE_CONSTANTS.AVAX_FALLBACK_PRICE_USD);
           }
         }
       };
@@ -211,72 +275,193 @@ export const DepositModal: React.FC<DepositModalProps> = ({
     }
   }, [isOpen, toast]);
 
-  // Check user's ERGC balance (discount if 100+)
+  // Reset paymentId ref when modal closes to prevent stale data
+  useEffect(() => {
+    if (!isOpen) {
+      paymentIdRef.current = null;
+      // Batch state updates to prevent unnecessary re-renders
+      startTransition(() => {
+        setStoredPaymentId(null);
+        setShowPaymentForm(false);
+        setPaymentSuccess(false);
+        setAmount('');
+        setIsProcessing(false);
+      });
+    }
+  }, [isOpen]);
+
+  // Check user's ERGC balance (free deposits if 100+)
   const checkUserErgcBalance = useCallback(async (walletAddress: string) => {
+    if (!walletAddress) {
+      log.warn('Cannot check ERGC balance: no wallet address');
+      return;
+    }
+    
     setIsCheckingErgc(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUTS.STANDARD);
+    
     try {
-      console.log(`[DepositModal] Checking ERGC balance for ${walletAddress}`);
-      const response = await fetch(`/api/ergc/balance?address=${walletAddress}`);
-      if (response.ok) {
-        const data = await response.json();
-        console.log(`[DepositModal] ERGC balance response:`, data);
-        setUserErgcBalance(data.balance || 0);
-        if (data.balance >= 100) {
-          toast({
-            title: 'ERGC Found!',
-            description: `You have ${data.balance} ERGC (100+ qualifies for discount).`,
-          });
-        }
+      log.debug('Checking ERGC balance', { walletAddress });
+      
+      const response = await fetch(`/api/ergc/balance?address=${walletAddress}`, {
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`ERGC balance API returned ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      // Check if request was aborted after JSON parse
+      if (controller.signal.aborted) {
+        return;
+      }
+      
+      // Validate response structure
+      if (data && typeof data === 'object') {
+        const balance = typeof data.balance === 'number' ? data.balance : 0;
+        log.debug('ERGC balance response', { balance, data });
+        
+        // Batch state update with toast notification
+        startTransition(() => {
+          setUserErgcBalance(balance);
+          
+          if (balance >= ERGC_CONSTANTS.FREE_DEPOSIT_THRESHOLD) {
+            toast({
+              title: 'ERGC Found!',
+              description: `You have ${balance} ERGC. Deposits over $100 are FREE!`,
+            });
+          }
+        });
+      } else {
+        log.warn('Invalid ERGC balance response format', { data });
+        startTransition(() => {
+          setUserErgcBalance(0);
+        });
       }
     } catch (error) {
-      console.error('[DepositModal] Failed to check ERGC balance:', error);
+      // Check if request was aborted
+      if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+        log.warn('ERGC balance check aborted');
+        return; // Don't update state if aborted
+      }
+      
+      // Don't show error toast for network errors - it's not critical
+      log.error('Failed to check ERGC balance', error);
+      
+      // Reset to 0 on error (user doesn't have ERGC or check failed)
+      startTransition(() => {
+        setUserErgcBalance(0);
+      });
     } finally {
-      setIsCheckingErgc(false);
+      clearTimeout(timeoutId);
+      startTransition(() => {
+        setIsCheckingErgc(false);
+      });
     }
   }, [toast]);
 
   // Auto-check ERGC balance when wallet is connected
   useEffect(() => {
-    if (isOpen && isConnected && connectedAddress) {
-      checkUserErgcBalance(connectedAddress);
-    }
+    if (!isOpen || !isConnected || !connectedAddress) return;
+
+    // checkUserErgcBalance already has AbortController internally
+    // We can't cancel it from here, but it will abort on timeout or error
+    // The function itself handles cleanup properly
+    checkUserErgcBalance(connectedAddress);
+    
+    // No cleanup needed - checkUserErgcBalance handles its own cleanup
   }, [isOpen, isConnected, connectedAddress, checkUserErgcBalance]);
 
   // Fetch hub wallet USDC balance when modal opens
+  // For Morpho profile, check Arbitrum USDC balance; for others, check Avalanche
   useEffect(() => {
     if (!isOpen) return;
 
     let cancelled = false;
+    let controller: AbortController | null = null;
+    let timeoutId: NodeJS.Timeout | null = null;
+
+    // Determine which chain to check based on risk profile (outside try block for error handling)
+    const chain = riskProfile.id === 'morpho' ? 'arbitrum' : 'avalanche';
+
     const fetchHubBalance = async () => {
+      if (cancelled) return;
+      
       setIsLoadingHubBalance(true);
+      controller = new AbortController();
+      timeoutId = setTimeout(() => controller!.abort(), API_TIMEOUTS.STANDARD);
+      
       try {
-        const runtimeApiBaseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-        const response = await fetch(`${runtimeApiBaseUrl}/api/hub/balance`);
-        if (response.ok) {
-          const data = await response.json();
-          if (!cancelled && data.success && data.balance !== undefined) {
-            const balance = Math.floor(data.balance);
+        const apiBaseUrl = getApiBaseUrl();
+        const response = await fetch(`${apiBaseUrl}/api/hub/balance?chain=${chain}`, {
+          signal: controller.signal,
+        });
+        
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        
+        if (cancelled) return;
+        
+        if (!response.ok) {
+          throw new Error(`Hub balance API returned ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (cancelled) return;
+        
+        // Validate response structure
+        if (data && typeof data === 'object' && data.success && typeof data.balance === 'number') {
+          const balance = Math.floor(data.balance);
+          log.info('Hub USDC balance fetched', { chain, balance });
+          startTransition(() => {
             setHubUsdcBalance(balance);
-            console.log('[DepositModal] Hub USDC balance fetched:', balance);
-          } else if (!cancelled) {
-            console.warn('[DepositModal] Hub balance API returned unsuccessful response:', data);
-            setHubUsdcBalance(9999); // Fallback
-          }
+          });
         } else {
-          console.error('[DepositModal] Hub balance API returned error status:', response.status);
+          log.warn('Hub balance API returned invalid response', { chain, data });
           if (!cancelled) {
-            setHubUsdcBalance(9999); // Fallback
+            startTransition(() => {
+              setHubUsdcBalance(DEPOSIT_LIMITS.HUB_BALANCE_FALLBACK);
+            });
           }
         }
       } catch (error) {
-        console.error('[DepositModal] Failed to fetch hub balance:', error);
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        
+        if (cancelled) return;
+        
+        if (error instanceof Error) {
+          if (error.name === 'AbortError') {
+            log.warn('Hub balance fetch aborted', { chain });
+            return; // Don't update state if aborted
+          } else {
+            log.error('Failed to fetch hub balance', error, { chain });
+          }
+        } else {
+          log.error('Failed to fetch hub balance', error, { chain });
+        }
+        
+        // Fallback to default if fetch fails
         if (!cancelled) {
-          // Fallback to 9999 if fetch fails
-          setHubUsdcBalance(9999);
+          startTransition(() => {
+            setHubUsdcBalance(DEPOSIT_LIMITS.HUB_BALANCE_FALLBACK);
+          });
         }
       } finally {
         if (!cancelled) {
-          setIsLoadingHubBalance(false);
+          startTransition(() => {
+            setIsLoadingHubBalance(false);
+          });
         }
       }
     };
@@ -285,14 +470,21 @@ export const DepositModal: React.FC<DepositModalProps> = ({
 
     return () => {
       cancelled = true;
+      // Abort the fetch request if it's still in progress
+      if (controller) {
+        controller.abort();
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
-  }, [isOpen]);
+  }, [isOpen, riskProfile.id]); // Re-fetch when risk profile changes
 
-  // Calculate max deposit amount: min(hub balance, 9999)
-  // If hub balance is less than 9999, use hub balance; otherwise cap at 9999
+  // Calculate max deposit amount: min(hub balance, MAX_DEPOSIT)
+  // If hub balance is less than MAX_DEPOSIT, use hub balance; otherwise cap at MAX_DEPOSIT
   const maxDepositAmount = hubUsdcBalance !== null 
-    ? Math.min(hubUsdcBalance, 9999)
-    : 9999;
+    ? Math.min(hubUsdcBalance, DEPOSIT_LIMITS.MAX_DEPOSIT)
+    : DEPOSIT_LIMITS.MAX_DEPOSIT;
 
 
   const handleDeposit = async () => {
@@ -318,10 +510,11 @@ export const DepositModal: React.FC<DepositModalProps> = ({
     const depositAmount = parseFloat(amount);
     
     // Validate minimum and maximum limits
-    if (depositAmount < 10) {
+    // TEMPORARY: MIN_DEPOSIT is $1 for Morpho testing, will revert to $10 after testing
+    if (depositAmount < DEPOSIT_LIMITS.MIN_DEPOSIT) {
       toast({
         title: 'Minimum deposit required',
-        description: 'Minimum deposit amount is $10',
+        description: `Minimum deposit amount is $${DEPOSIT_LIMITS.MIN_DEPOSIT}`,
         variant: 'destructive',
       });
       return;
@@ -342,53 +535,72 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       // SECURITY: Generate payment ID first (validated format)
       const paymentId = `payment-${Date.now()}-${Math.random().toString(36).substring(7)}`;
       
+      // CRITICAL: Store paymentId in ref immediately (synchronous) to avoid race conditions
+      // This ensures handlePaymentNonce can access it even if state hasn't updated yet
+      paymentIdRef.current = paymentId;
+      // Batch state update to prevent unnecessary re-render
+      startTransition(() => {
+        setStoredPaymentId(paymentId); // Also update state for UI display
+      });
+      
       // CRITICAL: Validate and normalize wallet address
       // Both payment_info and payment note must use the same normalized format
-      if (!connectedAddress) {
-        throw new Error('Wallet address is required. Please connect your wallet.');
-      }
+      const normalizedWallet = normalizeWalletAddress(connectedAddress);
       
-      const normalizedWallet = connectedAddress.trim().toLowerCase();
-      if (!normalizedWallet.startsWith('0x') || normalizedWallet.length !== 42) {
-        console.error('[DepositModal] ❌ Invalid wallet address format:', connectedAddress);
-        throw new Error('Invalid wallet address format. Please reconnect your wallet.');
-      }
-      
-      console.log('[DepositModal] ✅ Wallet address validated:', {
+      log.success('Wallet address validated', {
         original: connectedAddress,
         normalized: normalizedWallet
       });
       
-      // Get email from localStorage if available (optional, for payment info)
-      const userEmail = localStorage.getItem('tiltvault_email') || '';
+      // Get email from secure storage (sessionStorage) if available (optional, for payment info)
+      const userEmail = storage.getUserEmail();
 
       // Store payment info with normalized wallet address (for webhook)
       // CRITICAL: Use normalized wallet address to match payment note format
-      const runtimeApiBaseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-      const paymentInfoResponse = await fetch(`${runtimeApiBaseUrl}/api/wallet/store-payment-info`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          paymentId,
-          walletAddress: normalizedWallet, // Use normalized wallet address
-          userEmail: userEmail || undefined, // Optional - only if user is logged in
-          riskProfile: riskProfile.id,
-          amount: parseFloat(amount),
-        }),
-      });
-
-      if (!paymentInfoResponse.ok) {
-        const errorData = await paymentInfoResponse.json().catch(() => ({}));
-        console.warn('[DepositModal] Failed to store payment info:', errorData.error || 'Unknown error');
+      const apiBaseUrl = getApiBaseUrl();
+      
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUTS.STANDARD);
+        
+        const paymentInfoResponse = await fetch(`${apiBaseUrl}/api/wallet/store-payment-info`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            paymentId,
+            walletAddress: normalizedWallet, // Use normalized wallet address
+            userEmail: userEmail || undefined, // Optional - only if user is logged in
+            riskProfile: riskProfile.id,
+            amount: parseFloat(amount),
+          }),
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!paymentInfoResponse.ok) {
+          let errorMessage = `HTTP ${paymentInfoResponse.status}`;
+          try {
+            const errorData = await paymentInfoResponse.json();
+            errorMessage = errorData.error || errorMessage;
+          } catch {
+            // Ignore JSON parse errors
+          }
+          throw new Error(errorMessage);
+        }
+        
+        const responseData = await paymentInfoResponse.json().catch(() => ({}));
+        log.success('Payment info stored successfully', { paymentId, responseData });
+      } catch (error) {
+        // Payment info storage failure is not critical - webhook can still process payment
+        // But we should log it and warn the user
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        log.warn('Failed to store payment info', { errorMessage, paymentId });
         toast({
           title: 'Warning',
-          description: 'Payment info storage failed, but deposit will continue',
+          description: 'Payment info storage failed, but deposit will continue. If payment fails, contact support.',
           variant: 'destructive',
         });
-      } else {
-        console.log('[DepositModal] ✅ Payment info stored successfully with paymentId:', paymentId);
-        // Store paymentId for use in handlePaymentNonce
-        setStoredPaymentId(paymentId);
       }
 
       toast({
@@ -396,10 +608,12 @@ export const DepositModal: React.FC<DepositModalProps> = ({
         description: `Deposits will be sent to ${normalizedWallet.slice(0, 6)}...${normalizedWallet.slice(-4)}`,
       });
 
-      // Show payment form
-      setShowPaymentForm(true);
+      // Show payment form (batch with other state updates if any)
+      startTransition(() => {
+        setShowPaymentForm(true);
+      });
     } catch (error) {
-      console.error('Deposit setup error:', error);
+      log.error('Deposit setup error', error);
       toast({
         title: 'Setup failed',
         description: error instanceof Error ? error.message : 'Failed to set up deposit',
@@ -411,8 +625,11 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   };
 
   const handlePaymentNonce = async (nonce: string) => {
-    setPaymentNonce(nonce);
-    setIsProcessing(true);
+    // Batch related state updates
+    startTransition(() => {
+      setPaymentNonce(nonce);
+      setIsProcessing(true);
+    });
     
     try {
       // REQUIRE: Web3 wallet must be connected
@@ -424,130 +641,171 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       const { squarePaymentService } = await import('@/lib/squarePaymentService');
       const orderId = `order-${Date.now()}-${Math.random().toString(36).substring(7)}`;
       
-      // Calculate total amount to charge (amount + tiered platform fee + optional ERGC pack)
-      const platformFee = parseFloat(amount) * effectivePlatformFeeRate;
-      const ergcPurchase = includeErgc ? ergcCost : 0; // $10 for 100 ERGC
-      const totalAmount = parseFloat(amount) + platformFee + ergcPurchase;
+      // Calculate total amount to charge using centralized fee calculation
+      // Use memoized fee details (already calculated and up-to-date)
+      const currentDepositAmount = depositAmount;
+      const currentTotalAmount = totalAmount;
+      const currentPlatformFee = platformFee;
       
-      // Get email from localStorage if available (optional)
-      const userEmail = localStorage.getItem('tiltvault_email') || '';
+      // Get email from secure storage (sessionStorage) if available (optional)
+      const userEmail = storage.getUserEmail();
       
-      // CRITICAL: Reuse paymentId from first step (handleDeposit)
-      // This ensures payment_info and payment note use the same paymentId
-      const paymentId = storedPaymentId || `payment-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+      // CRITICAL: Get paymentId from ref (synchronous, avoids race condition)
+      // Fallback to state if ref is null (shouldn't happen, but defensive)
+      // Final fallback: generate new paymentId (shouldn't happen in normal flow)
+      const paymentId = paymentIdRef.current || storedPaymentId || `payment-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+      
+      if (!paymentIdRef.current && !storedPaymentId) {
+        log.warn('PaymentId not found in ref or state - this indicates a race condition or flow issue', { paymentId });
+        log.warn('Generated new paymentId as fallback', { paymentId });
+      }
       
       // CRITICAL: Validate and normalize wallet address
       // Both payment_info and payment note must use the same normalized format
-      if (!connectedAddress) {
-        throw new Error('Wallet address is required. Please connect your wallet.');
-      }
+      const normalizedWallet = normalizeWalletAddress(connectedAddress);
       
-      const normalizedWallet = connectedAddress.trim().toLowerCase();
-      if (!normalizedWallet.startsWith('0x') || normalizedWallet.length !== 42) {
-        console.error('[DepositModal] ❌ Invalid wallet address format:', connectedAddress);
-        throw new Error('Invalid wallet address format. Please reconnect your wallet.');
-      }
-      
-      console.log('[DepositModal] ✅ Wallet address validated for payment:', {
+      log.success('Wallet address validated for payment', {
         original: connectedAddress,
         normalized: normalizedWallet,
-        paymentId
+        paymentId,
+        paymentIdSource: paymentIdRef.current ? 'ref' : storedPaymentId ? 'state' : 'generated'
       });
       
       // Payment info should already be stored in handleDeposit, but verify it exists
-      // If not stored (e.g., user skipped first step), store it now
-      if (!storedPaymentId) {
-        console.warn('[DepositModal] ⚠️ Payment info not stored in first step, storing now...');
-        const runtimeApiBaseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-        const paymentInfoResponse = await fetch(`${runtimeApiBaseUrl}/api/wallet/store-payment-info`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            paymentId,
-            walletAddress: normalizedWallet, // Use normalized wallet address
-            userEmail: userEmail || undefined,
-            riskProfile: riskProfile.id,
-            amount: parseFloat(amount),
-          }),
-        });
-
-        if (!paymentInfoResponse.ok) {
-          console.warn('[DepositModal] Failed to store payment info before payment');
-        } else {
-          console.log('[DepositModal] ✅ Payment info stored successfully');
+      // If not stored (e.g., user skipped first step or race condition), store it now
+      if (!paymentIdRef.current && !storedPaymentId) {
+        log.warn('Payment info not stored in first step, storing now', { paymentId });
+        const apiBaseUrl = getApiBaseUrl();
+        
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUTS.STANDARD);
+          
+          const paymentInfoResponse = await fetch(`${apiBaseUrl}/api/wallet/store-payment-info`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              paymentId,
+              walletAddress: normalizedWallet, // Use normalized wallet address
+              userEmail: userEmail || undefined,
+              riskProfile: riskProfile.id,
+              amount: parseFloat(amount),
+            }),
+            signal: controller.signal,
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (!paymentInfoResponse.ok) {
+            let errorMessage = `HTTP ${paymentInfoResponse.status}`;
+            try {
+              const errorData = await paymentInfoResponse.json();
+              errorMessage = errorData.error || errorMessage;
+            } catch {
+              // Ignore JSON parse errors
+            }
+            throw new Error(errorMessage);
+          }
+          
+          const responseData = await paymentInfoResponse.json().catch(() => ({}));
+          log.success('Payment info stored successfully', { responseData, paymentId });
+          
+          // Update ref and state for consistency (batch state update)
+          paymentIdRef.current = paymentId;
+          startTransition(() => {
+            setStoredPaymentId(paymentId);
+          });
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          log.error('Failed to store payment info before payment', error, { errorMessage, paymentId });
+          // Don't throw - continue with payment even if storage fails
+          // The webhook may still be able to process the payment from the note field
         }
       }
 
       // CRITICAL: Log wallet address being sent to payment note
-      console.log('[DepositModal] ✅ Processing payment with:', {
+      log.success('Processing payment', {
         paymentId,
         walletAddress: normalizedWallet,
         riskProfile: riskProfile.id,
-        amount: totalAmount,
+        amount: currentTotalAmount,
         note: `payment_id:${paymentId} wallet:${normalizedWallet} risk:${riskProfile.id}`
       });
       
       const result = await squarePaymentService.processPayment(
         nonce,
-        totalAmount,
+        currentTotalAmount,
         orderId,
         riskProfile.id,
-        includeErgc,
+        false, // ERGC purchase removed - users can get ERGC from pools
         normalizedWallet, // Use normalized wallet address (lowercase)
         userEmail || undefined, // Optional email
         paymentId // Pass paymentId so it can be included in payment note
       );
 
       if (result.success) {
-        // Save deposit time for cooldown
-        localStorage.setItem(`lastDeposit_${connectedAddress}`, Date.now().toString());
+        // Save deposit time for cooldown (non-sensitive, uses localStorage)
+        storage.setLastDepositTime(connectedAddress, Date.now());
         
-        // Show success
-        setPaymentSuccess(true);
+        // Batch success state update
+        startTransition(() => {
+          setPaymentSuccess(true);
+        });
         
         toast({
           title: 'Payment successful!',
           description: `Funds will be sent to your connected wallet: ${connectedAddress.slice(0, 6)}...${connectedAddress.slice(-4)}`,
         });
         
-        // Auto-redirect to dashboard after 2 seconds
+        // Auto-redirect to dashboard after delay
         setTimeout(() => {
           window.location.href = '/';
-        }, 2000);
+        }, UI_CONSTANTS.REDIRECT_DELAY_MS);
       } else {
         throw new Error(result.error || 'Payment processing failed');
       }
     } catch (error: unknown) {
-      console.error('Payment processing error:', error);
+      log.error('Payment processing error', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to process payment. Please try again.';
       toast({
         title: 'Payment failed',
         description: errorMessage,
         variant: 'destructive',
       });
-      setIsProcessing(false);
-      setShowPaymentForm(false);
+      // Batch cleanup state updates
+      startTransition(() => {
+        setIsProcessing(false);
+        setShowPaymentForm(false);
+      });
     }
   };
 
   const handlePaymentError = (error: Error) => {
-    console.error('Payment form error:', error);
+    log.error('Payment form error', error);
     toast({
       title: 'Payment failed',
       description: error.message || 'Failed to process payment. Please try again.',
       variant: 'destructive',
     });
-    setIsProcessing(false);
-    setShowPaymentForm(false);
+    // Batch cleanup state updates
+    startTransition(() => {
+      setIsProcessing(false);
+      setShowPaymentForm(false);
+    });
   };
 
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto p-4 sm:p-6" data-testid="deposit-modal">
+      <DialogContent 
+        className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto p-4 sm:p-6" 
+        data-testid="deposit-modal"
+        aria-labelledby="deposit-modal-title"
+        aria-describedby="deposit-modal-description"
+      >
         <DialogHeader>
-          <DialogTitle className="text-lg sm:text-xl">Complete Your Deposit</DialogTitle>
-          <DialogDescription className="text-sm">
+          <DialogTitle id="deposit-modal-title" className="text-lg sm:text-xl">Complete Your Deposit</DialogTitle>
+          <DialogDescription id="deposit-modal-description" className="text-sm">
             Deposit USD for {riskProfile.name} strategy
           </DialogDescription>
         </DialogHeader>
@@ -564,14 +822,27 @@ export const DepositModal: React.FC<DepositModalProps> = ({
                 {amount && avaxPrice && (
                   <div className="pt-2 border-t border-border/50">
                     <div className="font-medium text-foreground">
-                      Total Fee: ${((parseFloat(amount) * effectivePlatformFeeRate)).toFixed(2)}
+                      {isFree ? (
+                        <span className="text-green-600">Total Fee: FREE</span>
+                      ) : (
+                        <>Total Fee: ${platformFee.toFixed(2)}</>
+                      )}
                     </div>
                     <details className="mt-1">
-                      <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                      <summary 
+                        className="text-xs text-muted-foreground cursor-pointer hover:text-foreground"
+                        aria-label="Expand fee details"
+                      >
                         Fee details
                       </summary>
                       <div className="mt-2 text-xs text-muted-foreground space-y-1 pl-4">
-                        <div>Platform Fee: {(effectivePlatformFeeRate * 100).toFixed(1)}% (${(parseFloat(amount) * effectivePlatformFeeRate).toFixed(2)})</div>
+                        {isFree ? (
+                          <div className="text-green-600 font-medium">
+                            Platform Fee: 0% (FREE - You have 100+ ERGC and deposit is over $100)
+                          </div>
+                        ) : (
+                          <div>Platform Fee: {(effectivePlatformFeeRate * 100).toFixed(1)}% (${platformFee.toFixed(2)})</div>
+                        )}
                         <div className="text-xs text-green-600">
                           *AVAX sent to your wallet
                         </div>
@@ -597,71 +868,94 @@ export const DepositModal: React.FC<DepositModalProps> = ({
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 disabled={isProcessing || isLoadingHubBalance}
-                min={10}
+                min={1}
                 max={maxDepositAmount}
                 step={0.01}
+                aria-describedby="amount-help amount-cooldown"
+                aria-required="true"
               />
-              <p className="text-xs text-muted-foreground">
-                Min: $10 · Max: ${maxDepositAmount.toLocaleString()}
-                {isLoadingHubBalance && ' (loading...)'}
+              <p id="amount-help" className="text-xs text-muted-foreground">
+                Min: $1 · Max: ${maxDepositAmount.toLocaleString()}
+                {isLoadingHubBalance && (
+                  <span aria-live="polite" aria-atomic="true"> (loading...)</span>
+                )}
               </p>
               {cooldownTime > 0 && (
-                <p className="text-xs text-orange-600">
+                <p id="amount-cooldown" className="text-xs text-orange-600" role="status" aria-live="polite">
                   ⏱️ Cooldown: {Math.ceil(cooldownTime / 60000)}m {Math.ceil((cooldownTime % 60000) / 1000)}s remaining
                 </p>
               )}
             </div>
           )}
 
-          {/* ERGC Fee Discount Option - Only show for GMX strategies */}
-          {!showPaymentForm && !paymentSuccess && riskProfile.id !== 'conservative' && (
-            <div className="space-y-2">
-              <div className="text-xs text-muted-foreground text-center pb-1">
-                💡 <span className="font-medium">Optional:</span> Add 100 ERGC for $10 (qualifies for discount)
+          {/* ERGC Cost/Savings Calculator - Show if user doesn't have 100+ ERGC */}
+          {!showPaymentForm && !paymentSuccess && !hasErgcForFreeDeposit && depositAmount >= 100 && avaxPrice && (
+            <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/50">
+              <div className="flex items-center gap-2 mb-3">
+                <Zap className="w-4 h-4 text-blue-500" aria-hidden="true" />
+                <span className="text-sm font-medium text-blue-600">
+                  💰 ERGC Free Deposits - Save Money!
+                </span>
               </div>
-              <div 
-                className={`p-3 rounded-lg border cursor-pointer transition-all ${
-                  includeErgc 
-                    ? 'bg-green-500/10 border-green-500/50' 
-                    : 'bg-muted/50 border-border hover:border-green-500/50'
-                }`}
-                onClick={() => {
-                  setIncludeErgc(!includeErgc);
-                }}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center ${
-                    includeErgc ? 'bg-green-500 border-green-500' : 'border-muted-foreground'
-                  }`}>
-                    {includeErgc && <span className="text-white text-xs">✓</span>}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Zap className={`w-4 h-4 ${includeErgc ? 'text-green-500' : 'text-muted-foreground'}`} />
-                      <span className="text-sm font-medium">
-                        {includeErgc ? 'ERGC pack added' : 'Add 100 ERGC ($10)'}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {includeErgc 
-                        ? `+$${ergcCost} for 100 ERGC. Discounted fee: ${ERGC_DISCOUNT.DISCOUNTED_FEE} AVAX`
-                        : `Reduces fee from ${ERGC_DISCOUNT.STANDARD_FEE} to ${ERGC_DISCOUNT.DISCOUNTED_FEE} AVAX and qualifies for discount`}
-                    </p>
-                    {includeErgc && (
-                      <p className="text-xs text-green-600 mt-1">
-                        100 ERGC will be sent to your wallet after payment.
-                      </p>
-                    )}
-                  </div>
-                </div>
+              <div className="space-y-2 text-xs">
+                {(() => {
+                  const ergcCostAvax = 0.21; // From transaction: 0.21 AVAX for 100 ERGC
+                  const ergcCostUsd = ergcCostAvax * (avaxPrice || PRICE_CONSTANTS.AVAX_FALLBACK_PRICE_USD);
+                  // Calculate fee without ERGC (use base platform fee rate)
+                  const feeWithoutErgc = depositAmount * platformFeeRate;
+                  const breakEvenDeposits = feeWithoutErgc > 0 ? Math.ceil(ergcCostUsd / feeWithoutErgc) : 0;
+                  
+                  return (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">100 ERGC Cost:</span>
+                        <span className="font-medium">~{ergcCostAvax} AVAX (~${ergcCostUsd.toFixed(2)})</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Platform Fee (${depositAmount} deposit):</span>
+                        <span className="font-medium text-red-600">${feeWithoutErgc.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between border-t border-border/50 pt-2">
+                        <span className="text-muted-foreground">With 100 ERGC (FREE):</span>
+                        <span className="font-medium text-green-600">$0.00</span>
+                      </div>
+                      <div className="flex justify-between pt-1">
+                        <span className="text-muted-foreground">You Save:</span>
+                        <span className="font-bold text-green-600">${feeWithoutErgc.toFixed(2)}</span>
+                      </div>
+                      <div className="pt-2 border-t border-border/50 text-muted-foreground">
+                        <p className="text-xs">
+                          💡 <strong>Break-even:</strong> After {breakEvenDeposits} deposit{breakEvenDeposits > 1 ? 's' : ''}, ERGC pays for itself!
+                        </p>
+                        <p className="text-xs mt-1">
+                          Buy 100 ERGC on <a 
+                            href="https://app.uniswap.org/swap?chain=avalanche&inputCurrency=AVAX&outputCurrency=0xDC353b94284E7d3aEAB2588CEA3082b9b87C184B" 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="text-blue-500 hover:underline"
+                            aria-label="Buy 100 ERGC on Uniswap to unlock free deposits (opens in new tab)"
+                          >Uniswap</a> to unlock free deposits.
+                        </p>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
+            </div>
+          )}
 
-              {/* Savings indicator when ERGC pack selected or already has 100+ */}
-              {(includeErgc || hasErgcForDiscount) && (
-                <p className="text-xs text-green-600 text-center">
-                  ⚡ Discount applied (requires ≥100 ERGC)
-                </p>
-              )}
+          {/* ERGC Free Deposit Indicator - Show if user has 100+ ERGC */}
+          {!showPaymentForm && !paymentSuccess && hasErgcForFreeDeposit && (
+            <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/50">
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-green-500" aria-hidden="true" />
+                <span className="text-sm font-medium text-green-600">
+                  ⚡ Free Deposits Active
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                You have {userErgcBalance} ERGC. Deposits over $100 are FREE (no platform fees)!
+              </p>
             </div>
           )}
 
@@ -678,14 +972,27 @@ export const DepositModal: React.FC<DepositModalProps> = ({
                   {amount && avaxPrice && (
                   <div className="pt-2 border-t border-border/50">
                     <div className="font-medium text-foreground">
-                      Total Fee: ${((parseFloat(amount) * effectivePlatformFeeRate)).toFixed(2)}
+                      {isFree ? (
+                        <span className="text-green-600">Total Fee: FREE</span>
+                      ) : (
+                        <>Total Fee: ${platformFee.toFixed(2)}</>
+                      )}
                     </div>
                     <details className="mt-1">
-                      <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                      <summary 
+                        className="text-xs text-muted-foreground cursor-pointer hover:text-foreground"
+                        aria-label="Expand fee details"
+                      >
                         Fee details
                       </summary>
                       <div className="mt-2 text-xs text-muted-foreground space-y-1 pl-4">
-                        <div>Platform Fee: {(effectivePlatformFeeRate * 100).toFixed(1)}% (${(parseFloat(amount) * effectivePlatformFeeRate).toFixed(2)})</div>
+                        {isFree ? (
+                          <div className="text-green-600 font-medium">
+                            Platform Fee: 0% (FREE - You have 100+ ERGC and deposit is over $100)
+                          </div>
+                        ) : (
+                          <div>Platform Fee: {(effectivePlatformFeeRate * 100).toFixed(1)}% (${platformFee.toFixed(2)})</div>
+                        )}
                         <div className="text-xs text-green-600">
                           *AVAX sent to your wallet
                         </div>
@@ -698,8 +1005,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
               <SquarePaymentForm
                 amount={
                   parseFloat(amount) + 
-                  (parseFloat(amount) * effectivePlatformFeeRate) +
-                  (includeErgc ? ergcCost : 0)
+                  (parseFloat(amount) * effectivePlatformFeeRate)
                 }
                 onPaymentSuccess={handlePaymentNonce}
                 onPaymentError={handlePaymentError}
@@ -709,17 +1015,27 @@ export const DepositModal: React.FC<DepositModalProps> = ({
 
           {/* Processing State */}
           {isProcessing && !paymentSuccess && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Processing payment...
+            <div 
+              className="flex items-center gap-2 text-sm text-muted-foreground"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              <span>Processing payment...</span>
             </div>
           )}
 
           {/* Payment Success */}
           {paymentSuccess && isConnected && connectedAddress && (
             <div className="space-y-4">
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
-                <CheckCircle2 className="h-5 w-5 text-green-600" />
+              <div 
+                className="flex items-center gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                <CheckCircle2 className="h-5 w-5 text-green-600" aria-hidden="true" />
                 <span className="text-sm text-green-600 font-medium">
                   Payment successful! Your wallet is being funded.
                 </span>
@@ -736,10 +1052,14 @@ export const DepositModal: React.FC<DepositModalProps> = ({
 
               <div className="text-sm text-muted-foreground">
                 <p>
-                  ✅ USDC +{' '}
-                  {riskProfile.id === 'conservative' ? '0.005' : '0.06'} AVAX being sent to your wallet
+                  ✅{' '}
+                  {riskProfile.id === 'morpho' 
+                    ? 'USDC being deposited to Morpho vaults on Arbitrum (no AVAX needed)'
+                    : riskProfile.id === 'conservative'
+                    ? 'USDC + 0.005 AVAX being sent to your wallet'
+                    : 'USDC + 0.06 AVAX being sent to your wallet'
+                  }
                 </p>
-                {includeErgc && <p>✅ 100 ERGC being sent (qualifies for discount)</p>}
               </div>
 
               <Button
@@ -747,6 +1067,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
                   window.location.href = '/';
                 }}
                 className="w-full"
+                aria-label="Go to dashboard to view your positions"
               >
                 Go to Dashboard
               </Button>
@@ -761,6 +1082,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
                 onClick={onClose}
                 disabled={isProcessing}
                 className="flex-1"
+                aria-label="Cancel deposit and close modal"
               >
                 Cancel
               </Button>
@@ -769,6 +1091,8 @@ export const DepositModal: React.FC<DepositModalProps> = ({
                 disabled={isProcessing || !amount || !isConnected || !connectedAddress || !isConfigured || cooldownTime > 0}
                 className="flex-1"
                 data-testid="continue-to-payment-button"
+                aria-label="Continue to payment form"
+                aria-describedby={!isConnected ? "wallet-connection-required" : !amount ? "amount-required" : cooldownTime > 0 ? "cooldown-active" : undefined}
               >
                 Continue to Payment
               </Button>
@@ -780,18 +1104,27 @@ export const DepositModal: React.FC<DepositModalProps> = ({
               <Button
                 variant="outline"
                 onClick={() => {
-                  setShowPaymentForm(false);
-                  setIsProcessing(false);
+                  // Batch state updates to prevent unnecessary re-renders
+                  startTransition(() => {
+                    setShowPaymentForm(false);
+                    setIsProcessing(false);
+                  });
                 }}
                 disabled={isProcessing}
                 className="flex-1"
+                aria-label="Go back to deposit amount input"
               >
                 Back
               </Button>
               {isProcessing && (
-                <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Processing payment...
+                <div 
+                  className="flex-1 flex items-center justify-center text-sm text-muted-foreground"
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                >
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                  <span>Processing payment...</span>
                 </div>
               )}
             </div>

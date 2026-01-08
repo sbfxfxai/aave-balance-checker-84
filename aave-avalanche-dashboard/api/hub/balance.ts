@@ -1,13 +1,18 @@
 /**
  * Hub wallet USDC balance check endpoint for Vercel
- * Handles GET /api/hub/balance
+ * Handles GET /api/hub/balance?chain=avalanche|arbitrum
+ * Defaults to Avalanche if no chain parameter is provided
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 // Configuration
 const AVALANCHE_RPC = process.env.AVALANCHE_RPC_URL || "https://api.avax.network/ext/bc/C/rpc";
+const ARBITRUM_RPC = process.env.ARBITRUM_RPC_URL || "https://arb1.arbitrum.io/rpc";
 const HUB_WALLET_ADDRESS = process.env.HUB_WALLET_ADDRESS || '0x34c11928868d14bdD7Be55A0D9f9e02257240c24';
-const USDC_CONTRACT = '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E';
+
+// USDC contract addresses per chain
+const USDC_AVALANCHE = '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E';
+const USDC_ARBITRUM = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
 
 // Minimal ERC20 ABI for balanceOf
 const ERC20_ABI = [
@@ -20,20 +25,29 @@ const ERC20_ABI = [
   }
 ] as const;
 
-async function getHubUsdcBalance(): Promise<{
+async function getHubUsdcBalance(chain: 'avalanche' | 'arbitrum' = 'avalanche'): Promise<{
   success: boolean;
   error?: string;
   balance?: number;
   balance_raw?: string;
+  chain?: string;
 }> {
   try {
+    // Select RPC and USDC contract based on chain
+    const rpcUrl = chain === 'arbitrum' ? ARBITRUM_RPC : AVALANCHE_RPC;
+    const usdcContract = chain === 'arbitrum' ? USDC_ARBITRUM : USDC_AVALANCHE;
+    
+    console.log(`[Hub Balance] Checking ${chain} USDC balance for hub wallet ${HUB_WALLET_ADDRESS}`);
+    console.log(`[Hub Balance] Using RPC: ${rpcUrl}`);
+    console.log(`[Hub Balance] Using USDC contract: ${usdcContract}`);
+    
     // Create request body for JSON-RPC
     const requestData = {
       jsonrpc: "2.0",
       method: "eth_call",
       params: [
         {
-          to: USDC_CONTRACT,
+          to: usdcContract,
           data: `0x70a08231${HUB_WALLET_ADDRESS.slice(2).padStart(64, '0')}` // balanceOf(address) selector + padded address
         },
         "latest"
@@ -42,7 +56,7 @@ async function getHubUsdcBalance(): Promise<{
     };
 
     // Make RPC call
-    const response = await fetch(AVALANCHE_RPC, {
+    const response = await fetch(rpcUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -68,6 +82,7 @@ async function getHubUsdcBalance(): Promise<{
       success: true,
       balance: balance,
       balance_raw: balanceWei.toString(),
+      chain: chain,
     };
 
   } catch (error) {
@@ -89,9 +104,13 @@ export default async function handler(request: VercelRequest, response: VercelRe
       });
     }
 
-    console.log(`[Hub Balance] Checking USDC balance for hub wallet ${HUB_WALLET_ADDRESS}`);
+    // Get chain parameter from query string (defaults to 'avalanche')
+    const chainParam = (request.query?.chain as string) || 'avalanche';
+    const chain = (chainParam === 'arbitrum' ? 'arbitrum' : 'avalanche') as 'avalanche' | 'arbitrum';
+    
+    console.log(`[Hub Balance] Checking ${chain} USDC balance for hub wallet ${HUB_WALLET_ADDRESS}`);
 
-    const result = await getHubUsdcBalance();
+    const result = await getHubUsdcBalance(chain);
 
     if (result.success) {
       return response.status(200).json(result);

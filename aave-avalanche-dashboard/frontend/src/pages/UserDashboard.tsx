@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAaveSupply } from '@/hooks/useAaveSupply';
 import { useAavePositions } from '@/hooks/useAavePositions';
 import { useGmxPositions } from '@/hooks/useGmxPositions';
+import { useMorphoPositions } from '@/hooks/useMorphoPositions';
 import { CONTRACTS } from '@/config/contracts';
 import { 
   Loader2, 
@@ -113,6 +114,7 @@ export default function UserDashboard() {
   // Get positions
   const aaveData = useAavePositions();
   const { positions: gmxPositions, isLoading: gmxLoading, refetch: refetchGmx } = useGmxPositions();
+  const morphoData = useMorphoPositions();
 
   // Get USDC balance using readContract for ERC20 token
   const { data: usdcBalanceRaw, isLoading: balanceLoading, refetch: refetchBalance } = useReadContract({
@@ -632,6 +634,62 @@ export default function UserDashboard() {
                   </div>
                 ) : (
                   <p className="text-muted-foreground text-center py-4">No GMX positions</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Morpho Positions */}
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-purple-500" />
+                  Morpho Vault Positions
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {morphoData.isLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  </div>
+                ) : parseFloat(morphoData.totalUsdValue) > 0 ? (
+                  <div className="space-y-3">
+                    <div className="p-4 rounded-lg bg-muted flex justify-between items-center">
+                      <div>
+                        <p className="font-medium">Total Value</p>
+                        <p className="text-sm text-muted-foreground">50/50 EURC + DAI</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-mono">${parseFloat(morphoData.totalUsdValue).toFixed(2)}</p>
+                        <p className="text-sm text-green-500">+{morphoData.blendedApy.toFixed(2)}% APY</p>
+                      </div>
+                    </div>
+                    {parseFloat(morphoData.eurcUsdValue) > 0 && (
+                      <div className="p-4 rounded-lg bg-muted flex justify-between items-center">
+                        <div>
+                          <p className="font-medium">EURC Vault</p>
+                          <p className="text-sm text-muted-foreground">Morpho Gauntlet</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-mono">${parseFloat(morphoData.eurcUsdValue).toFixed(2)}</p>
+                          <p className="text-sm text-green-500">+{morphoData.eurcApy.toFixed(2)}% APY</p>
+                        </div>
+                      </div>
+                    )}
+                    {parseFloat(morphoData.daiUsdValue) > 0 && (
+                      <div className="p-4 rounded-lg bg-muted flex justify-between items-center">
+                        <div>
+                          <p className="font-medium">DAI Vault</p>
+                          <p className="text-sm text-muted-foreground">Morpho Spark</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-mono">${parseFloat(morphoData.daiUsdValue).toFixed(2)}</p>
+                          <p className="text-sm text-green-500">+{morphoData.daiApy.toFixed(2)}% APY</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-center py-4">No Morpho positions</p>
                 )}
               </CardContent>
             </Card>

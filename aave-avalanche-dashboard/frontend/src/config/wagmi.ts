@@ -1,13 +1,15 @@
 import { http, createConfig } from 'wagmi'
-import { avalanche } from 'wagmi/chains'
+import { avalanche, arbitrum } from 'wagmi/chains'
 import { injected } from 'wagmi/connectors'
 
 // Environment variables for production configuration
 // Set VITE_AVALANCHE_RPC_URL in Vercel/environment for dedicated RPC provider
 const avalancheRpcUrl = import.meta.env.VITE_AVALANCHE_RPC_URL || 'https://api.avax.network/ext/bc/C/rpc'
+// Arbitrum RPC for Morpho operations
+const arbitrumRpcUrl = import.meta.env.VITE_ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc'
 
 export const config = createConfig({
-  chains: [avalanche],
+  chains: [avalanche, arbitrum],
   connectors: [
     injected({
       shimDisconnect: true,
@@ -17,6 +19,7 @@ export const config = createConfig({
   ],
   transports: {
     [avalanche.id]: http(avalancheRpcUrl),
+    [arbitrum.id]: http(arbitrumRpcUrl),
   },
   // Disable SSR for client-side only
   ssr: false,

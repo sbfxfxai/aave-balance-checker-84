@@ -11,6 +11,7 @@ import {
 import { toast } from 'sonner';
 import { useAavePositions } from '@/hooks/useAavePositions';
 import { useWalletBalances } from '@/hooks/useWalletBalances';
+import { useMorphoPositions } from '@/hooks/useMorphoPositions';
 import { GmxPositionCard } from '@/components/GmxPositionCard';
 import { ActionModal } from '@/components/ActionModal';
 import { useState, useEffect, useMemo, useCallback, startTransition } from 'react';
@@ -86,6 +87,7 @@ export function SimpleDashboard() {
 
   const { avaxBalance, usdcBalance, usdcEBalance, ergcBalance, needsMigration, isLoading: balanceLoading } = useWalletBalances();
   const positions = useAavePositions();
+  const morphoPositions = useMorphoPositions();
 
   // Direct test read of WAVAX reserve data to debug
   const hasRequiredArgs = !!(walletAddress && CONTRACTS.WAVAX);
@@ -284,6 +286,49 @@ export function SimpleDashboard() {
 
       {/* GMX Positions */}
       <GmxPositionCard walletAddress={walletAddress} onRefresh={handleRefresh} />
+
+      {/* Morpho Positions */}
+      {parseFloat(morphoPositions.totalUsdValue) > 0 && (
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <Zap className="h-5 w-5 text-purple-500" />
+              Morpho Vault
+            </h3>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 rounded-lg bg-purple-500/5 border border-purple-500/20">
+              <p className="font-medium text-purple-500">Total Value</p>
+              <p className="text-2xl font-bold">${parseFloat(morphoPositions.totalUsdValue).toFixed(2)}</p>
+              <p className="text-sm text-gray-600">Earning {morphoPositions.blendedApy.toFixed(2)}% APY</p>
+            </div>
+            {parseFloat(morphoPositions.eurcUsdValue) > 0 && (
+              <div className="p-4 rounded-lg bg-green-500/5 border border-green-500/20">
+                <p className="font-medium text-green-500">EURC Vault</p>
+                <p className="text-2xl font-bold">${parseFloat(morphoPositions.eurcUsdValue).toFixed(2)}</p>
+                <p className="text-sm text-gray-600">Earning {morphoPositions.eurcApy.toFixed(2)}% APY</p>
+              </div>
+            )}
+            {parseFloat(morphoPositions.daiUsdValue) > 0 && (
+              <div className="p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                <p className="font-medium text-blue-500">DAI Vault</p>
+                <p className="text-2xl font-bold">${parseFloat(morphoPositions.daiUsdValue).toFixed(2)}</p>
+                <p className="text-sm text-gray-600">Earning {morphoPositions.daiApy.toFixed(2)}% APY</p>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
 
       {/* Action Buttons */}
       <Card className="p-6">

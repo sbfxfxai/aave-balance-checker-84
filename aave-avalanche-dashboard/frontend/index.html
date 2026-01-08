@@ -25,10 +25,7 @@
     <link rel="dns-prefetch" href="https://sandbox.kit.cash.app" />
     <link rel="dns-prefetch" href="https://kit.cash.app" />
     
-    <!-- Preload logo - smallest optimized version for above-the-fold LCP -->
-    <!-- Only preload if optimized versions exist, otherwise browser will use fallback -->
-    <!-- Note: Browser may warn if not used immediately, but it's used in Navigation component -->
-    <link rel="preload" as="image" href="/tiltvault-logo-32w.webp" type="image/webp" fetchpriority="high" crossorigin="anonymous" />
+    <!-- Logo preload removed - using direct /tiltvault-logo.webp in component instead -->
     
     <!-- Google Fonts - loaded as link tag to avoid render blocking from CSS @import -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" media="print" onload="this.media='all'" />
@@ -255,6 +252,26 @@
           }
           
           window.addEventListener('error', function(event) {
+            // Filter out undefined/empty errors (often from browser extensions or harmless events)
+            if (!event.message && !event.filename && !event.error) {
+              return; // Skip logging undefined errors
+            }
+            
+            // Filter out known harmless errors from extensions
+            const errorStr = event.error ? String(event.error) : '';
+            const messageStr = event.message ? String(event.message) : '';
+            const filenameStr = event.filename ? String(event.filename) : '';
+            
+            // Skip MetaMask/extension errors that are harmless
+            if (filenameStr.includes('inpage.js') || 
+                filenameStr.includes('contentscript.js') ||
+                filenameStr.includes('lockdown-install.js') ||
+                messageStr.includes('CSP') ||
+                messageStr.includes('Content-Security-Policy')) {
+              return; // Skip known harmless extension/CSP errors
+            }
+            
+            // Only log real errors
             console.error('[HTML] ❌ Error caught:', {
               message: event.message,
               filename: event.filename,
@@ -262,10 +279,10 @@
               colno: event.colno,
               error: event.error ? event.error.toString() : 'no error object'
             });
-            // Also show in DOM as fallback
+            // Also show in DOM as fallback (only for real errors)
             const loadingText = document.querySelector('.tv-initial-loading');
-            if (loadingText) {
-              loadingText.textContent = 'Error: ' + (event.message || 'Unknown') + '. Check console.';
+            if (loadingText && event.message) {
+              loadingText.textContent = 'Error: ' + event.message + '. Check console.';
               loadingText.style.color = '#ef4444';
             }
           }, true);

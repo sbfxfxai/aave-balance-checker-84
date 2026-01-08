@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 // @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { useAccount, useDisconnect } from 'wagmi';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, Mail, Shield, Zap } from 'lucide-react';
@@ -13,6 +14,8 @@ import { toast } from 'sonner';
 export function PrivyLogin() {
     const { login, authenticated, ready, user, logout } = usePrivy();
     const { wallets } = useWallets();
+    const { isConnected: isWagmiConnected } = useAccount();
+    const { disconnect: wagmiDisconnect } = useDisconnect();
     const associationCompletedRef = useRef(false);
 
     // Get the user's Privy smart wallet address (Ethereum only, filter out Solana)
@@ -40,6 +43,22 @@ export function PrivyLogin() {
             walletTypes: wallets.map((w: any) => ({ type: w.walletClientType, address: w.address }))
         });
     }
+
+    // CRITICAL: Disconnect wagmi (MetaMask) when Privy authenticates
+    // Use a ref to prevent race conditions and multiple simultaneous disconnects
+    const disconnectInProgressRef = React.useRef(false);
+    
+    React.useEffect(() => {
+        if (authenticated && isWagmiConnected && !disconnectInProgressRef.current) {
+            disconnectInProgressRef.current = true;
+            console.log('[PrivyLogin] Privy authenticated, disconnecting MetaMask...');
+            wagmiDisconnect();
+            // Reset flag after a delay to allow state to settle
+            setTimeout(() => {
+                disconnectInProgressRef.current = false;
+            }, 1000);
+        }
+    }, [authenticated, isWagmiConnected, wagmiDisconnect]);
 
     // Associate user with wallet on successful authentication (WITH SIGNATURE)
     // CRITICAL: Wait for wallet to be ready before attempting association
@@ -280,8 +299,13 @@ export function PrivyLogin() {
                 </div>
 
                 <Button
-                    onClick={() => {
+                    onClick={async () => {
                         console.log('[PrivyLogin] Login button clicked');
+                        // CRITICAL: Disconnect MetaMask before Privy login
+                        if (isWagmiConnected) {
+                            console.log('[PrivyLogin] Disconnecting MetaMask before Privy login...');
+                            wagmiDisconnect();
+                        }
                         try {
                             login();
                         } catch (error) {

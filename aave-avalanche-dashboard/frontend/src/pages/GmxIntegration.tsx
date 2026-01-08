@@ -24,6 +24,7 @@ import { useNetworkGuard } from '@/hooks/useNetworkGuard';
 import { useWalletBalances } from '@/hooks/useWalletBalances';
 import { CONTRACTS } from '@/config/contracts';
 import { OptimizedLogo } from '@/components/OptimizedLogo';
+import { ConnectWalletButton } from '@/components/ConnectWalletButton';
 import styles from './GmxIntegration.module.css';
 
 // GMX SDK Type Definitions
@@ -1333,14 +1334,17 @@ export default function GmxIntegration() {
                 <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Leveraged Trading</p>
               </div>
             </div>
-            <nav className="flex items-center gap-1 sm:gap-2" aria-label="Main navigation">
-              <Link to="/" aria-label="Go to Banking page">
-                <Button variant="outline" size="sm" className="text-xs sm:text-sm px-2 sm:px-4" aria-label="Banking">Banking</Button>
-              </Link>
-              <Link to="/stack" aria-label="Go to Auto Invest page">
-                <Button variant="outline" size="sm" className="text-xs sm:text-sm px-2 sm:px-4" aria-label="Auto Invest">Auto</Button>
-              </Link>
-            </nav>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <ConnectWalletButton />
+              <nav className="flex items-center gap-1 sm:gap-2" aria-label="Main navigation">
+                <Link to="/" aria-label="Go to Banking page">
+                  <Button variant="outline" size="sm" className="text-xs sm:text-sm px-2 sm:px-4" aria-label="Banking">Banking</Button>
+                </Link>
+                <Link to="/stack" aria-label="Go to Auto Invest page">
+                  <Button variant="outline" size="sm" className="text-xs sm:text-sm px-2 sm:px-4" aria-label="Auto Invest">Auto</Button>
+                </Link>
+              </nav>
+            </div>
           </div>
         </div>
       </header>

@@ -1,45 +1,37 @@
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { TrendingUp, DollarSign, Zap } from 'lucide-react';
+import {
+  calculatePlatformFeeRate,
+  calculateEffectiveFeeRate,
+  calculateErgcSavingsPercent,
+  isFreeDeposit,
+} from '@/lib/fees';
 
 interface ValueDiagramProps {
   aaveAPY: number;
 }
-
-// Fee calculation functions (matching DepositModal logic)
-const getPlatformFeeRate = (depositAmount: number) => {
-  if (depositAmount >= 1000) return 0.033; // 3.3%
-  if (depositAmount >= 100) return 0.042; // 4.2%
-  if (depositAmount >= 50) return 0.055; // 5.5%
-  if (depositAmount >= 20) return 0.074; // 7.4%
-  return 0.074; // Default 7.4% for amounts < $20
-};
-
-const getErgcDiscountRate = (depositAmount: number) => {
-  if (depositAmount >= 1000) return 0.031; // 3.1%
-  if (depositAmount >= 100) return 0.04; // 4.0%
-  if (depositAmount >= 50) return 0.045; // 4.5%
-  if (depositAmount >= 20) return 0.055; // 5.5%
-  return 0.055; // 5.5% for amounts < $20
-};
 
 interface DepositExample {
   depositAmount: number;
   feeRateWithoutErgc: number;
   feeRateWithErgc: number;
   savingsPercent: number;
+  isFree: boolean;
 }
 
 const calculateExample = (depositAmount: number): DepositExample => {
-  const feeRateWithoutErgc = getPlatformFeeRate(depositAmount);
-  const feeRateWithErgc = getErgcDiscountRate(depositAmount);
-  const savingsPercent = ((feeRateWithoutErgc - feeRateWithErgc) / feeRateWithoutErgc) * 100;
+  const feeRateWithoutErgc = calculatePlatformFeeRate(depositAmount);
+  const feeRateWithErgc = calculateEffectiveFeeRate(depositAmount, true); // Assume user has ERGC
+  const isFree = isFreeDeposit(depositAmount, true); // Assume user has ERGC
+  const savingsPercent = calculateErgcSavingsPercent(depositAmount, true); // Assume user has ERGC
   
   return {
     depositAmount,
     feeRateWithoutErgc,
     feeRateWithErgc,
     savingsPercent,
+    isFree,
   };
 };
 
@@ -66,10 +58,10 @@ export function ValueDiagram({ aaveAPY }: ValueDiagramProps) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <TrendingUp className="h-5 w-5" />
-          Value Comparison: ERGC Savings Impact
+          Value Comparison: ERGC Free Deposits
         </CardTitle>
         <CardDescription>
-          See how holding 100+ ERGC saves you money on fees - larger deposits save even more
+          Hold 100+ ERGC and deposits over $100 are FREE! No platform fees on deposits $100+
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -92,10 +84,12 @@ export function ValueDiagram({ aaveAPY }: ValueDiagramProps) {
                     <Zap className="h-3.5 w-3.5 text-purple-500" />
                     With 100+ ERGC:
                   </span>
-                  <span className="text-xl font-bold text-purple-500">{formatPercent(example10.feeRateWithErgc)}</span>
+                  <span className="text-xl font-bold text-purple-500">
+                    {example10.isFree ? 'FREE' : formatPercent(example10.feeRateWithErgc)}
+                  </span>
                 </div>
                 <div className="text-xs text-emerald-600 font-medium text-right">
-                  Save {example10.savingsPercent.toFixed(1)}%
+                  {example10.isFree ? '100% FREE' : `Save ${example10.savingsPercent.toFixed(1)}%`}
                 </div>
               </div>
             </div>
@@ -116,10 +110,12 @@ export function ValueDiagram({ aaveAPY }: ValueDiagramProps) {
                     <Zap className="h-3.5 w-3.5 text-purple-500" />
                     With 100+ ERGC:
                   </span>
-                  <span className="text-xl font-bold text-purple-500">{formatPercent(example100.feeRateWithErgc)}</span>
+                  <span className="text-xl font-bold text-green-600">
+                    {example100.isFree ? 'FREE' : formatPercent(example100.feeRateWithErgc)}
+                  </span>
                 </div>
                 <div className="text-xs text-emerald-600 font-medium text-right">
-                  Save {example100.savingsPercent.toFixed(1)}%
+                  {example100.isFree ? '100% FREE' : `Save ${example100.savingsPercent.toFixed(1)}%`}
                 </div>
               </div>
             </div>
@@ -141,10 +137,12 @@ export function ValueDiagram({ aaveAPY }: ValueDiagramProps) {
                   <Zap className="h-4 w-4 text-purple-500" />
                   With 100+ ERGC:
                 </span>
-                <span className="text-2xl font-bold text-purple-500">{formatPercent(example1000.feeRateWithErgc)}</span>
+                <span className="text-2xl font-bold text-green-600">
+                  {example1000.isFree ? 'FREE' : formatPercent(example1000.feeRateWithErgc)}
+                </span>
               </div>
               <div className="text-sm text-emerald-600 font-medium text-right">
-                Save {example1000.savingsPercent.toFixed(1)}% - Largest savings on bigger deposits!
+                {example1000.isFree ? '100% FREE - No platform fees!' : `Save ${example1000.savingsPercent.toFixed(1)}% - Largest savings on bigger deposits!`}
               </div>
             </div>
           </div>
@@ -156,8 +154,8 @@ export function ValueDiagram({ aaveAPY }: ValueDiagramProps) {
               <div className="flex-1">
                 <div className="font-semibold mb-1">Why Hold 100+ ERGC?</div>
                 <div className="text-sm text-muted-foreground">
-                  Holding 100+ ERGC ($10) gives you a <strong className="text-purple-400">56% discount</strong> on platform fees. 
-                  The larger your deposits, the more you save with ERGC!
+                  Holding 100+ ERGC ($10) makes deposits over $100 <strong className="text-green-400">completely FREE</strong> - no platform fees! 
+                  This creates a strong incentive to buy and hold ERGC tokens.
                 </div>
               </div>
             </div>

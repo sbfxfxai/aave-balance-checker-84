@@ -115,6 +115,11 @@ console.log('[TiltVault] Starting app initialization...');
 
 // Global error handler to catch any uncaught errors
 window.addEventListener('error', (event) => {
+  // Filter out undefined/empty errors (often from browser extensions or harmless events)
+  if (!event.message && !event.filename && !event.error) {
+    return; // Skip logging undefined errors
+  }
+  
   // Filter out non-critical errors (MetaMask, Privy iframe, etc.)
   const errorMessage = String(event.message || '');
   const filename = String(event.filename || '');
@@ -128,7 +133,8 @@ window.addEventListener('error', (event) => {
     filename.includes('lockdown-install.js') ||
     filename.includes('contentscript.js') ||
     filename.includes('inpage.js') ||
-    filename.includes('embedded-wallets')
+    filename.includes('embedded-wallets') ||
+    (errorMessage === 'Unknown error' && !event.error) // Generic undefined errors
   ) {
     return; // Don't log these as they're expected
   }
@@ -144,8 +150,8 @@ window.addEventListener('error', (event) => {
   });
   
   const loadingText = document.querySelector('.tv-initial-loading') as HTMLElement | null;
-  if (loadingText && !document.body.classList.contains('tv-app-loaded')) {
-    loadingText.textContent = `Error: ${event.message || 'Unknown error'}. Check console.`;
+  if (loadingText && !document.body.classList.contains('tv-app-loaded') && event.message) {
+    loadingText.textContent = `Error: ${event.message}. Check console.`;
     loadingText.style.color = '#ef4444';
   }
 }, true);

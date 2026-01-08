@@ -1,6 +1,7 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import formData from 'form-data';
 import Mailgun from 'mailgun.js';
+// @ts-ignore - crypto is a Node.js built-in module, types may not be available
 import crypto from 'crypto';
 import { checkRateLimit, RATE_LIMITS } from './rateLimit';
 import { withMonitoring } from './monitoring';

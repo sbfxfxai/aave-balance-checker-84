@@ -26,8 +26,8 @@ export interface MorphoPosition {
 // - VaultV2Factory: 0x6b46fa3cc9EBF8aB230aBAc664E37F2966Bf7971
 // - MorphoRegistry: 0xc00eb3c7aD1aE986A7f05F5A9d71aCa39c763C65
 // - MORPHO Token: 0x40BD670A58238e6E230c430BBb5cE6ec0d40df48 (18 decimals)
-const MORPHO_EURC_VAULT = '0x7e97fa6893871A2751B5fE961978DCCb2c201E65' as const; // Morpho EURC Vault on Arbitrum - VERIFIED
-const MORPHO_DAI_VAULT = '0x4B6F1C9E5d470b97181786b26da0d0945A7cf027' as const; // Morpho DAI Vault on Arbitrum - VERIFIED
+const MORPHO_GAUNTLET_USDC_VAULT = '0x7e97fa6893871A2751B5fE961978DCCb2c201E65' as const; // Morpho GauntletUSDC Core Vault on Arbitrum - VERIFIED
+const MORPHO_HYPERITHM_USDC_VAULT = '0x4B6F1C9E5d470b97181786b26da0d0945A7cf027' as const; // Morpho HyperithmUSDC Vault on Arbitrum - VERIFIED
 
 // Fixed APY values (from user specification)
 const EURC_APY = 11.54;
