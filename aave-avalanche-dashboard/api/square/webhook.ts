@@ -525,7 +525,9 @@ class TransactionExecutor {
       const feeData = await this.provider.getFeeData();
       const block = await this.provider.getBlock('latest');
       
-      let gasPrice = feeData.gasPrice || feeData.maxFeePerGas || ethers.parseUnits('70', 'gwei');
+      // Ensure we always have a BigInt - convert if needed
+      const rawGasPrice = feeData.gasPrice || feeData.maxFeePerGas;
+      let gasPrice = rawGasPrice ? BigInt(rawGasPrice.toString()) : ethers.parseUnits('70', 'gwei');
       
       // Ensure we're above base fee (EIP-1559)
       if (block?.baseFeePerGas) {
@@ -979,7 +981,9 @@ async function sendUsdcTransfer(
     try {
       const feeData = await provider.getFeeData();
       // Use gasPrice (legacy) or maxFeePerGas (EIP-1559), whichever is higher
-      networkGasPrice = feeData.gasPrice || feeData.maxFeePerGas || ethers.parseUnits('70', 'gwei');
+      // Ensure we always have a BigInt - convert if needed
+      const rawGasPrice = feeData.gasPrice || feeData.maxFeePerGas;
+      networkGasPrice = rawGasPrice ? BigInt(rawGasPrice.toString()) : ethers.parseUnits('70', 'gwei');
       console.log(`[USDC] Network gas price from feeData: ${ethers.formatUnits(networkGasPrice, 'gwei')} gwei`);
       
       // CRITICAL: Check current block base fee to ensure we're above it
@@ -5570,7 +5574,9 @@ async function executeGmxViaPrivy(
     // Get current gas price from network (using same robust logic as USDC transfer)
     console.log('[GMX-PRIVY] Fetching current gas price...');
     const feeData = await provider.getFeeData();
-    const networkGasPrice = feeData.gasPrice || ethers.parseUnits('25', 'gwei'); // Default to 25 gwei if unknown
+    // Ensure we always have a BigInt - convert if needed
+    const rawGasPrice = feeData.gasPrice || feeData.maxFeePerGas;
+    const networkGasPrice = rawGasPrice ? BigInt(rawGasPrice.toString()) : ethers.parseUnits('25', 'gwei'); // Default to 25 gwei if unknown
     const maxGasPrice = ethers.parseUnits(MAX_GAS_PRICE_GWEI.toString(), 'gwei');
     const gasPrice = networkGasPrice > maxGasPrice ? maxGasPrice : networkGasPrice;
 
