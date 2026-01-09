@@ -352,7 +352,7 @@ export default function StrategyExecution() {
               Your funds have been deployed according to your risk profile
             </p>
             <div className="flex gap-4 justify-center">
-              <Link to="/dashboard">
+              <Link to="/">
                 <Button>View Dashboard</Button>
               </Link>
               <Link to="/gmx">
@@ -368,7 +368,7 @@ export default function StrategyExecution() {
         <Link to="/stack">
           <Button variant="outline">← Back to Stack</Button>
         </Link>
-        <Link to="/dashboard">
+        <Link to="/">
           <Button variant="outline">View Dashboard →</Button>
         </Link>
       </div>

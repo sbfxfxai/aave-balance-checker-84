@@ -54,7 +54,7 @@ export function ValueDiagram({ aaveAPY }: ValueDiagramProps) {
   };
 
   return (
-    <Card className="mb-8">
+    <Card className="mb-8" id="comparison">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <TrendingUp className="h-5 w-5" />
@@ -148,7 +148,7 @@ export function ValueDiagram({ aaveAPY }: ValueDiagramProps) {
           </div>
 
           {/* Key Takeaway */}
-          <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 rounded-lg p-4">
+          <div id="why-ergc" className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 rounded-lg p-4">
             <div className="flex items-start gap-3">
               <Zap className="h-5 w-5 text-purple-500 mt-0.5" />
               <div className="flex-1">

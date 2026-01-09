@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DollarSign, ArrowRight, Shield, TrendingUp, Zap, Home, Bitcoin, Landmark, Sparkles } from 'lucide-react';
+import { DollarSign, ArrowRight, Shield, TrendingUp, Zap, Home, Bitcoin, Landmark, Sparkles, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -132,27 +132,54 @@ const StackApp = () => {
         <div className="container mx-auto px-4 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 sm:gap-3">
-              <OptimizedLogo loading="eager" />
-              <div>
-                <h1 className="text-lg sm:text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-                  Auto
-                </h1>
-                <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Automated Investing</p>
-              </div>
+              <Link to="/" className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                  <span className="font-bold text-primary-foreground text-sm">TV</span>
+                </div>
+                <span className="text-lg sm:text-xl font-bold text-foreground">TiltVault</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary font-medium">Auto</span>
+              </Link>
             </div>
+            <nav className="hidden md:flex items-center gap-6">
+              <a href="#comparison" className="text-muted-foreground hover:text-foreground transition-colors text-sm">
+                Compare
+              </a>
+              <a href="#why-ergc" className="text-muted-foreground hover:text-foreground transition-colors text-sm">
+                Why ERGC?
+              </a>
+              <a href="#faq" className="text-muted-foreground hover:text-foreground transition-colors text-sm">
+                FAQ
+              </a>
+            </nav>
             <div className="flex items-center gap-2 sm:gap-3">
-              <ConnectWalletButton />
+              <a
+                href="https://app.uniswap.org/explore/pools/avalanche/0x3c83d0058e9d1652534be264dba75cfcc2e1d48a3ff1d2c3611a194a361a16ee"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 hover:border-purple-500/50 transition-colors text-xs font-medium text-purple-400 hover:text-purple-300"
+                title="Get ERGC on Uniswap - 100+ ERGC = 56% fee discount"
+              >
+                <Zap className="h-3 w-3" />
+                <span>Get ERGC</span>
+                <ExternalLink className="h-3 w-3" />
+              </a>
               <nav className="flex items-center gap-1 sm:gap-2" aria-label="Main navigation">
+                <Link to="/" aria-label="Go to Banking page">
+                  <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Banking">
+                    <Home className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
+                    <span className="hidden sm:inline">Banking</span>
+                  </Button>
+                </Link>
                 <Link to="/gmx" aria-label="Go to Bitcoin trading page">
                   <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Bitcoin">
                     <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
                     <span className="hidden sm:inline">Bitcoin</span>
                   </Button>
                 </Link>
-                <Link to="/" aria-label="Go to Banking page">
-                  <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Banking">
-                    <Landmark className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
-                    <span className="hidden sm:inline">Banking</span>
+                <Link to="/stack" aria-label="Go to Auto Invest page">
+                  <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Auto Invest">
+                    <Zap className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
+                    <span className="hidden sm:inline">Auto</span>
                   </Button>
                 </Link>
               </nav>
@@ -188,6 +215,35 @@ const StackApp = () => {
               <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 animate-fade-in" style={{ animationDelay: '0.2s' }}>
                 Use your debit card for instant access—hold 100 ERGC for zero fees
               </p>
+
+              {/* Call to Action Buttons */}
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12 animate-fade-in" style={{ animationDelay: '0.3s' }}>
+                <Button
+                  size="lg"
+                  className="bg-gradient-primary text-white hover:opacity-90 px-8 py-6 text-lg font-semibold"
+                  onClick={() => {
+                    const depositSection = document.querySelector('[data-testid="deposit-usd-button"]');
+                    if (depositSection) {
+                      depositSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                  }}
+                >
+                  Start Earning <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="px-8 py-6 text-lg font-semibold border-border hover:bg-muted"
+                  onClick={() => {
+                    const faqSection = document.querySelector('#faq');
+                    if (faqSection) {
+                      faqSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                  }}
+                >
+                  Learn More
+                </Button>
+              </div>
 
               {/* Key features */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto mb-12 animate-fade-in" style={{ animationDelay: '0.4s' }}>

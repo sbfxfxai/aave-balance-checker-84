@@ -6,6 +6,12 @@ import { formatUnits, parseUnits, erc20Abi, maxUint256 } from 'viem';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
 import { useToast } from '@/hooks/use-toast';
 import { useAaveSupply } from '@/hooks/useAaveSupply';
 import { useAavePositions } from '@/hooks/useAavePositions';
@@ -26,8 +32,25 @@ import {
   DollarSign,
   Coins,
   PiggyBank,
-  Landmark
+  Landmark,
+  Copy,
+  LineChart,
+  Building,
+  ArrowDownLeft,
+  ArrowUpRight,
+  ArrowDownUp,
+  Send,
+  Sparkles,
+  ChevronDown,
+  Home,
+  Bitcoin,
+  Mail,
+  Check
 } from 'lucide-react';
+import { ConnectWalletButton } from '@/components/ConnectWalletButton';
+import { OptimizedLogo } from '@/components/OptimizedLogo';
+import { PrivyLogin } from '@/components/PrivyLogin';
+import { Input } from '@/components/ui/input';
 
 // USDC contract on Avalanche
 const USDC_ADDRESS = '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E' as const;
@@ -403,21 +426,29 @@ export default function UserDashboard() {
   // Calculate total savings (AAVE + Morpho)
   const totalSavings = parseFloat(aaveData.usdcSupply || '0') + parseFloat(morphoData.totalUsdValue || '0');
   const totalLoanBalance = parseFloat(aaveData.avaxBorrowed || '0');
-  const ergcBalance = parseFloat(walletBalances.ergc || '0');
+  const ergcBalance = parseFloat(walletBalances.ergcBalance || '0');
   const truncatedAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : '';
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header - matching reference */}
-      <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-background/80 backdrop-blur-xl">
-        <div className="container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-8">
-            <a href="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                <span className="text-lg font-bold text-primary-foreground">T</span>
-              </div>
-              <span className="text-xl font-bold text-foreground">TiltVault</span>
-            </a>
+      {/* Header - matching left image (goal) */}
+      <header className="border-b border-border/50 backdrop-blur-sm bg-background/80 sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-3 sm:py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <OptimizedLogo loading="eager" />
+            </div>
+            <nav className="flex items-center gap-4 sm:gap-6" aria-label="Main navigation">
+              <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors text-sm">
+                Banking
+              </Link>
+              <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors text-sm">
+                Savings & Lending
+              </Link>
+              <Link to="/stack" className="text-muted-foreground hover:text-foreground transition-colors text-sm">
+                Start Investing
+              </Link>
+            </nav>
           </div>
         </div>
       </header>
@@ -527,10 +558,53 @@ export default function UserDashboard() {
           </Card>
         )}
 
-        {/* Completed State - Show Positions - Matching reference layout */}
+        {/* Completed State - Show Positions - Matching left image (goal) layout */}
         {dashboardState === 'completed' && (
           <>
-            {/* Your Account Section - matching reference */}
+            {/* Email Signup Section - matching left image */}
+            <section className="container mx-auto px-4 py-12">
+              <Card className="max-w-2xl mx-auto card-gradient border-border">
+                <CardHeader className="text-center">
+                  <CardTitle className="text-2xl font-bold text-foreground mb-2">
+                    Sign up with email for fully automated crypto investing
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="flex gap-2">
+                    <Input 
+                      type="email" 
+                      placeholder="Enter your email" 
+                      className="flex-1"
+                    />
+                    <Button className="bg-primary hover:bg-primary/90">
+                      Get Started
+                    </Button>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 text-sm text-foreground">
+                      <Check className="h-4 w-4 text-success" />
+                      <span>Automated DeFi strategies</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-sm text-foreground">
+                      <Check className="h-4 w-4 text-success" />
+                      <span>Non-custodial - you own your funds</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-sm text-foreground">
+                      <Check className="h-4 w-4 text-success" />
+                      <span>No wallet setup required</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-center text-muted-foreground">
+                    By signing up, you agree to our{' '}
+                    <a href="#" className="text-primary hover:underline">Terms of Service</a>
+                    {' '}and{' '}
+                    <a href="#" className="text-primary hover:underline">Privacy Policy</a>
+                  </p>
+                </CardContent>
+              </Card>
+            </section>
+
+            {/* Your Account Section - matching left image */}
             <div className="border-t border-border">
               <h2 className="container pt-12 text-2xl font-bold text-foreground">Your Account</h2>
               <section className="py-12">
@@ -539,19 +613,31 @@ export default function UserDashboard() {
                     {/* External Wallet */}
                     <Card className="card-gradient border-border">
                       <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                          <Wallet className="h-4 w-4" />
+                        <CardTitle className="text-sm font-medium text-muted-foreground">
                           External Wallet
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-sm text-foreground">{truncatedAddress}</span>
+                          <button
+                            onClick={() => {
+                              if (address) {
+                                navigator.clipboard.writeText(address);
+                                toast({ title: 'Copied!', description: 'Address copied to clipboard' });
+                              }
+                            }}
+                            className="cursor-pointer hover:text-primary transition-colors p-1"
+                            aria-label="Copy address"
+                          >
+                            <Copy className="h-3 w-3 text-muted-foreground" />
+                          </button>
                           <a 
                             href={`https://snowtrace.io/address/${address}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="cursor-pointer hover:text-primary transition-colors"
+                            className="cursor-pointer hover:text-primary transition-colors p-1"
+                            aria-label="View on explorer"
                           >
                             <ExternalLink className="h-3 w-3 text-muted-foreground" />
                           </a>
@@ -562,7 +648,7 @@ export default function UserDashboard() {
                     {/* Available Cash */}
                     <Card className="card-gradient border-border">
                       <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">
                           Available Cash
                         </CardTitle>
                       </CardHeader>
@@ -582,9 +668,8 @@ export default function UserDashboard() {
                     {/* USD Balance */}
                     <Card className="card-gradient border-border">
                       <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                          <DollarSign className="h-4 w-4" />
-                          USD Balance
+                        <CardTitle className="text-sm font-medium text-muted-foreground">
+                          $ USD Balance
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
@@ -598,8 +683,7 @@ export default function UserDashboard() {
                     {/* ERGC */}
                     <Card className="card-gradient border-border">
                       <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                          <Coins className="h-4 w-4" />
+                        <CardTitle className="text-sm font-medium text-muted-foreground">
                           ERGC
                         </CardTitle>
                       </CardHeader>
@@ -625,21 +709,18 @@ export default function UserDashboard() {
                   <Card className="card-gradient border-border">
                     <CardHeader className="pb-2">
                       <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                        <PiggyBank className="h-4 w-4" />
+                        <LineChart className="h-4 w-4" />
                         Savings Balance
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-2">
                         <span className="text-3xl font-bold text-foreground">${totalSavings.toFixed(2)}</span>
-                        {totalSavings > 0 && (
-                          <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success">
-                              <TrendingUp className="mr-1 h-3 w-3" />
-                              Earning {aaveData.usdcSupplyApy?.toFixed(2) || '3.40'}% APY
-                            </span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-success">
+                            Earning {aaveData.usdcSupplyApy?.toFixed(2) || '3.40'}% APY
+                          </span>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -648,20 +729,18 @@ export default function UserDashboard() {
                   <Card className="card-gradient border-border">
                     <CardHeader className="pb-2">
                       <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                        <Landmark className="h-4 w-4" />
+                        <Building className="h-4 w-4" />
                         Loan Balance
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-2">
                         <span className="text-3xl font-bold text-foreground">{totalLoanBalance.toFixed(4)}</span>
-                        {totalLoanBalance > 0 && (
-                          <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
-                              Pay {aaveData.avaxBorrowApy?.toFixed(2) || '3.63'}% APY
-                            </span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-warning">
+                            Pay {aaveData.avaxBorrowApy?.toFixed(2) || '3.63'}% APY
+                          </span>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -669,7 +748,7 @@ export default function UserDashboard() {
                   {/* GMX Positions */}
                   <Card className="card-gradient border-border">
                     <CardHeader className="pb-2">
-                      <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">
                         GMX Positions
                       </CardTitle>
                     </CardHeader>
@@ -694,7 +773,7 @@ export default function UserDashboard() {
                           <p className="text-sm text-muted-foreground">No open GMX positions</p>
                         )}
                         <Link to="/gmx">
-                          <Button variant="action" size="sm" className="w-full">
+                          <Button variant="action" size="sm" className="w-full bg-primary hover:bg-primary/90">
                             Open a Position
                           </Button>
                         </Link>
@@ -702,6 +781,94 @@ export default function UserDashboard() {
                     </CardContent>
                   </Card>
                 </div>
+              </div>
+            </section>
+
+            {/* Quick Actions Section - matching reference */}
+            <section className="py-12 border-t border-border">
+              <div className="container">
+                <h2 className="text-2xl font-bold text-foreground mb-6">Quick Actions</h2>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                  <Button
+                    variant="outline"
+                    className="h-auto py-4 px-6 flex flex-col items-center gap-2 bg-card border-border hover:bg-muted"
+                  >
+                    <ArrowDownLeft className="h-5 w-5 text-foreground" />
+                    <span className="text-sm font-medium text-foreground">Deposit</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-auto py-4 px-6 flex flex-col items-center gap-2 bg-card border-border hover:bg-muted"
+                  >
+                    <ArrowUpRight className="h-5 w-5 text-foreground" />
+                    <span className="text-sm font-medium text-foreground">Withdraw</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-auto py-4 px-6 flex flex-col items-center gap-2 bg-card border-border hover:bg-muted"
+                  >
+                    <ArrowDownUp className="h-5 w-5 text-foreground" />
+                    <span className="text-sm font-medium text-foreground">Swap</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-auto py-4 px-6 flex flex-col items-center gap-2 bg-card border-border hover:bg-muted"
+                  >
+                    <Send className="h-5 w-5 text-foreground" />
+                    <span className="text-sm font-medium text-foreground">Send</span>
+                  </Button>
+                </div>
+              </div>
+            </section>
+
+            {/* FAQ Section - matching reference */}
+            <section className="py-12 border-t border-border">
+              <div className="container">
+                <h2 className="text-2xl font-bold text-foreground mb-6">Frequently Asked Questions</h2>
+                <Accordion type="single" defaultValue="ergc" collapsible className="w-full max-w-4xl mx-auto">
+                  <AccordionItem value="ergc" className="border-border">
+                    <AccordionTrigger className="text-left hover:no-underline">
+                      <div className="flex items-center gap-3">
+                        <Sparkles className="h-5 w-5 text-primary flex-shrink-0" />
+                        <span className="text-foreground">Get ERGC on Uniswap (AVAX → ERGC)</span>
+                        <a
+                          href="https://app.uniswap.org/explore/pools/avalanche/0x3c83d0058e9d1652534be264dba75cfcc2e1d48a3ff1d2c3611a194a361a16ee"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="ml-auto mr-2 hover:text-primary transition-colors"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="pt-2 pb-4">
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-medium">Fee Discount:</span> Holding 100+ ERGC = <span className="font-bold text-primary">56% discount</span> on TiltVault platform fees
+                      </p>
+                    </AccordionContent>
+                  </AccordionItem>
+                  <AccordionItem value="how-it-works" className="border-border">
+                    <AccordionTrigger className="text-left hover:no-underline">
+                      How does TiltVault work?
+                    </AccordionTrigger>
+                    <AccordionContent className="pt-2 pb-4 text-sm text-muted-foreground">
+                      <p>
+                        TiltVault is a non-custodial DeFi protocol aggregator that provides a user interface for interacting with established, audited blockchain protocols on the Avalanche network. Users maintain control of their private keys and funds at all times.
+                      </p>
+                    </AccordionContent>
+                  </AccordionItem>
+                  <AccordionItem value="safety" className="border-border">
+                    <AccordionTrigger className="text-left hover:no-underline">
+                      Is my money safe?
+                    </AccordionTrigger>
+                    <AccordionContent className="pt-2 pb-4 text-sm text-muted-foreground">
+                      <p>
+                        TiltVault is completely non-custodial. Users maintain control of private keys and funds at all times. We integrate with audited protocols like Aave and GMX, which have billions in total value locked. However, DeFi involves risks including smart contract risks, and funds are not FDIC insured.
+                      </p>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
               </div>
             </section>
           </>

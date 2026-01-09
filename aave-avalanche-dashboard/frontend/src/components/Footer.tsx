@@ -7,7 +7,7 @@ export function Footer() {
     <footer className="border-t border-border/50 mt-16 bg-background/50">
       <div className="container mx-auto px-4 py-6">
         {/* FAQ Section */}
-        <div className="mb-8">
+        <div id="faq" className="mb-8">
           <FAQ />
         </div>
 

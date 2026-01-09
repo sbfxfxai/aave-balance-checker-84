@@ -231,6 +231,11 @@
     background: var(--gradient-card);
   }
 
+  .card-elevated {
+    background: var(--gradient-card);
+    box-shadow: var(--shadow-card);
+  }
+
   .hero-gradient {
     background: var(--gradient-hero);
   }
@@ -253,6 +258,10 @@
     box-shadow: var(--shadow-glow);
   }
 
+  .glow-primary {
+    box-shadow: var(--shadow-glow);
+  }
+
   .text-gradient {
     @apply bg-clip-text text-transparent;
     background-image: var(--gradient-primary);
@@ -263,8 +272,25 @@
     background-image: var(--gradient-primary);
   }
 
+  .border-subtle {
+    border-color: hsl(217 33% 20%);
+  }
+
   .animate-pulse-slow {
     animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes glow-pulse {
+    0%, 100% {
+      opacity: 0.5;
+    }
+    50% {
+      opacity: 0.8;
+    }
+  }
+
+  .animate-glow-pulse {
+    animation: glow-pulse 3s ease-in-out infinite;
   }
 }
 

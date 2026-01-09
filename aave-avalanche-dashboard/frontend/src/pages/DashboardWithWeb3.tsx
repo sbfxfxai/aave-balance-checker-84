@@ -1,7 +1,7 @@
 import { SimpleDashboard } from '@/components/SimpleDashboard';
 import { NetworkGuard } from '@/components/NetworkGuard';
 import { Footer } from '@/components/Footer';
-import { TrendingUp, Zap, Bitcoin } from 'lucide-react';
+import { TrendingUp, Zap, Bitcoin, Home } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Web3Providers } from '@/components/Web3Providers';
@@ -30,6 +30,12 @@ function DashboardContent() {
             <div className="flex items-center gap-2 sm:gap-3">
               <ConnectWalletButton />
               <nav className="flex items-center gap-1 sm:gap-2" aria-label="Main navigation">
+                <Link to="/" aria-label="Go to Banking page">
+                  <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Banking">
+                    <Home className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
+                    <span className="hidden sm:inline">Banking</span>
+                  </Button>
+                </Link>
                 <Link to="/gmx" aria-label="Go to Bitcoin trading page">
                   <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Bitcoin">
                     <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />

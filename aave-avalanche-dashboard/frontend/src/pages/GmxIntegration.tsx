@@ -18,6 +18,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NetworkGuard } from '@/components/NetworkGuard';
 import { Footer } from '@/components/Footer';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useNetworkGuard } from '@/hooks/useNetworkGuard';
@@ -25,6 +31,7 @@ import { useWalletBalances } from '@/hooks/useWalletBalances';
 import { CONTRACTS } from '@/config/contracts';
 import { OptimizedLogo } from '@/components/OptimizedLogo';
 import { ConnectWalletButton } from '@/components/ConnectWalletButton';
+import { Bitcoin, AlertTriangle, Zap, ExternalLink, Sparkles, Home } from 'lucide-react';
 import styles from './GmxIntegration.module.css';
 
 // GMX SDK Type Definitions
@@ -112,7 +119,25 @@ const GMX_AVALANCHE_CHAIN_ID = 43114 as const;
 const MIN_POSITION_SIZE_USD = 10;
 const MIN_COLLATERAL_USD = 5;
 
-// Memoized Position Details Component
+// DetailRow component for position details
+const DetailRow = ({ 
+  label, 
+  value, 
+  highlight = false 
+}: { 
+  label: string; 
+  value: string; 
+  highlight?: boolean;
+}) => (
+  <div className="flex justify-between items-center">
+    <span className="text-muted-foreground">{label}:</span>
+    <span className={highlight ? "text-primary font-semibold" : "text-foreground"}>
+      {value}
+    </span>
+  </div>
+);
+
+// Memoized Position Details Component (kept for backward compatibility but not used in new layout)
 const PositionDetails = memo(({ 
   usdcAmount, 
   leverage, 
@@ -1323,221 +1348,329 @@ export default function GmxIntegration() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
-      <header className="border-b border-border/50 backdrop-blur-sm bg-background/80 sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-3 sm:py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <OptimizedLogo loading="eager" />
-              <div>
-                <h1 className="text-lg sm:text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">Bitcoin</h1>
-                <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Leveraged Trading</p>
+    <div className="min-h-screen bg-background">
+      {/* Subtle glow effect */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-primary/5 blur-[120px] rounded-full animate-glow-pulse" />
+      </div>
+
+      <div className="relative z-10">
+        <header className="border-b border-border/50 backdrop-blur-sm bg-background/80 sticky top-0 z-50">
+          <div className="container mx-auto px-4 py-3 sm:py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                  <span className="font-bold text-primary-foreground text-sm">B</span>
+                </div>
+                <span className="text-lg sm:text-xl font-bold text-foreground">TiltVault</span>
+                <span className="text-lg sm:text-xl font-bold text-foreground">Bitcoin</span>
               </div>
-            </div>
-            <div className="flex items-center gap-2 sm:gap-3">
-              <ConnectWalletButton />
-              <nav className="flex items-center gap-1 sm:gap-2" aria-label="Main navigation">
-                <Link to="/" aria-label="Go to Banking page">
-                  <Button variant="outline" size="sm" className="text-xs sm:text-sm px-2 sm:px-4" aria-label="Banking">Banking</Button>
-                </Link>
-                <Link to="/stack" aria-label="Go to Auto Invest page">
-                  <Button variant="outline" size="sm" className="text-xs sm:text-sm px-2 sm:px-4" aria-label="Auto Invest">Auto</Button>
-                </Link>
-              </nav>
+              <div className="flex items-center gap-2 sm:gap-3">
+                <span className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Leveraged Trading</span>
+                <ConnectWalletButton />
+                <nav className="flex items-center gap-1 sm:gap-2" aria-label="Main navigation">
+                  <Link to="/" aria-label="Go to Banking page">
+                    <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Banking">
+                      <Home className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
+                      <span className="hidden sm:inline">Banking</span>
+                    </Button>
+                  </Link>
+                  <Link to="/gmx" aria-label="Go to Bitcoin trading page">
+                    <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Bitcoin">
+                      <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
+                      <span className="hidden sm:inline">Bitcoin</span>
+                    </Button>
+                  </Link>
+                  <Link to="/stack" aria-label="Go to Auto Invest page">
+                    <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Auto Invest">
+                      <Zap className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
+                      <span className="hidden sm:inline">Auto</span>
+                    </Button>
+                  </Link>
+                </nav>
+              </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main className="container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto space-y-6">
+        <main className="container mx-auto px-4 py-8 max-w-xl space-y-6">
           <NetworkGuard />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Initiate BTC Long (GMX)</CardTitle>
-              <CardDescription>
-                This will submit a live GMX order on Avalanche when confirmed.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="card-elevated rounded-xl border border-subtle p-6 space-y-6">
+            {/* Header */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <Bitcoin className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">Initiate BTC Long (GMX)</h2>
+                <p className="text-sm text-muted-foreground">
+                  This will submit a live GMX order on Avalanche when confirmed.
+                </p>
+              </div>
+            </div>
+            {/* Collateral Input */}
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-foreground">
+                USDC to use as collateral
+              </label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  value={usdcAmount}
+                  onChange={(e) => setUsdcAmount(e.target.value)}
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground pr-16 h-12 text-lg"
+                  placeholder="0.00"
+                  disabled={isChecking || isExecuting}
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">
+                  USDC
+                </span>
+              </div>
+
+              {/* Detected Balances */}
+              <div className="flex gap-4 text-sm">
+                <span className="text-muted-foreground">Detected balances</span>
+                <span className={isConnected && avaxValue > 0n ? "text-success" : "text-destructive"}>
+                  AVAX: {isConnected ? (avaxValue > 0n ? 'OK' : '0') : '—'}
+                </span>
+                <span className={isConnected && parseFloat(usdcBalance) > 0 ? "text-success" : "text-destructive"}>
+                  USDC: {isConnected ? usdcBalance : '—'}
+                </span>
+              </div>
+              {needsMigration && (
+                <div className="text-xs text-destructive font-medium p-2 bg-destructive/10 rounded">
+                  ⚠️ Action Required: You have USDC.e but no native USDC. 
+                  GMX requires native USDC ({CONTRACTS.USDC}). Please migrate your tokens first.
+                </div>
+              )}
+            </div>
+
+            {/* Info Box */}
+            <div className="bg-muted/50 rounded-lg p-4 border border-border">
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="confirmLiveTrade"
+                  checked={confirmLiveTrade}
+                  onCheckedChange={(checked) => setConfirmLiveTrade(checked === true)}
+                  disabled={isExecuting || isChecking}
+                />
+                <label htmlFor="confirmLiveTrade" className="text-sm text-muted-foreground leading-tight cursor-pointer">
+                  A live GMX BTC long order will be placed on Avalanche.
+                </label>
+              </div>
+            </div>
+
+            {/* Position Details */}
+            <div className="space-y-4">
+              <h3 className="font-semibold text-foreground">Position Details</h3>
+              <div className="space-y-3">
+                <DetailRow label="Collateral" value={`$${usdcAmount} USDC`} />
+                <DetailRow label="Leverage" value="2.5x" highlight />
+                <DetailRow label="Position Size" value={`$${(Number(usdcAmount) * leverage).toFixed(2)}`} />
+                <DetailRow label="Slippage" value={`${(Number(usdcAmount) * leverage) > 1000 ? '1.0%' : '0.5%'} (${(Number(usdcAmount) * leverage) > 1000 ? '100' : '50'} bps)`} />
+                <DetailRow label="Basis Points" value={toBasisPoints(leverage).toString()} />
+              </div>
+            </div>
+
+            {/* Dynamic Slippage Warning */}
+            <div className="bg-warning/10 border border-warning/30 rounded-lg p-4 flex gap-3">
+              <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-warning text-sm">Dynamic Slippage Protection</h4>
+                <p className="text-sm text-muted-foreground mt-1">
+                  This order uses dynamic slippage: 0.5% for small trades (&lt;$1000) or 1% for large trades. 
+                  This provides better execution while protecting against price impact.
+                </p>
+              </div>
+            </div>
+
+            {/* Fee Estimates */}
+            {estimatedFees && (
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Estimated Gas:</span>
+                  <span className="text-foreground">~{formatUnits(estimatedFees.gasEstimate, 18)} AVAX</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Execution Fee:</span>
+                  <span className="text-foreground">~{formatUnits(estimatedFees.executionFee, 18)} AVAX</span>
+                </div>
+                <div className="flex justify-between font-medium pt-2 border-t border-border">
+                  <span className="text-muted-foreground">Total Fees:</span>
+                  <span className="text-foreground">~{formatUnits(estimatedFees.gasEstimate + estimatedFees.executionFee, 18)} AVAX</span>
+                </div>
+              </div>
+            )}
+
+            {/* Transaction Progress Indicator */}
+            {isExecuting && txProgress.step > 0 && (
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
                 <div className="space-y-2">
-                  <Label htmlFor="usdcAmount">USDC to use as collateral</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="usdcAmount"
-                      type="number"
-                      value={usdcAmount}
-                      onChange={(e) => setUsdcAmount(e.target.value)}
-                      min={0}
-                      step={0.01}
-                      placeholder="10.00"
-                      disabled={isChecking || isExecuting}
+                  <div className="flex justify-between text-sm">
+                    <span>Progress</span>
+                    <span>{txProgress.step}/{txProgress.total}</span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-2">
+                    <div 
+                      className={styles.progressBar}
+                      style={{ '--progress-width': `${Math.round((txProgress.step / txProgress.total) * 100)}%` } as React.CSSProperties}
                     />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setUsdcAmount(formatUnits(usdcValue, 6))}
-                      disabled={isChecking || isExecuting || usdcValue <= 0n}
+                  </div>
+                  <p className="text-xs text-muted-foreground">{txProgress.message}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Submit Button */}
+            <Button
+              onClick={() => {
+                if (!confirmLiveTrade) {
+                  toast({
+                    title: 'Confirmation required',
+                    description: 'Check the confirmation box first',
+                    variant: 'destructive',
+                  });
+                  return;
+                }
+                setShowConfirmDialog(true);
+              }}
+              disabled={!confirmLiveTrade || isExecuting || isSwitching || isChecking}
+              className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 text-primary-foreground glow-primary"
+            >
+              <Zap className="w-4 h-4 mr-2" />
+              {isExecuting ? 'Submitting…' : 'Confirm Order'}
+            </Button>
+            <Button onClick={handleCheckAndPrepare} disabled={isChecking || isExecuting || isSwitching} variant="outline" className="w-full">
+              {isChecking ? 'Checking…' : 'Preview Market'}
+            </Button>
+
+            {/* Trade Details */}
+            {(result || txHash) && (
+              <div className="bg-muted/40 rounded-lg p-4 border border-border space-y-2 text-sm">
+                <h4 className="font-semibold text-foreground mb-2">Trade Details</h4>
+                <p className="text-muted-foreground text-xs mb-3">
+                  Collateral: {usdcAmount} USDC • Leverage: {leverage}x
+                </p>
+                {result?.market?.name && (
+                  <div><span className="font-medium">GMX Market:</span> {result.market.name}</div>
+                )}
+                {result?.market?.marketToken && (
+                  <div><span className="font-medium">Market Token:</span> {result.market.marketToken}</div>
+                )}
+                {txHash && (
+                  <div className="pt-2 space-y-1">
+                    <div><span className="font-medium">Tx Hash:</span> {txHash}</div>
+                    <a
+                      className="text-sm underline"
+                      href={`https://snowtrace.io/tx/${txHash}`}
+                      target="_blank"
+                      rel="noreferrer"
                     >
-                      Max
-                    </Button>
+                      View on Snowtrace
+                    </a>
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">Detected balances</div>
-                  <div className="text-sm text-muted-foreground">AVAX: {isConnected ? (avaxValue > 0n ? 'OK' : '0') : '—'}</div>
-                  <div className="text-sm text-muted-foreground">USDC: {isConnected ? usdcBalance : '—'}</div>
-                  {needsMigration && (
-                    <div className="text-xs text-destructive font-medium p-2 bg-destructive/10 rounded">
-                      ⚠️ Action Required: You have USDC.e but no native USDC. 
-                      GMX requires native USDC ({CONTRACTS.USDC}). Please migrate your tokens first.
-                    </div>
-                  )}
-                </div>
+                )}
+                {txStage !== 'idle' && (
+                  <div className="text-sm text-muted-foreground">Status: {txStage}</div>
+                )}
               </div>
+            )}
+          </div>
 
-              <div className="space-y-2">
-                <div className="flex items-start gap-2 rounded-md border border-border/50 bg-background/60 p-3">
-                  <Checkbox
-                    id="confirmLiveTrade"
-                    checked={confirmLiveTrade}
-                    onCheckedChange={(checked) => setConfirmLiveTrade(checked === true)}
-                    disabled={isExecuting || isChecking}
-                  />
-                  <label htmlFor="confirmLiveTrade" className="text-sm leading-tight">
-                    A <span className="font-medium">live GMX</span> BTC long order will be placed on Avalanche.
-                  </label>
-                </div>
-              </div>
-
-              {/* Position Details Display */}
-              <PositionDetails 
-                usdcAmount={usdcAmount} 
-                leverage={leverage} 
-                toBasisPoints={toBasisPoints}
-                btcPrice={btcPrice}
-              />
-
-              {/* Slippage Warning */}
-              <div className="rounded-md border border-orange-500/50 bg-orange-500/10 p-3">
-                <div className="flex items-start gap-2">
-                  <span className="text-lg">⚠️</span>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-orange-900 dark:text-orange-200">
-                      Dynamic Slippage Protection
+          {/* FAQ Section */}
+          <section className="py-12 border-t border-border" id="faq">
+            <div className="container mx-auto px-4">
+              <h2 className="text-2xl font-bold text-foreground mb-6">Frequently Asked Questions</h2>
+              <Accordion type="single" collapsible className="w-full max-w-4xl mx-auto">
+                <AccordionItem value="what-is-tiltvault" className="border-border">
+                  <AccordionTrigger className="text-left hover:no-underline">
+                    What is TiltVault?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-sm text-muted-foreground">
+                    <p>
+                      TiltVault is a non-custodial decentralized finance (DeFi) protocol aggregator that provides a user interface for interacting with established, audited blockchain protocols on the Avalanche network.
                     </p>
-                    <p className="text-xs text-orange-800 dark:text-orange-300 mt-1">
-                      This order uses dynamic slippage: 0.5% for small trades (&lt;$1000) or 1% for large trades. 
-                      This provides better execution while protecting against price impact.
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="how-leveraged-trading" className="border-border">
+                  <AccordionTrigger className="text-left hover:no-underline">
+                    How does leveraged trading work?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-sm text-muted-foreground">
+                    <p>
+                      Leveraged trading allows you to open positions larger than your collateral. With 2.5x leverage, a $10 USDC deposit can control a $25 position. This amplifies both gains and losses, so use caution.
                     </p>
-                  </div>
-                </div>
-              </div>
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="risks" className="border-border">
+                  <AccordionTrigger className="text-left hover:no-underline">
+                    What are the risks?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-sm text-muted-foreground">
+                    <p>
+                      Leveraged trading carries significant risk. You can lose your entire collateral if the market moves against your position. Always understand the risks before trading.
+                    </p>
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="fees" className="border-border">
+                  <AccordionTrigger className="text-left hover:no-underline">
+                    What fees are involved?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-sm text-muted-foreground">
+                    <p>
+                      You'll pay gas fees for transactions on Avalanche and execution fees to GMX. Holding 100+ ERGC tokens provides a 56% discount on platform fees.
+                    </p>
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="get-started" className="border-border">
+                  <AccordionTrigger className="text-left hover:no-underline">
+                    How do I get started?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-sm text-muted-foreground">
+                    <p>
+                      Connect your wallet, ensure you have USDC and AVAX for gas, enter your desired collateral amount, review the position details, and confirm the trade.
+                    </p>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </div>
+          </section>
 
-              {/* Estimated Fees Display */}
-              {estimatedFees && (
-                <div className="text-xs text-muted-foreground space-y-1 p-3 bg-muted/50 rounded">
-                  <div className="flex justify-between">
-                    <span>Estimated Gas:</span>
-                    <span>~{formatUnits(estimatedFees.gasEstimate, 18)} AVAX</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Execution Fee:</span>
-                    <span>~{formatUnits(estimatedFees.executionFee, 18)} AVAX</span>
-                  </div>
-                  <div className="flex justify-between font-medium">
-                    <span>Total Fees:</span>
-                    <span>~{formatUnits(estimatedFees.gasEstimate + estimatedFees.executionFee, 18)} AVAX</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Transaction Progress Indicator */}
-              {isExecuting && txProgress.step > 0 && (
-                <Card className="bg-blue-500/10 border-blue-500/20">
-                  <CardContent className="pt-4">
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span>Progress</span>
-                        <span>{txProgress.step}/{txProgress.total}</span>
+          {/* ERGC Discount Section */}
+          <section className="py-12 border-t border-border">
+            <div className="container mx-auto px-4">
+              <div className="max-w-4xl mx-auto">
+                <Card className="card-gradient border-border">
+                  <CardContent className="p-6">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 rounded-full bg-success/20 flex items-center justify-center flex-shrink-0">
+                        <Sparkles className="w-6 h-6 text-success" />
                       </div>
-                      <div className="w-full bg-muted rounded-full h-2">
-                        <div 
-                          className={styles.progressBar}
-                          style={{ '--progress-width': `${Math.round((txProgress.step / txProgress.total) * 100)}%` } as React.CSSProperties}
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">{txProgress.message}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => {
-                    if (!confirmLiveTrade) {
-                      toast({
-                        title: 'Confirmation required',
-                        description: 'Check the confirmation box first',
-                        variant: 'destructive',
-                      });
-                      return;
-                    }
-                    setShowConfirmDialog(true);
-                  }}
-                  disabled={!confirmLiveTrade || isExecuting || isSwitching || isChecking}
-                  className="flex-1"
-                >
-                  {isExecuting ? 'Submitting…' : 'Initiate 2.5x BTC Long (live)'}
-                </Button>
-                <Button onClick={handleCheckAndPrepare} disabled={isChecking || isExecuting || isSwitching} variant="outline">
-                  {isChecking ? 'Checking…' : 'Preview Market'}
-                </Button>
-              </div>
-
-              {(result || txHash) && (
-                <Card className="bg-muted/40">
-                  <CardHeader>
-                    <CardTitle className="text-base">Trade Details</CardTitle>
-                    <CardDescription>
-                      Collateral: {usdcAmount} USDC • Leverage: {leverage}x
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-2 text-sm">
-                    {result?.market?.name && (
-                      <div><span className="font-medium">GMX Market:</span> {result.market.name}</div>
-                    )}
-                    {result?.market?.marketToken && (
-                      <div><span className="font-medium">Market Token:</span> {result.market.marketToken}</div>
-                    )}
-                    {txHash && (
-                      <div className="pt-2 space-y-1">
-                        <div><span className="font-medium">Tx Hash:</span> {txHash}</div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-foreground mb-2">Get ERGC on Uniswap (AVAX → ERGC)</h3>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          <span className="font-medium">Fee Discount:</span> Holding 100+ ERGC = <span className="font-bold text-primary">56% discount</span> on TiltVault platform fees
+                        </p>
                         <a
-                          className="text-sm underline"
-                          href={`https://snowtrace.io/tx/${txHash}`}
+                          href="https://app.uniswap.org/explore/pools/avalanche/0x3c83d0058e9d1652534be264dba75cfcc2e1d48a3ff1d2c3611a194a361a16ee"
                           target="_blank"
-                          rel="noreferrer"
+                          rel="noopener noreferrer"
                         >
-                          View on Snowtrace
+                          <Button variant="default" className="bg-primary hover:bg-primary/90">
+                            Trade on Uniswap
+                            <ExternalLink className="ml-2 h-4 w-4" />
+                          </Button>
                         </a>
                       </div>
-                    )}
-                    {txStage !== 'idle' && (
-                      <div className="text-sm text-muted-foreground">Status: {txStage}</div>
-                    )}
+                    </div>
                   </CardContent>
                 </Card>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </main>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
 
       {/* Confirmation Dialog */}
       <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
