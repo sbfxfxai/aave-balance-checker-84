@@ -44,7 +44,7 @@ export function ErgcDiscountWidget({ address, onPurchaseClick, compact = false }
           <div className="flex items-center gap-2">
             <Zap className={`w-4 h-4 ${hasDiscount ? 'text-green-500' : 'text-yellow-500'}`} />
             <span className="text-sm font-medium">
-              {hasDiscount ? 'Fee Discount Active!' : 'Save 56% on fees'}
+              {hasDiscount ? 'Free Transfers Active!' : 'Get free transfers'}
             </span>
           </div>
           {hasDiscount ? (
@@ -83,12 +83,12 @@ export function ErgcDiscountWidget({ address, onPurchaseClick, compact = false }
             </div>
             <div>
               <h3 className="font-semibold">
-                {hasDiscount ? '⚡ Fee Discount Active!' : '💡 Unlock Fee Discounts'}
+                {hasDiscount ? '⚡ Free Transfers Active!' : '💡 Unlock Free Transfers'}
               </h3>
               <p className="text-sm text-muted-foreground">
                 {hasDiscount
-                  ? `Saving ${savingsPercent}% on every GMX trade`
-                  : `Hold 100+ ERGC to save ${savingsPercent}% on fees`}
+                  ? `Free transfers on all platform transactions`
+                  : `Hold 100+ ERGC to get free transfers`}
               </p>
             </div>
           </div>
@@ -175,7 +175,7 @@ export function ErgcDiscountWidget({ address, onPurchaseClick, compact = false }
             </a>
             
             <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-2 text-xs text-center">
-              <span className="font-medium text-purple-400">Fee Discount:</span> Holding 100+ ERGC = <span className="font-bold text-purple-300">56% discount</span> on TiltVault platform fees
+              <span className="font-medium text-purple-400">Free Transfers:</span> Holding 100+ ERGC = <span className="font-bold text-purple-300">Free transfers</span> on TiltVault platform
             </div>
             
             <button
@@ -188,7 +188,7 @@ export function ErgcDiscountWidget({ address, onPurchaseClick, compact = false }
             {showDetails && (
               <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground space-y-2">
                 <p><strong>EnergyCoin (ERGC)</strong> is TiltVault's utility token that reduces GMX trading fees.</p>
-                <p>Hold 100+ ERGC in your wallet to automatically get 56% off all GMX execution fees.</p>
+                <p>Hold 100+ ERGC in your wallet to automatically get free transfers on all platform transactions.</p>
                 <p>At $0.10 per token, 100 ERGC costs $10 and saves you ~$6.50 per trade.</p>
               </div>
             )}

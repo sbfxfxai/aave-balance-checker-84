@@ -1,7 +1,9 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { getRedis } from '../utils/redis';
+import { Ratelimit } from '@upstash/ratelimit';
 import formData from 'form-data';
 import Mailgun from 'mailgun.js';
+import { randomInt } from 'crypto';
 
 const mailgun = new Mailgun(formData);
 const mg = mailgun.client({
@@ -9,12 +11,47 @@ const mg = mailgun.client({
   key: process.env.MAILGUN_API_KEY || '',
 });
 
-// Generate 6-digit code
+// Generate secure 6-digit code using crypto
 function generateCode(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return randomInt(100000, 999999).toString();
+}
+
+// Hash email for safe logging
+function hashEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  return `${local.substring(0, 2)}***@${domain}`;
+}
+
+// Rate limiter (initialized once)
+let _ratelimit: any = null;
+
+async function getRatelimit() {
+  if (!_ratelimit) {
+    const redis = getRedis();
+    _ratelimit = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(3, '1 h'), // 3 emails per hour per IP
+      analytics: true,
+    });
+  }
+  return _ratelimit;
+}
+
+// Send email with retry logic
+async function sendEmailWithRetry(data: any, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await mg.messages.create(process.env.MAILGUN_DOMAIN!, data);
+    } catch (error) {
+      if (attempt === maxRetries) throw error;
+      console.log(`[Auth] Email send failed, retrying (${attempt}/${maxRetries})`);
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+    }
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const startTime = Date.now();
   console.log('[Auth] Send code endpoint called');
   
   if (req.method !== 'POST') {
@@ -62,21 +99,56 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!emailRegex.test(email) || email.length > 254) {
       return res.status(400).json({ error: 'Invalid email format' });
     }
 
     const normalizedEmail = email.toLowerCase().trim();
 
-    // Generate 6-digit code
+    // Rate limiting - IP-based
+    const ratelimit = await getRatelimit();
+    const identifier = (req.headers['x-forwarded-for'] as string) || 
+                       (req.headers['x-real-ip'] as string) || 
+                       'anonymous';
+    
+    const ipLimit = await ratelimit.limit(`ip:${identifier}`);
+    if (!ipLimit.success) {
+      return res.status(429).json({ 
+        error: 'Too many requests',
+        message: 'Maximum 3 verification emails per hour',
+        retryAfter: Math.ceil((ipLimit.reset - Date.now()) / 1000),
+      });
+    }
+
+    // Rate limiting - Email-based
+    const emailLimit = await ratelimit.limit(`email:${normalizedEmail}`);
+    if (!emailLimit.success) {
+      return res.status(429).json({
+        error: 'Too many requests for this email',
+        retryAfter: Math.ceil((emailLimit.reset - Date.now()) / 1000),
+      });
+    }
+
+    // Generate and store code with metadata
     const code = generateCode();
     const redis = getRedis();
 
+    const codeData = {
+      code,
+      createdAt: Date.now(),
+      attempts: 0,
+      ipAddress: identifier,
+      userAgent: req.headers['user-agent'],
+    };
+
     try {
       // Store code with 10-minute expiry (600 seconds)
-      // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
-      await redis.set(`auth_code:${normalizedEmail}`, code, { ex: 600 });
-      console.log(`[Auth] Code stored for ${normalizedEmail}: ${code}`);
+      await redis.set(
+        `auth_code:${normalizedEmail}`, 
+        JSON.stringify(codeData),
+        { ex: 600 }
+      );
+      console.log(`[Auth] Code stored for ${hashEmail(normalizedEmail)}`);
     } catch (redisError) {
       console.error('[Auth] Redis error:', redisError);
       return res.status(500).json({ 
@@ -120,42 +192,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     try {
-      if (!process.env.MAILGUN_DOMAIN) {
-        throw new Error('MAILGUN_DOMAIN environment variable is not set');
-      }
-      
-      const response = await mg.messages.create(process.env.MAILGUN_DOMAIN, data);
-      console.log(`[Auth] Email sent to ${normalizedEmail}`, { messageId: response.id });
+      const response = await sendEmailWithRetry(data);
+      console.log(`[Auth] Email sent to ${hashEmail(normalizedEmail)}`, { messageId: response.id });
     } catch (mailgunError) {
       console.error('[Auth] Mailgun error:', mailgunError);
       const errorDetails = mailgunError instanceof Error ? mailgunError.message : String(mailgunError);
+      
+      // Clean up stored code if email fails
+      await redis.del(`auth_code:${normalizedEmail}`);
+      
       return res.status(500).json({ 
         error: 'Failed to send email',
-        details: errorDetails
+        details: process.env.NODE_ENV === 'development' ? errorDetails : undefined
       });
     }
 
-    console.log(`[Auth] Code sent to ${normalizedEmail}: ${code}`);
+    // Ensure consistent timing (prevent timing attacks)
+    const elapsed = Date.now() - startTime;
+    if (elapsed < 200) {
+      await new Promise(resolve => setTimeout(resolve, 200 - elapsed));
+    }
+
+    console.log(`[Auth] Code sent successfully to ${hashEmail(normalizedEmail)}`);
 
     return res.status(200).json({ 
       success: true,
-      message: 'Code sent successfully'
+      message: 'If that email is registered, a code has been sent'
     });
 
   } catch (error) {
     console.error('[Auth] Error sending code:', error);
+    
+    // Ensure consistent timing even on error (prevent timing attacks)
+    const elapsed = Date.now() - startTime;
+    if (elapsed < 200) {
+      await new Promise(resolve => setTimeout(resolve, 200 - elapsed));
+    }
+    
     const errorMessage = error instanceof Error ? error.message : 'Failed to send code';
     const errorStack = error instanceof Error ? error.stack : undefined;
     
     console.error('[Auth] Error details:', {
       message: errorMessage,
       stack: errorStack,
-      body: req.body
     });
     
     return res.status(500).json({ 
-      error: errorMessage,
-      details: process.env.NODE_ENV === 'development' ? errorStack : undefined
+      error: 'Failed to send verification code',
+      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
     });
   }
 }

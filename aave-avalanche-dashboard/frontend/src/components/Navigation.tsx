@@ -3,8 +3,11 @@ import { Button } from '@/components/ui/button';
 import { Bitcoin, Zap, Home, ExternalLink } from 'lucide-react';
 import { OptimizedLogo } from '@/components/OptimizedLogo';
 import { ConnectWalletButton } from '@/components/ConnectWalletButton';
+import { useErgcPurchaseModal } from '@/contexts/ErgcPurchaseModalContext';
 
 export function Navigation() {
+  const { openModal } = useErgcPurchaseModal();
+
   return (
     <header className="border-b border-border/50 backdrop-blur-sm bg-background/80 sticky top-0 z-50">
       <div className="container mx-auto px-4 py-3 sm:py-4">
@@ -19,17 +22,15 @@ export function Navigation() {
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
-            <a
-              href="https://app.uniswap.org/explore/pools/avalanche/0x3c83d0058e9d1652534be264dba75cfcc2e1d48a3ff1d2c3611a194a361a16ee"
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={openModal}
               className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 hover:border-purple-500/50 transition-colors text-xs font-medium text-purple-400 hover:text-purple-300"
-              title="Get ERGC on Uniswap - 100+ ERGC = 56% fee discount"
+              title="Get ERGC - Buy directly or trade on DEX"
             >
               <Zap className="h-3 w-3" />
               <span>Get ERGC</span>
               <ExternalLink className="h-3 w-3" />
-            </a>
+            </button>
             <ConnectWalletButton />
             <nav className="flex items-center gap-1 sm:gap-2" aria-label="Main navigation">
             <Link to="/" aria-label="Go to Banking page">

@@ -5,6 +5,8 @@
 
 import { logger, LogCategory } from '../logger';
 
+type AlertSeverity = 'critical' | 'high' | 'medium' | 'low';
+
 interface SlackMessage {
   text: string;
   attachments: SlackAttachment[];
@@ -28,19 +30,39 @@ interface SlackField {
 interface SlackAlert {
   title: string;
   message: string;
-  severity: string;
+  severity: AlertSeverity;
   timestamp: string;
   context?: Record<string, any>;
+}
+
+interface SendResult {
+  success: boolean;
+  error?: string;
+  messageId?: string;
 }
 
 class SlackService {
   private static instance: SlackService;
   private isEnabled: boolean;
   private webhookUrl?: string;
+  private criticalWebhookUrl?: string;
+  private lastMessageTime = 0;
+  private recentAlerts = new Map<string, number>();
+  
+  // Rate limiting: Slack allows 1 message per second per webhook
+  private readonly MIN_MESSAGE_INTERVAL = 1000; // 1 second
+  private readonly DEDUP_WINDOW = 5 * 60 * 1000; // 5 minutes
 
   private constructor() {
-    this.isEnabled = !!process.env.SLACK_WEBHOOK_URL;
     this.webhookUrl = process.env.SLACK_WEBHOOK_URL;
+    this.criticalWebhookUrl = process.env.SLACK_CRITICAL_WEBHOOK_URL;
+    
+    // Validate webhook URLs
+    this.isEnabled = !!(this.webhookUrl && this.webhookUrl.includes('hooks.slack.com'));
+    
+    if (this.criticalWebhookUrl && !this.criticalWebhookUrl.includes('hooks.slack.com')) {
+      logger.warn('Critical webhook URL appears invalid', LogCategory.API);
+    }
   }
 
   static getInstance(): SlackService {
@@ -50,30 +72,77 @@ class SlackService {
     return SlackService.instance;
   }
 
-  private getSeverityColor(severity: string): string {
-    const colors = {
-      critical: 'danger',    // red
-      high: 'warning',       // orange
-      medium: 'good',        // green
-      low: '#36a64f'         // light green
-    };
-    return colors[severity as keyof typeof colors] || 'good';
+  // Sanitize values to prevent Slack markdown injection
+  private sanitizeValue(value: any): string {
+    const str = typeof value === 'object' 
+      ? JSON.stringify(value, null, 2)
+      : String(value);
+    
+    // Escape Slack special characters and truncate
+    return str
+      .substring(0, 200)
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/&/g, '&amp;')
+      + (str.length > 200 ? '...' : '');
   }
 
-  private getSeverityEmoji(severity: string): string {
+  // Get appropriate webhook URL based on severity
+  private getWebhookUrl(severity: AlertSeverity): string {
+    if (severity === 'critical' && this.criticalWebhookUrl) {
+      return this.criticalWebhookUrl;
+    }
+    return this.webhookUrl!;
+  }
+
+  // Message deduplication to prevent spam
+  private shouldSendAlert(alert: SlackAlert): boolean {
+    const alertKey = `${alert.title}:${alert.severity}`;
+    const lastSent = this.recentAlerts.get(alertKey);
+    const now = Date.now();
+
+    if (lastSent && now - lastSent < this.DEDUP_WINDOW) {
+      logger.info('Alert deduplicated', LogCategory.API, { alertKey });
+      return false;
+    }
+
+    this.recentAlerts.set(alertKey, now);
+    
+    // Cleanup old entries
+    for (const [key, time] of this.recentAlerts.entries()) {
+      if (now - time > this.DEDUP_WINDOW) {
+        this.recentAlerts.delete(key);
+      }
+    }
+
+    return true;
+  }
+
+  private getSeverityColor(severity: AlertSeverity): string {
+    const colors = {
+      critical: 'danger',    // red
+      high: 'warning',       // orange  
+      medium: '#ffc107',     // yellow (custom hex - not green!)
+      low: 'good'            // green
+    };
+    return colors[severity] || 'good';
+  }
+
+  private getSeverityEmoji(severity: AlertSeverity): string {
     const emojis = {
       critical: '🚨',
       high: '⚠️',
       medium: 'ℹ️',
       low: '✅'
     };
-    return emojis[severity as keyof typeof emojis] || 'ℹ️';
+    return emojis[severity] || 'ℹ️';
   }
 
   private generateSlackMessage(alert: SlackAlert): SlackMessage {
     const color = this.getSeverityColor(alert.severity);
     const emoji = this.getSeverityEmoji(alert.severity);
 
+    // Priority fields: severity and time first
     const fields: SlackField[] = [
       {
         title: 'Severity',
@@ -87,42 +156,74 @@ class SlackService {
       }
     ];
 
-    // Add context fields if available
+    // Add context fields if available (limit to 8 more to stay under 10 total)
     if (alert.context) {
-      Object.entries(alert.context).forEach(([key, value]) => {
-        const displayValue = typeof value === 'object' 
-          ? JSON.stringify(value, null, 2).substring(0, 200) + (JSON.stringify(value).length > 200 ? '...' : '')
-          : String(value);
-        
-        fields.push({
-          title: key,
-          value: displayValue,
-          short: displayValue.length < 50
+      Object.entries(alert.context)
+        .slice(0, 8) // Limit context fields
+        .forEach(([key, value]) => {
+          const displayValue = this.sanitizeValue(value);
+          
+          fields.push({
+            title: this.sanitizeValue(key),
+            value: displayValue,
+            short: displayValue.length < 50
+          });
         });
-      });
     }
 
     const attachment: SlackAttachment = {
       color,
-      title: alert.title,
-      text: alert.message,
-      fields: fields.slice(0, 10), // Slack limits to 10 fields per attachment
+      title: this.sanitizeValue(alert.title),
+      text: this.sanitizeValue(alert.message),
+      fields,
       footer: 'TiltVault Monitoring System',
       ts: Math.floor(new Date(alert.timestamp).getTime() / 1000)
     };
 
     return {
-      text: `${emoji} TiltVault Alert: ${alert.title}`,
+      text: `${emoji} TiltVault Alert: ${this.sanitizeValue(alert.title)}`,
       attachments: [attachment]
     };
   }
 
-  private async sendSlackMessage(message: SlackMessage): Promise<void> {
-    if (!this.webhookUrl) {
-      throw new Error('Slack webhook URL not configured');
+  // Retry logic with exponential backoff
+  private async sendSlackMessageWithRetry(
+    message: SlackMessage, 
+    webhookUrl: string,
+    maxRetries = 3
+  ): Promise<string> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const messageId = await this.sendSlackMessage(message, webhookUrl);
+        return messageId;
+      } catch (error) {
+        if (attempt === maxRetries) throw error;
+        
+        const delay = Math.min(1000 * Math.pow(2, attempt), 10000); // Max 10s
+        logger.warn(`Slack send attempt ${attempt} failed, retrying in ${delay}ms`, LogCategory.API, {
+          error: error instanceof Error ? error.message : 'Unknown',
+          attempt,
+          maxRetries
+        });
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
+    throw new Error('All retry attempts failed');
+  }
+
+  private async sendSlackMessage(message: SlackMessage, webhookUrl: string): Promise<string> {
+    // Rate limiting: enforce minimum interval between messages
+    const now = Date.now();
+    const timeSinceLastMessage = now - this.lastMessageTime;
+    if (timeSinceLastMessage < this.MIN_MESSAGE_INTERVAL) {
+      await new Promise(resolve => 
+        setTimeout(resolve, this.MIN_MESSAGE_INTERVAL - timeSinceLastMessage)
+      );
     }
 
-    const response = await fetch(this.webhookUrl, {
+    const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -130,35 +231,63 @@ class SlackService {
       body: JSON.stringify(message)
     });
 
+    this.lastMessageTime = Date.now();
+
     if (!response.ok) {
       const error = await response.text();
       throw new Error(`Slack webhook error: ${response.status} - ${error}`);
     }
 
+    // Extract message ID from response if available
+    const responseText = await response.text();
+    const messageId = responseText.includes('message_ts') 
+      ? JSON.parse(responseText).message_ts 
+      : `msg_${Date.now()}`;
+
     logger.info('Slack message sent successfully', LogCategory.API, {
       title: message.text,
-      attachments: message.attachments.length
+      messageId
     });
+
+    return messageId;
   }
 
-  public async sendAlert(alert: SlackAlert): Promise<void> {
+  public async sendAlert(alert: SlackAlert): Promise<SendResult> {
     if (!this.isEnabled) {
-      logger.warn('Slack service disabled', LogCategory.API);
-      return;
+      return { success: false, error: 'Slack service disabled' };
+    }
+
+    // Check deduplication
+    if (!this.shouldSendAlert(alert)) {
+      return { success: false, error: 'Alert deduplicated' };
     }
 
     try {
       const message = this.generateSlackMessage(alert);
-      await this.sendSlackMessage(message);
+      const webhookUrl = this.getWebhookUrl(alert.severity);
+      const messageId = await this.sendSlackMessageWithRetry(message, webhookUrl);
+      
+      return { 
+        success: true, 
+        messageId 
+      };
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
       logger.error('Failed to send Slack alert', LogCategory.API, {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        alertTitle: alert.title
+        error: errorMessage,
+        alertTitle: alert.title,
+        severity: alert.severity
       });
+
+      return { 
+        success: false, 
+        error: errorMessage 
+      };
     }
   }
 
-  public async sendCriticalAlert(title: string, message: string, context?: Record<string, any>): Promise<void> {
+  public async sendCriticalAlert(title: string, message: string, context?: Record<string, any>): Promise<SendResult> {
     const alert: SlackAlert = {
       title,
       message,
@@ -167,10 +296,10 @@ class SlackService {
       context
     };
 
-    await this.sendAlert(alert);
+    return this.sendAlert(alert);
   }
 
-  public async sendHighSeverityAlert(title: string, message: string, context?: Record<string, any>): Promise<void> {
+  public async sendHighSeverityAlert(title: string, message: string, context?: Record<string, any>): Promise<SendResult> {
     const alert: SlackAlert = {
       title,
       message,
@@ -179,10 +308,10 @@ class SlackService {
       context
     };
 
-    await this.sendAlert(alert);
+    return this.sendAlert(alert);
   }
 
-  public async testSlackConfiguration(): Promise<boolean> {
+  public async testSlackConfiguration(): Promise<SendResult> {
     try {
       const testAlert: SlackAlert = {
         title: 'Slack Configuration Test',
@@ -192,22 +321,38 @@ class SlackService {
         context: {
           test: true,
           service: 'TiltVault Monitoring',
-          environment: process.env.NODE_ENV || 'development'
+          environment: process.env.NODE_ENV || 'development',
+          webhookType: this.webhookUrl ? 'configured' : 'missing',
+          criticalWebhook: this.criticalWebhookUrl ? 'configured' : 'missing'
         }
       };
 
-      await this.sendAlert(testAlert);
-      return true;
+      const result = await this.sendAlert(testAlert);
+      
+      if (result.success) {
+        logger.info('Slack configuration test successful', LogCategory.API, {
+          messageId: result.messageId
+        });
+      } else {
+        logger.error('Slack configuration test failed', LogCategory.API, {
+          error: result.error
+        });
+      }
+
+      return result;
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
       logger.error('Slack configuration test failed', LogCategory.API, {
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: errorMessage
       });
-      return false;
+      
+      return { success: false, error: errorMessage };
     }
   }
 
-  public async sendPaymentFailureAlert(paymentId: string, error: string, context?: Record<string, any>): Promise<void> {
-    await this.sendCriticalAlert(
+  public async sendPaymentFailureAlert(paymentId: string, error: string, context?: Record<string, any>): Promise<SendResult> {
+    return this.sendCriticalAlert(
       '💳 Payment Processing Failed',
       `Payment ${paymentId} failed to process: ${error}`,
       {
@@ -218,8 +363,8 @@ class SlackService {
     );
   }
 
-  public async sendGMXFailureAlert(tradeId: string, error: string, context?: Record<string, any>): Promise<void> {
-    await this.sendCriticalAlert(
+  public async sendGMXFailureAlert(tradeId: string, error: string, context?: Record<string, any>): Promise<SendResult> {
+    return this.sendCriticalAlert(
       '📈 GMX Trade Failed',
       `GMX trade ${tradeId} failed to execute: ${error}`,
       {
@@ -230,8 +375,8 @@ class SlackService {
     );
   }
 
-  public async sendServiceDownAlert(serviceName: string, error: string, context?: Record<string, any>): Promise<void> {
-    await this.sendHighSeverityAlert(
+  public async sendServiceDownAlert(serviceName: string, error: string, context?: Record<string, any>): Promise<SendResult> {
+    return this.sendHighSeverityAlert(
       '🔴 Service Unavailable',
       `Service ${serviceName} is down or unresponsive: ${error}`,
       {
@@ -242,8 +387,8 @@ class SlackService {
     );
   }
 
-  public async sendHighErrorRateAlert(errorCount: number, timeWindow: string, context?: Record<string, any>): Promise<void> {
-    await this.sendHighSeverityAlert(
+  public async sendHighErrorRateAlert(errorCount: number, timeWindow: string, context?: Record<string, any>): Promise<SendResult> {
+    return this.sendHighSeverityAlert(
       '📊 High Error Rate Detected',
       `${errorCount} errors detected in the last ${timeWindow}`,
       {
@@ -254,9 +399,9 @@ class SlackService {
     );
   }
 
-  public async sendMemoryUsageAlert(usagePercent: number, context?: Record<string, any>): Promise<void> {
-    const severity = usagePercent > 90 ? 'critical' : 'high';
-    await this.sendAlert({
+  public async sendMemoryUsageAlert(usagePercent: number, context?: Record<string, any>): Promise<SendResult> {
+    const severity: AlertSeverity = usagePercent > 90 ? 'critical' : 'high';
+    return this.sendAlert({
       title: '💾 High Memory Usage',
       message: `Memory usage is at ${usagePercent}%`,
       severity,

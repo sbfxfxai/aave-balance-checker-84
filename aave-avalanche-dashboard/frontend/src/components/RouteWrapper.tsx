@@ -1,4 +1,5 @@
 import { Suspense, lazy, ReactNode } from 'react';
+import { ErgcPurchaseModalProvider } from '@/contexts/ErgcPurchaseModalContext';
 
 // Lazy load Web3Providers and AuthGuard together (they're always used together)
 const Web3Providers = lazy(() =>
@@ -30,11 +31,13 @@ export function RouteWrapper({ children }: RouteWrapperProps) {
   return (
     <Suspense fallback={<ProviderFallback />}>
       <Web3Providers>
-        <Suspense fallback={<ProviderFallback />}>
-          <AuthGuard>
-            {children}
-          </AuthGuard>
-        </Suspense>
+        <ErgcPurchaseModalProvider>
+          <Suspense fallback={<ProviderFallback />}>
+            <AuthGuard>
+              {children}
+            </AuthGuard>
+          </Suspense>
+        </ErgcPurchaseModalProvider>
       </Web3Providers>
     </Suspense>
   );

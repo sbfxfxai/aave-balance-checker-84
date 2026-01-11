@@ -7,6 +7,7 @@ import { logger, LogCategory } from './logger';
 import { errorTracker } from './errorTracker';
 import { emailService } from './notifications/emailService';
 import { slackService } from './notifications/slackService';
+import { Redis } from '@upstash/redis';
 
 export enum AlertSeverity {
   LOW = 'low',
@@ -43,8 +44,14 @@ interface AlertRule {
   severity: AlertSeverity;
   condition: () => Promise<boolean>;
   message: string;
-  cooldownMs: number; // Minimum time between same alert
-  lastTriggered?: number;
+  cooldownMs: number;
+  lastTriggered?: Map<string, number>; // Per-instance cooldown tracking
+}
+
+interface SendResult {
+  success: boolean;
+  error?: string;
+  channel?: string;
 }
 
 class AlertingSystem {
@@ -54,16 +61,23 @@ class AlertingSystem {
   private maxHistorySize = 1000;
   private webhookUrl?: string;
   private emailRecipients: string[] = [];
+  private ruleCheckerInterval?: NodeJS.Timeout;
   
   // Redis-based alert history (persistent across server restarts)
   private readonly ALERT_HISTORY_KEY = 'alerts:history';
   private readonly ALERT_TTL = 30 * 24 * 60 * 60; // 30 days TTL for alert history
 
   private constructor() {
-    this.isEnabled = process.env.NODE_ENV === 'production';
+    // Enable alerting unless explicitly disabled
+    this.isEnabled = process.env.ALERTING_ENABLED !== 'false';
     this.webhookUrl = process.env.ALERT_WEBHOOK_URL;
     this.emailRecipients = (process.env.ALERT_EMAIL_RECIPIENTS || '').split(',').filter(Boolean);
     this.setupDefaultRules();
+    
+    // Start automatic rule checking
+    if (this.isEnabled) {
+      this.startRuleChecker();
+    }
   }
 
   static getInstance(): AlertingSystem {
@@ -71,6 +85,38 @@ class AlertingSystem {
       AlertingSystem.instance = new AlertingSystem();
     }
     return AlertingSystem.instance;
+  }
+
+  // Automatic rule checking every minute
+  private startRuleChecker(): void {
+    this.ruleCheckerInterval = setInterval(async () => {
+      try {
+        await this.checkRules();
+      } catch (error) {
+        logger.error('Rule check failed', LogCategory.API, { 
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }, 60000); // Check every minute
+  }
+
+  // Get Redis client with proper error handling
+  private async getRedis(): Promise<Redis> {
+    try {
+      const url = process.env.KV_REST_API_URL || process.env.REDIS_URL;
+      const token = process.env.KV_REST_API_TOKEN;
+      
+      if (!url || !token) {
+        throw new Error('Redis configuration missing for alerting system');
+      }
+      
+      return new Redis({ url, token });
+    } catch (error) {
+      logger.error('Failed to initialize Redis for alerting', LogCategory.API, {
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      throw error;
+    }
   }
 
   private setupDefaultRules(): void {
@@ -87,20 +133,24 @@ class AlertingSystem {
         return totalErrors > 10 || criticalErrors > 2;
       },
       message: 'High error rate detected',
-      cooldownMs: 5 * 60 * 1000 // 5 minutes
+      cooldownMs: 5 * 60 * 1000, // 5 minutes
+      lastTriggered: new Map()
     });
 
-    // Memory usage alert
+    // Memory usage alert (fixed to use RSS vs total memory)
     this.addRule({
       type: AlertType.MEMORY_HIGH,
       severity: AlertSeverity.MEDIUM,
       condition: async () => {
         const memUsage = process.memoryUsage();
-        const memoryUsagePercent = (memUsage.heapUsed / memUsage.heapTotal) * 100;
+        const os = await import('os');
+        const totalMem = os.totalmem();
+        const memoryUsagePercent = (memUsage.rss / totalMem) * 100;
         return memoryUsagePercent > 85;
       },
-      message: 'Memory usage is high',
-      cooldownMs: 10 * 60 * 1000 // 10 minutes
+      message: 'System memory usage is high',
+      cooldownMs: 10 * 60 * 1000, // 10 minutes
+      lastTriggered: new Map()
     });
 
     // Payment failure alert
@@ -113,7 +163,8 @@ class AlertingSystem {
         return paymentErrors > 0;
       },
       message: 'Payment processing failure detected',
-      cooldownMs: 2 * 60 * 1000 // 2 minutes
+      cooldownMs: 2 * 60 * 1000, // 2 minutes
+      lastTriggered: new Map()
     });
 
     // GMX failure alert
@@ -126,11 +177,15 @@ class AlertingSystem {
         return gmxErrors > 0;
       },
       message: 'GMX integration failure detected',
-      cooldownMs: 2 * 60 * 1000 // 2 minutes
+      cooldownMs: 2 * 60 * 1000, // 2 minutes
+      lastTriggered: new Map()
     });
   }
 
   public addRule(rule: AlertRule): void {
+    if (!rule.lastTriggered) {
+      rule.lastTriggered = new Map();
+    }
     this.rules.set(rule.type, rule);
   }
 
@@ -138,95 +193,170 @@ class AlertingSystem {
     this.rules.delete(type);
   }
 
+  // Per-instance cooldown checking
+  private checkCooldown(type: AlertType, key: string): boolean {
+    const rule = this.rules.get(type);
+    if (!rule || !rule.lastTriggered) return true;
+    
+    const cooldownKey = `${type}:${key}`;
+    const lastTriggered = rule.lastTriggered.get(cooldownKey);
+    const now = Date.now();
+    
+    if (lastTriggered && now - lastTriggered < rule.cooldownMs) {
+      return false;
+    }
+    
+    rule.lastTriggered.set(cooldownKey, now);
+    return true;
+  }
+
   private generateAlertId(): string {
     return `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
+  // Optimized alert storage using Redis hash for O(1) lookups
   private async addToHistory(alert: Alert): Promise<void> {
     try {
-      const { getRedis } = await import('./redis.js');
-      const redis = getRedis();
+      const redis = await this.getRedis();
       
-      // Add alert to Redis list (prepend for newest first)
-      // @ts-ignore - @upstash/redis types may not include lpush method in some TypeScript versions, but it exists at runtime
-      await redis.lpush(this.ALERT_HISTORY_KEY, JSON.stringify(alert));
+      // Store alert in hash for fast lookup (O(1))
+      await redis.hset(`alert:${alert.id}`, JSON.stringify(alert));
+      await redis.expire(`alert:${alert.id}`, this.ALERT_TTL);
       
-      // Trim list to maxHistorySize
-      // @ts-ignore - @upstash/redis types may not include ltrim method in some TypeScript versions, but it exists at runtime
+      // Add ID to list for chronological ordering
+      await redis.lpush(this.ALERT_HISTORY_KEY, alert.id);
       await redis.ltrim(this.ALERT_HISTORY_KEY, 0, this.maxHistorySize - 1);
-      
-      // Set TTL on the list (refresh on each add)
-      // @ts-ignore - @upstash/redis types may not include expire method in some TypeScript versions, but it exists at runtime
       await redis.expire(this.ALERT_HISTORY_KEY, this.ALERT_TTL);
+      
     } catch (error) {
-      // Log error but don't fail alert processing
-      console.error('[Alerting] Failed to store alert in Redis:', error);
+      logger.error('Failed to store alert in Redis', LogCategory.API, {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        alertId: alert.id
+      });
     }
   }
 
+  // Webhook helper with timeout and error handling
+  private async sendWebhook(alert: Alert): Promise<SendResult> {
+    if (!this.webhookUrl) {
+      return { success: false, error: 'Webhook URL not configured', channel: 'webhook' };
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+    try {
+      const response = await fetch(this.webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(alert),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`Webhook returned ${response.status}`);
+      }
+
+      return { success: true, channel: 'webhook' };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: errorMessage, channel: 'webhook' };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  // Parallel notification sending with error handling
   private async sendAlert(alert: Alert): Promise<void> {
     if (!this.isEnabled) {
       logger.warn('Alerting disabled', LogCategory.API, { alert });
       return;
     }
 
-    try {
-      // Send to webhook (if configured)
-      if (this.webhookUrl) {
-        await fetch(this.webhookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(alert)
-        });
-      }
+    const notifications = [];
 
-      // Send email notifications
-      if (this.emailRecipients.length > 0) {
-        await emailService.sendAlert({
-          title: alert.title,
-          message: alert.message,
-          severity: alert.severity,
-          timestamp: alert.timestamp,
-          context: alert.context
-        }, this.emailRecipients);
-      }
-
-      // Send Slack notification
-      if (this.webhookUrl && this.webhookUrl.includes('hooks.slack.com')) {
-        await slackService.sendAlert({
-          title: alert.title,
-          message: alert.message,
-          severity: alert.severity,
-          timestamp: alert.timestamp,
-          context: alert.context
-        });
-      }
-
-      // Log the alert
-      logger.error(`ALERT: ${alert.title}`, LogCategory.API, {
-        alertId: alert.id,
-        type: alert.type,
-        severity: alert.severity,
-        context: alert.context
-      });
-
-    } catch (error) {
-      logger.error('Failed to send alert', LogCategory.API, { 
-        alertId: alert.id,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
+    // Generic webhook
+    if (this.webhookUrl) {
+      notifications.push(
+        this.sendWebhook(alert).catch(result => 
+          logger.error('Webhook failed', LogCategory.API, { 
+            error: result.error,
+            channel: result.channel
+          })
+        )
+      );
     }
+
+    // Email notifications
+    if (this.emailRecipients.length > 0) {
+      notifications.push(
+        emailService.sendAlert({
+          title: alert.title,
+          message: alert.message,
+          severity: alert.severity,
+          timestamp: alert.timestamp,
+          context: alert.context
+        }, this.emailRecipients).catch(result => {
+          if (!result.success) {
+            logger.error('Email alert failed', LogCategory.API, { 
+              error: result.error,
+              recipients: this.emailRecipients.length
+            });
+          }
+        })
+      );
+    }
+
+    // Slack notification (always send, even if webhook is Slack to avoid duplication)
+    notifications.push(
+      slackService.sendAlert({
+        title: alert.title,
+        message: alert.message,
+        severity: alert.severity,
+        timestamp: alert.timestamp,
+        context: alert.context
+      }).catch(result => {
+        if (!result.success) {
+          logger.error('Slack alert failed', LogCategory.API, { 
+            error: result.error
+          });
+        }
+      })
+    );
+
+    // Send all notifications in parallel
+    await Promise.allSettled(notifications);
+
+    // Log the alert
+    logger.error(`ALERT: ${alert.title}`, LogCategory.API, {
+      alertId: alert.id,
+      type: alert.type,
+      severity: alert.severity,
+      context: alert.context
+    });
   }
 
-  public async triggerAlert(type: AlertType, title: string, message: string, context?: Record<string, any>): Promise<void> {
+  public async triggerAlert(
+  type: AlertType, 
+  title: string, 
+  message: string, 
+  context?: Record<string, any>
+): Promise<void> {
     const rule = this.rules.get(type);
     if (!rule) {
       logger.warn(`No rule found for alert type: ${type}`, LogCategory.API);
       return;
     }
 
-    // Check cooldown
-    if (rule.lastTriggered && Date.now() - rule.lastTriggered < rule.cooldownMs) {
+    // Create cooldown key from type + relevant context
+    const cooldownKey = context?.paymentId || context?.tradeId || context?.serviceName || 'default';
+    
+    if (!this.checkCooldown(type, cooldownKey)) {
+      logger.info('Alert suppressed by cooldown', LogCategory.API, { 
+        type, 
+        cooldownKey,
+        timeSinceLast: Date.now() - (rule.lastTriggered?.get(`${type}:${cooldownKey}` || 0)
+      });
       return;
     }
 
@@ -242,9 +372,6 @@ class AlertingSystem {
 
     await this.addToHistory(alert);
     await this.sendAlert(alert);
-
-    // Update last triggered time
-    rule.lastTriggered = Date.now();
   }
 
   public async checkRules(): Promise<void> {
@@ -308,24 +435,28 @@ class AlertingSystem {
 
   public async getAlertHistory(limit: number = 50): Promise<Alert[]> {
     try {
-      const { getRedis } = await import('./redis.js');
-      const redis = getRedis();
+      const redis = await this.getRedis();
       
-      // Get alerts from Redis (newest first)
-      // @ts-ignore - @upstash/redis types may not include lrange method in some TypeScript versions, but it exists at runtime
-      const alerts = await redis.lrange(this.ALERT_HISTORY_KEY, 0, limit - 1) as string[];
+      // Get alert IDs from Redis (newest first)
+      const alertIds = await redis.lrange(this.ALERT_HISTORY_KEY, 0, limit - 1) as string[];
       
-      return alerts
-        .map((alertStr: string) => {
-          try {
-            return typeof alertStr === 'string' ? JSON.parse(alertStr) : alertStr;
-          } catch {
-            return null;
-          }
-        })
-        .filter((alert: Alert | null): alert is Alert => alert !== null);
+      // Get alerts from hash storage (parallel for performance)
+      const alertPromises = alertIds.map(async (alertId) => {
+        try {
+          const alertStr = await redis.hget(`alert:${alertId}`);
+          return alertStr ? JSON.parse(alertStr) : null;
+        } catch {
+          return null;
+        }
+      });
+      
+      const alerts = await Promise.all(alertPromises);
+      return alerts.filter((alert): alert is Alert => alert !== null);
+      
     } catch (error) {
-      console.error('[Alerting] Failed to get alert history from Redis:', error);
+      logger.error('Failed to get alert history from Redis', LogCategory.API, {
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
       return [];
     }
   }
@@ -335,40 +466,32 @@ class AlertingSystem {
     return history.filter(alert => !alert.resolved);
   }
 
+  // Optimized alert resolution using Redis hash (O(1) lookup)
   public async resolveAlert(alertId: string): Promise<void> {
     try {
-      const { getRedis } = await import('./redis.js');
-      const redis = getRedis();
+      const redis = await this.getRedis();
       
-      // Get all alerts
-      // @ts-ignore - @upstash/redis types may not include lrange method in some TypeScript versions, but it exists at runtime
-      const alerts = await redis.lrange(this.ALERT_HISTORY_KEY, 0, -1) as string[];
-      
-      // Find and update the alert
-      for (let i = 0; i < alerts.length; i++) {
-        const alertStr = alerts[i];
-        try {
-          const alert: Alert = typeof alertStr === 'string' ? JSON.parse(alertStr) : alertStr;
-          if (alert.id === alertId && !alert.resolved) {
-            alert.resolved = true;
-            alert.resolvedAt = new Date().toISOString();
-            
-            // Update in Redis
-            // @ts-ignore - @upstash/redis types may not include lset method in some TypeScript versions, but it exists at runtime
-            await redis.lset(this.ALERT_HISTORY_KEY, i, JSON.stringify(alert));
-            
-            logger.info(`Alert resolved: ${alertId}`, LogCategory.API, { alertId });
-            return;
-          }
-        } catch {
-          // Skip invalid alerts
-          continue;
-        }
+      // Get alert from hash (O(1) lookup)
+      const alertStr = await redis.hget(`alert:${alertId}`);
+      if (!alertStr) {
+        logger.warn(`Alert not found: ${alertId}`, LogCategory.API, { alertId });
+        return;
       }
-      
-      logger.warn(`Alert not found: ${alertId}`, LogCategory.API, { alertId });
+
+      const alert: Alert = JSON.parse(alertStr);
+      if (!alert.resolved) {
+        alert.resolved = true;
+        alert.resolvedAt = new Date().toISOString();
+        
+        // Update in hash
+        await redis.hset(`alert:${alertId}`, JSON.stringify(alert));
+        logger.info(`Alert resolved: ${alertId}`, LogCategory.API, { alertId });
+      }
     } catch (error) {
-      console.error('[Alerting] Failed to resolve alert in Redis:', error);
+      logger.error('Failed to resolve alert in Redis', LogCategory.API, {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        alertId
+      });
     }
   }
 
@@ -395,7 +518,9 @@ class AlertingSystem {
         alertsByType
       };
     } catch (error) {
-      console.error('[Alerting] Failed to get alert stats from Redis:', error);
+      logger.error('Failed to get alert stats from Redis', LogCategory.API, {
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
       return {
         totalAlerts: 0,
         activeAlerts: 0,
@@ -404,6 +529,14 @@ class AlertingSystem {
       };
     }
   }
+
+  // Cleanup method for graceful shutdown
+  public shutdown(): void {
+    if (this.ruleCheckerInterval) {
+      clearInterval(this.ruleCheckerInterval);
+      this.ruleCheckerInterval = undefined;
+      logger.info('Alerting system shutdown', LogCategory.API);
+    }
 }
 
 export const alertingSystem = AlertingSystem.getInstance();

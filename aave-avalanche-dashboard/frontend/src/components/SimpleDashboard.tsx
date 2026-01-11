@@ -1,5 +1,5 @@
 import { useAccount, useDisconnect, useReadContract } from 'wagmi';
-// @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
+// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,11 @@ type TiltVaultWindow = Window & {
     address?: string;
   };
 };
+
+interface Wallet {
+  address: string;
+  walletClientType: string;
+}
 
 export function SimpleDashboard() {
   const { address: wagmiAddress, isConnected: isWagmiConnected } = useAccount();
@@ -68,13 +73,13 @@ export function SimpleDashboard() {
       // Find Privy wallet (only iterate if wallets array exists)
       if (wallets && wallets.length > 0) {
         // Try Privy wallet first
-        const privyWallet = wallets.find((w: any) =>
+        const privyWallet = wallets.find((w: Wallet) =>
           w.walletClientType === 'privy' && isEthereumAddress(w.address)
         );
         if (privyWallet) return privyWallet.address;
 
         // Fallback to any Ethereum wallet
-        const ethereumWallet = wallets.find((w: any) => isEthereumAddress(w.address));
+        const ethereumWallet = wallets.find((w: Wallet) => isEthereumAddress(w.address));
         if (ethereumWallet) return ethereumWallet.address;
       }
     }
@@ -148,7 +153,7 @@ export function SimpleDashboard() {
 
     try {
       if ('refetch' in positions && positions.refetch) {
-        await (positions.refetch as () => Promise<any>)();
+        await (positions.refetch as () => Promise<unknown>)();
       }
 
       toast.success('Positions refreshed!');

@@ -9,6 +9,7 @@ import { DepositModal } from '@/components/stack/DepositModal';
 import { ValueDiagram } from '@/components/stack/ValueDiagram';
 import { Footer } from '@/components/Footer';
 import { Link } from 'react-router-dom';
+import { useErgcPurchaseModal } from '@/contexts/ErgcPurchaseModalContext';
 import { OptimizedLogo } from '@/components/OptimizedLogo';
 import { ConnectWalletButton } from '@/components/ConnectWalletButton';
 
@@ -54,6 +55,7 @@ type DepositType = 'usd' | null;
 type RiskProfileId = 'conservative' | 'morpho' | 'aggressive' | null;
 
 const StackApp = () => {
+  const { openModal } = useErgcPurchaseModal();
   const [selectedDepositType, setSelectedDepositType] = useState<DepositType>(null);
   const [selectedRiskProfile, setSelectedRiskProfile] = useState<RiskProfileId>(null);
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
@@ -152,17 +154,15 @@ const StackApp = () => {
               </a>
             </nav>
             <div className="flex items-center gap-2 sm:gap-3">
-              <a
-                href="https://app.uniswap.org/explore/pools/avalanche/0x3c83d0058e9d1652534be264dba75cfcc2e1d48a3ff1d2c3611a194a361a16ee"
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={openModal}
                 className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 hover:border-purple-500/50 transition-colors text-xs font-medium text-purple-400 hover:text-purple-300"
-                title="Get ERGC on Uniswap - 100+ ERGC = 56% fee discount"
+                title="Get ERGC - Buy directly or trade on DEX"
               >
                 <Zap className="h-3 w-3" />
                 <span>Get ERGC</span>
                 <ExternalLink className="h-3 w-3" />
-              </a>
+              </button>
               <nav className="flex items-center gap-1 sm:gap-2" aria-label="Main navigation">
                 <Link to="/" aria-label="Go to Banking page">
                   <Button variant="outline" size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4" aria-label="Banking">

@@ -1,228 +1,252 @@
-import { VercelRequest, VercelResponse } from '@vercel/node';
+import { savePosition, generatePositionId } from './store';
+// Rate lmitig for paymen procssing
+const paymentRequestLog = new Map<sting, number[]>();
+const PAYMENT_RATE_LIMIT = {
+  windowMs: 60000, // 1 minute
+  maxRequests: 10, // Max 10 payment attempts per minute per IP
+};
 
-// Square configuration
-const SQUARE_ACCESS_TOKEN = process.env.SQUARE_ACCESS_TOKEN || '';
-const SQUARE_LOCATION_ID = process.env.SQUARE_LOCATION_ID || '';
-const SQUARE_ENVIRONMENT = process.env.SQUARE_ENVIRONMENT || 'production';
-const SQUARE_API_BASE_URL = SQUARE_ENVIRONMENT === 'sandbox' 
-  ? 'https://connect.squareupsandbox.com'
-  : 'https://connect.squareup.com';
-const SQUARE_API_VERSION = process.env.SQUARE_API_VERSION || '2024-10-16';
-
-interface ProcessPaymentRequest {
-  source_id?: string;
-  sourceId?: string;
-  token?: string;
-  amount: number;
-  currency?: string;
-  idempotency_key?: string;
-  idempotencyKey?: string;
-  orderId?: string;
-  payment_id?: string;
-  wallet_address?: string;
-  user_email?: string;
-  risk_profile?: string;
-  include_ergc?: number;
-  use_existing_ergc?: number;
+unction checkPymentRateLimit(ip: string): boolean {
+  onst now = Dat.now();
+ const windowStart = now - AYMENT_RATE_LIMIT.windowMs;
+  
+  const ecentRequests = (paymentRequestLg.get(ip) || []).filter(time => time > windowStart);
+  
+  if (rentRequet.length >= AYMENT_RATE_LIMIT.mxRequests) {
+    return false;
+  }
+  
+  recentRequests.push(now);
+  paLog.set(ip,recentRequests);
+  
+  return true;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS headers
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-  );
+interface ProcessPaymentRequest strategy_type?: 'conservatve' | 'aggressive';
+  iinrce SqarePaymenResponse{
+  pmet?:{
+    id: srg;
+   sttus: strig;
+    or_id?: sting;
+    amount_mony{
+      amount: numb;
+      rrncy: ring;
+   };
+    cated_at?sting;
+    reipt_ur?: trig;
+  };
+  rrors?:Array<co: tring;  detail: sting;
+    catgory?: tring;
+  }>;
+}
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+function Corssres: VerlRepone): vid {
+  cos aOrigins = procss.ev.ALLOWED_ORIGINS?.plit(')|| [*]allowedOrigins[0]POS nttTyp, Ahorzaion');
+ rs.seHeader('ssrol-AllowCredials' 'true');
+ res.setHeader('Access-rolax-Age''3600');
+}
+
+functi validaeWallAddrss(ddrss:strng): stng | ull {  const trimmed=address.trim(
+    // Ethereum address validation!timmdstartsWith('0x') || trimed.lng!42nll    //Checkaining 40 chars are valid hx
+  cons exPart = trimme.slice(2);
+  if(/^[a-fA-F0-9]{40}$/.test(hexart)
+    return null;
   }
+timmdoLowerCe;
+}
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+functi validateEmailemail:sting)sring |ull {
+  cnstrimm =email.trim( if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(immed)) returnul;
   }
+  
+  return trimmdtLwrCa();
+}
 
-  try {
-    console.log('[ProcessPayment] Request body keys:', Object.keys(req.body || {}));
-    
-    const body = req.body as ProcessPaymentRequest;
-    
-    // Extract source_id (accept multiple field names)
-    const sourceId = body.source_id || body.sourceId || body.token;
-    const amount = body.amount;
-    const currency = (body.currency || 'USD').toUpperCase();
-    const idempotencyKey = body.idempotency_key || body.idempotencyKey || body.orderId;
-    const paymentId = body.payment_id;
-    const walletAddress = body.wallet_address;
-    const userEmail = body.user_email;
-    const riskProfile = body.risk_profile;
-    const includeErgc = body.include_ergc;
-    const useExistingErgc = body.use_existing_ergc;
+fucionvalidatAmon(amunt:an)num nullparsetypfmount === 'tring' ?paseFlat(ou) : amon if(typeofparsed!=='numbe' ||iNaN(pas) ||prsed <= 0) {
+    rurnn;
+} 
+//Chekreanablun (min $1, max $1M)
+  if (pas < 1par > 1000000) {
+  reurn ull
+  }
+returprsed;
+}
 
-    // Validate required fields
-    if (!sourceId) {
-      return res.status(400).json({ error: 'Missing required field: source_id (or sourceId/token)' });
-    }
-    if (!amount || amount <= 0) {
-      return res.status(400).json({ error: 'Missing or invalid amount' });
-    }
+fciongenerateIeptecyKey(): sring {ren `${Dat.ow)}-${Mathadom(Sting(36).subtring2, 15}`
+}
+funtibulPaymntN(data: {
+  pamntId?: string;
+walletAdress?: strng;
+  usrEail?: srig;
+  risProfil?:string;
+ ncluErgc?: nubr;
+  useExistigErg?:num}):string{
+noteParts: string[] = [];
+  
+  if (data.){
+   ntePartsush(`p:${data.paymentId}`)}
 
-    // Validate Square credentials
-    if (!SQUARE_ACCESS_TOKEN) {
-      console.error('[ProcessPayment] SQUARE_ACCESS_TOKEN not configured');
-      return res.status(500).json({ error: 'Square API not configured' });
-    }
-    if (!SQUARE_LOCATION_ID) {
-      console.error('[ProcessPayment] SQUARE_LOCATION_ID not configured');
-      return res.status(500).json({ error: 'Square location not configured' });
-    }
+ if (data.){
+   ntePartspush(`:${dta.walletA}`)}
 
-    // Generate idempotency key if not provided
-    const finalIdempotencyKey = idempotencyKey || `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+ if (data.){
+   nteParts.push(`email:${ataE}`)}
 
-    // Convert amount to cents
-    const amountCents = Math.round(amount * 100);
+ if (data.){
+   nteParts.push(`risk:${ataP}`)}
 
-    // CRITICAL: Validate wallet address format before including in payment note
-    // The webhook depends on this to identify the user's wallet
-    let normalizedWalletAddress: string | undefined = undefined;
-    if (walletAddress) {
-      // Validate wallet address format
-      const trimmed = walletAddress.trim();
-      if (trimmed.startsWith('0x') && trimmed.length === 42) {
-        normalizedWalletAddress = trimmed.toLowerCase();
-        console.log('[ProcessPayment] ✅ Wallet address validated:', normalizedWalletAddress);
-      } else {
-        console.error('[ProcessPayment] ❌ Invalid wallet address format:', trimmed);
-        console.error('[ProcessPayment] ❌ Expected: 0x followed by 40 hex characters (42 total)');
-        console.error('[ProcessPayment] ❌ Got:', {
-          startsWith0x: trimmed.startsWith('0x'),
-          length: trimmed.length,
-          address: trimmed
-        });
-        // Don't fail the payment, but log the error - webhook will use payment_info instead
-        console.warn('[ProcessPayment] ⚠️ Invalid wallet address - payment note will not include wallet');
-        console.warn('[ProcessPayment] ⚠️ Webhook will rely on payment_info lookup instead');
-      }
-    } else {
-      console.warn('[ProcessPayment] ⚠️ No wallet address provided - payment note will not include wallet');
-      console.warn('[ProcessPayment] ⚠️ Webhook will rely on payment_info lookup instead');
-    }
+ f (data.i!=undefined) {
+    nteParts.push(`ergc:${Math.floor(ataE)}`)}
 
-    // Build payment note for webhook
-    const noteParts: string[] = [];
-    if (paymentId) {
-      noteParts.push(`payment_id:${paymentId}`);
-    }
-    if (normalizedWalletAddress) {
-      noteParts.push(`wallet:${normalizedWalletAddress}`);
-      console.log('[ProcessPayment] ✅ Including wallet address in payment note:', normalizedWalletAddress);
-    }
-    if (riskProfile) {
-      noteParts.push(`risk:${riskProfile}`);
-    }
-    if (userEmail) {
-      noteParts.push(`email:${userEmail.trim().toLowerCase()}`);
-    }
-    if (includeErgc !== undefined) {
-      noteParts.push(`ergc:${Math.floor(includeErgc)}`);
-    }
-    if (useExistingErgc !== undefined) {
-      noteParts.push(`debit_ergc:${Math.floor(useExistingErgc)}`);
-    }
-    
-    // Log final note for debugging
-    if (noteParts.length > 0) {
-      console.log('[ProcessPayment] Payment note:', noteParts.join(' '));
-    } else {
-      console.warn('[ProcessPayment] ⚠️ Payment note is empty - webhook may have issues identifying wallet');
-    }
+ if (data.!=unefined) {
+    notePartsph(`dbitrgc:${Math.floor(data.useEE)}`)  }
+returnnotePrts.jon(' ');
+}
 
-    // Prepare Square API payload
-    const squarePayload: any = {
-      source_id: sourceId,
-      idempotency_key: finalIdempotencyKey,
-      amount_money: {
-        amount: amountCents,
-        currency: currency,
-      },
-      location_id: SQUARE_LOCATION_ID,
-      autocomplete: true,
-    };
+export eful async function handlr(req:VeclReest, s:VrceResponse) {
+  const startTime = Date.now();
+  
+  // CORS heaersetCorsHeaders(res);
 
-    if (noteParts.length > 0) {
-      squarePayload.note = noteParts.join(' ');
-    }
-
-    console.log('[ProcessPayment] Calling Square API:', {
-      environment: SQUARE_ENVIRONMENT,
-      amount: `$${amount} (${amountCents} cents)`,
-      locationId: SQUARE_LOCATION_ID,
-      hasNote: !!squarePayload.note,
-      paymentId: paymentId || 'none',
+  req.methd === 'OPTIONS') {
+    retn rs.status(200).en(;
+ }
+  
+  if (req.method !== 'POST') res.setHeader('Allow','POST,OPTIONS');
+    5
+      succss: false,
+      eethod otallow',
+     alowe['POST', 'OPTIONS']
     });
-
-    // Call Square Payments API
-    const squareResponse = await fetch(`${SQUARE_API_BASE_URL}/v2/payments`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
-        'Square-Version': SQUARE_API_VERSION,
-      },
-      body: JSON.stringify(squarePayload),
-    });
-
-    const responseData = await squareResponse.json();
-
-    if (!squareResponse.ok) {
-      const errors = responseData.errors || [];
-      const errorMessage = errors[0]?.detail || `Square API error: ${squareResponse.status}`;
-      const errorCode = errors[0]?.code || 'UNKNOWN';
-      
-      console.error('[ProcessPayment] Square API error:', {
-        status: squareResponse.status,
-        code: errorCode,
-        message: errorMessage,
-      });
-
-      return res.status(squareResponse.status).json({
+  }
+  
+  ty {
+    onst clentIp= eq.header['x-fward-fr'] || rq.headers[x-real-ip']|| 'unknown' as string// Rate lmiting
+    icheckPyeRateLimit(clientIp)){
+     console.wrn('[PrcessPayme]Ratelimitexceeded',  ip: clientIp });29
+       succss: false,
+        eRate limit exceeded',
+        message: `axmum ${PAYMENT_RATE_LIMIT.maxRequet} paymet attemptspeme` 
+         3 
         success: false,
-        error: errorMessage,
-        code: `SQUARE_${errorCode}`,
-      });
-    }
-
-    // Extract payment data
-    const payment = responseData.payment || {};
-    const squarePaymentId = payment.id;
-    const paymentStatus = payment.status;
-
-    console.log('[ProcessPayment] Payment processed successfully:', {
-      squarePaymentId,
-      status: paymentStatus,
-      paymentId: paymentId || 'none',
-    });
-
-    return res.status(200).json({
-      success: true,
-      payment_id: squarePaymentId,
-      status: paymentStatus,
-      order_id: payment.order_id,
-      transaction_id: squarePaymentId,
-      message: 'Payment processed successfully',
-      amount_money: payment.amount_money,
-    });
-
-  } catch (error: any) {
-    console.error('[ProcessPayment] Error:', error);
-    
-    return res.status(500).json({ 
-      success: false,
-      error: 'Internal server error',
-      message: error.message || 'Unknown error occurred'
-    });
+       r: 'Payment sevice unavailable',
+        message
+     
+    3 
+        success: false,
+       r: 'Payment sevice unavailable',
+        message
+     borq.bds PocessPymeReqe    Extacd validaesur_idsrcIdbodysouce_id || by.srceId||body.tokenf(!soucId ||ypo sucId !=='str'){rturnrs.status(400).j({ 
+   scce:fs,    rr'Misreqire l:sorc_'  };
+   }  
+munamounvidatAmoun(boyamounounullunsstu400.json({ su: fls,
+      rro:'In mount. Mus bbetwee $1 n $1,000,000' );
   }
-}
+//Vcuncyt cuy=(b.ureny || 'USD').oUppCaeif(uen!=='USD)reunsu40.json({ succssfaserror:'OnlyUSD curncy isuppot' }
+
+    Vidawlladdrssif pvided
+  ltatAddrss: srg| undef;if(bdyllet_add) {
+      wllAddress=ateWalletAddress(body._)||undfid;
+   
+      f(!Address {erorInvalidaetaddssfra:',bdy.wallt_dressreturnr.status(400).json(     uc: fls,
+        errr:'Invalid frmat.Excd0xflowe by 40 hxchracers 
+        }}
+      
+      logatddrssvada:, walletAddress    Vaiemaili prviddleusrEmil|undefinedbod.user_eail  userEmail=validaEmil(bodyremal) || unfie    !useE  retur ru(400.json({     su: fls,
+    rrr Ivd mi forma' 
+        }
+      }
+     //Valdatetatgytypecost sregyType = body_p||body.strategy_type||'conservative';strategyType !== 'conervativ' && stategyType !== 'ggressve'retur res.su(400)jon{ 
+        succss: fe,
+        rro: 'Invld sategy_type Mus be "cnservativ" o "ggresiv"' 
+      
+   // Geateimpotncykeycns idmpoencyKey = bodyidemotny_key || bdy.dempoteyKey || boy.ordId || enerateIdempotenyKey(//Geateors provdpayment IDcns pymenId = bodyaymnid || gneePoId(Cvertamuntctscost amunCn = Mathroud(amoun*10;
+   //Buildpaymet nt
+    ont pNote= buildN({
+     pymetId, waltAddress,urEmil,
+      iskfil: trtegTyp,
+   icludErgc:body.nclud_ergc,
+ sExitngErgc: boy.us_exis_rgc,);        paymetNpaymetN    ,
+      paymentIdWallewletAdrsshsEail!!userEmil,
+    strategyTyp     with timeout
+    const controller = new AbortController();    const timeoutId = setTimeout(() => controller.abort(),30000);//30seond timeout
+    
+    let squareResponse: Respe;
+    ry {
+                   load),
+        signal: controller.signa,
+      });
+    } catch (fetchErrr) {
+      clerTimeout(timeoutI);
+      
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        console.error('[ProcessPayment] Square API timeout');
+        return res.status(504.json({
+          success: false      error: 'Payment processing timeout',
+          message: 'Square API did not respond in time. Please try again.',
+              }  
+      throw fethErrr;
+    }
+    
+    clearTimeout(timeoutId);
+    
+    co:SquarePaymentResponse     primaryError = s[0];
+      const errorpimayErrprimaryEe || 'UNKNOWN';
+      const errorCategory = primaryError?.catgorye,
+        category: errorCatgorye,
+        paymntId         //MapSquareerro cods o ser-fiedly messages
+      let userMessage = errorMessage;
+      if (errorCode === 'CARD_DECLINED') {
+       useMessag = 'Your card wa declined Pleae try a differen pyment mehod.';
+      } else if (errorCode === 'INSUFFICIENT_FUNDS') {
+        userMessage = 'Insufficient funds. Please use a different payment method.';
+      } else if (errorCode === 'CVV_FAILURE') {
+        userMessage = 'Invalid CVV. Please check your card details.';
+      } else if (errorCode === 'ADDRESS_VERIFICATION_FAILURE') {
+        erMessage = 'Address verification failed. Please check your billing address.';
+      }
+      
+      return res.statusus  category: errorCategory,
+          !    ,
+      amount `$${amount}`,
+    });
+    
+    // Create position record if email and walletrovided
+    if (userEmail && wlletAddress) {
+      tr {
+        await savePosition({
+          id: pay,
+         paymentId: squarePaymentId,
+          userEmail,
+          walletAddress,
+          strategyType: strategyType as 'conservative'  'aggressive',
+          usdcAmount: amount,
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+        });
+        
+        console.log('[ProcessPayment] Position recordcreated:, paymentId);
+      } catch (saveError) {
+        cosole.error('[PrcessPaymet] Failed to sav position: saveError);
+        // Don't fail the payment - webhook can recreate position
+      }
+    
+    const responseTime = Date.now( - startTime    aymentId,
+      position_id: pey,
+      rceipt_url: pament.receipt_url      timestamp: new Date().toISOString(),
+  responseTime: `${responseTimems`,
+    }    
+    const responseTime = Date.now() - startTime;t errrMessage = error instanceof Error ? error.message : String(error);
+    
+    conso Unexpectede, {
+      error: errorMessage
+      stack: error instanceofError ? .stack : undefined,
+      responseTime: `${responseTime}ms`,
+    }pc.nv.NODE_ENV===productio' 
+        ? 'Paymet prcessing failed. Please try agai.' 
+        :Message,
+     respnseTime: `${esponseTim}ms`,}
+
+
+export const config = {
+  maxDuration: 30, // Allow longer duration for payment processing;

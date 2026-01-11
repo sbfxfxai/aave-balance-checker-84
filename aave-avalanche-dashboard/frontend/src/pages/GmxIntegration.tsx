@@ -32,6 +32,7 @@ import { CONTRACTS } from '@/config/contracts';
 import { OptimizedLogo } from '@/components/OptimizedLogo';
 import { ConnectWalletButton } from '@/components/ConnectWalletButton';
 import { Bitcoin, AlertTriangle, Zap, ExternalLink, Sparkles, Home } from 'lucide-react';
+import { useErgcPurchaseModal } from '@/contexts/ErgcPurchaseModalContext';
 import styles from './GmxIntegration.module.css';
 
 // GMX SDK Type Definitions
@@ -198,6 +199,7 @@ const PositionDetails = memo(({
 PositionDetails.displayName = 'PositionDetails';
 
 export default function GmxIntegration() {
+  const { openModal } = useErgcPurchaseModal();
   const { toast } = useToast();
   
   // CRITICAL: Check for GMX SDK TDZ errors on mount
@@ -1619,7 +1621,7 @@ export default function GmxIntegration() {
                   </AccordionTrigger>
                   <AccordionContent className="text-sm text-muted-foreground">
                     <p>
-                      You'll pay gas fees for transactions on Avalanche and execution fees to GMX. Holding 100+ ERGC tokens provides a 56% discount on platform fees.
+                      You'll pay gas fees for transactions on Avalanche and execution fees to GMX. Holding 100+ ERGC tokens makes transfers free on the platform.
                     </p>
                   </AccordionContent>
                 </AccordionItem>
@@ -1650,18 +1652,16 @@ export default function GmxIntegration() {
                       <div className="flex-1">
                         <h3 className="text-lg font-semibold text-foreground mb-2">Get ERGC on Uniswap (AVAX → ERGC)</h3>
                         <p className="text-sm text-muted-foreground mb-4">
-                          <span className="font-medium">Fee Discount:</span> Holding 100+ ERGC = <span className="font-bold text-primary">56% discount</span> on TiltVault platform fees
+                          <span className="font-medium">Free Transfers:</span> Holding 100+ ERGC = <span className="font-bold text-primary">Free transfers</span> on TiltVault platform
                         </p>
-                        <a
-                          href="https://app.uniswap.org/explore/pools/avalanche/0x3c83d0058e9d1652534be264dba75cfcc2e1d48a3ff1d2c3611a194a361a16ee"
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <Button 
+                          variant="default" 
+                          className="bg-primary hover:bg-primary/90"
+                          onClick={openModal}
                         >
-                          <Button variant="default" className="bg-primary hover:bg-primary/90">
-                            Trade on Uniswap
-                            <ExternalLink className="ml-2 h-4 w-4" />
-                          </Button>
-                        </a>
+                          Get ERGC
+                          <ExternalLink className="ml-2 h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
                   </CardContent>

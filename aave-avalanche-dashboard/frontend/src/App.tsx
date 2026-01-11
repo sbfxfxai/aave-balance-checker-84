@@ -41,6 +41,7 @@ const GmxIntegration = lazy(() =>
   })
 );
 const MonitoringDashboard = lazy(() => import("./pages/MonitoringDashboard"));
+const ErgcPurchase = lazy(() => import("./pages/ErgcPurchase"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 // Lazy load RouteWrapper (includes Web3Providers + AuthGuard)
@@ -146,6 +147,14 @@ const App = () => (
                 element={
                   <RouteWrapper>
                     <MonitoringDashboard />
+                  </RouteWrapper>
+                }
+              />
+              <Route
+                path="/ergc"
+                element={
+                  <RouteWrapper>
+                    <ErgcPurchase />
                   </RouteWrapper>
                 }
               />

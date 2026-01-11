@@ -33,13 +33,46 @@ const POOL_DATA_PROVIDER_ABI = [
 let cachedRates: { supplyAPY: number; borrowAPY: number; timestamp: number } | null = null;
 const CACHE_TTL = 60 * 1000; // 1 minute
 
+// Constants for APY calculation
+const SECONDS_PER_YEAR = 31536000;
+const RAY = BigInt(10) ** BigInt(27);
+
+// Retry configuration
+const MAX_RETRIES = 3;
+const RETRY_DELAY_BASE = 1000; // 1 second base delay
+
+// Helper function for exponential backoff retry
+async function retryWithBackoff<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = MAX_RETRIES,
+  baseDelay: number = RETRY_DELAY_BASE
+): Promise<T> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      
+      const delay = baseDelay * Math.pow(2, attempt);
+      console.log(`[Aave Rates] Retry ${attempt + 1}/${maxRetries} after ${delay}ms`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  throw new Error('Max retries exceeded');
+}
+
 async function fetchAaveRates(): Promise<{ supplyAPY: number; borrowAPY: number }> {
+  const startTime = Date.now();
+  
   // Check cache
   if (cachedRates && Date.now() - cachedRates.timestamp < CACHE_TTL) {
+    console.log('[Aave Rates] Using cached values');
     return { supplyAPY: cachedRates.supplyAPY, borrowAPY: cachedRates.borrowAPY };
   }
 
-  try {
+  const makeRpcCall = async () => {
     // Encode the function call
     const functionSelector = '0x35ea6a75'; // getReserveData(address)
     const paddedAddress = USDC_ADDRESS.slice(2).toLowerCase().padStart(64, '0');
@@ -60,11 +93,21 @@ async function fetchAaveRates(): Promise<{ supplyAPY: number; borrowAPY: number 
       }),
     });
 
+    if (!response.ok) {
+      throw new Error(`RPC call failed: ${response.status} ${response.statusText}`);
+    }
+
     const result = await response.json();
     
     if (result.error) {
-      throw new Error(result.error.message);
+      throw new Error(`RPC error: ${result.error.message}`);
     }
+
+    return result;
+  };
+
+  try {
+    const result = await retryWithBackoff(makeRpcCall);
 
     // Parse the result - liquidityRate is at index 5 (offset 5 * 64 = 320 hex chars)
     // variableBorrowRate is at index 6 (offset 6 * 64 = 384 hex chars)
@@ -74,21 +117,45 @@ async function fetchAaveRates(): Promise<{ supplyAPY: number; borrowAPY: number 
     const liquidityRateHex = resultData.slice(5 * 64, 6 * 64);
     const variableBorrowRateHex = resultData.slice(6 * 64, 7 * 64);
     
-    // Convert from ray (27 decimals) to percentage
-    const RAY = BigInt(10) ** BigInt(27);
+    // Convert from ray (27 decimals) to APY percentage
+    // Aave rates are per-second, need to convert to annualized APY
     const liquidityRate = BigInt('0x' + liquidityRateHex);
     const variableBorrowRate = BigInt('0x' + variableBorrowRateHex);
     
-    // Convert to APY percentage (rate is already annualized in Aave)
-    const supplyAPY = Number(liquidityRate * BigInt(100)) / Number(RAY);
-    const borrowAPY = Number(variableBorrowRate * BigInt(100)) / Number(RAY);
+    // Convert ray to decimal rate (per-second)
+    const supplyRatePerSecond = Number(liquidityRate) / Number(RAY);
+    const borrowRatePerSecond = Number(variableBorrowRate) / Number(RAY);
+    
+    // Convert to APY using compound interest formula: (1 + r/n)^n - 1
+    // where r is annual rate, n is compounding periods per year
+    const supplyAPY = (Math.pow(1 + supplyRatePerSecond, SECONDS_PER_YEAR) - 1) * 100;
+    const borrowAPY = (Math.pow(1 + borrowRatePerSecond, SECONDS_PER_YEAR) - 1) * 100;
+    
+    // Ensure we have reasonable values (not negative or extremely high)
+    const finalSupplyAPY = Math.max(0, Math.min(supplyAPY, 100)); // Cap at 100%
+    const finalBorrowAPY = Math.max(0, Math.min(borrowAPY, 100)); // Cap at 100%
 
     // Cache the result
-    cachedRates = { supplyAPY, borrowAPY, timestamp: Date.now() };
+    cachedRates = { supplyAPY: finalSupplyAPY, borrowAPY: finalBorrowAPY, timestamp: Date.now() };
 
-    return { supplyAPY, borrowAPY };
+    const duration = Date.now() - startTime;
+    console.log('[Aave Rates] Fetch completed', {
+      duration: `${duration}ms`,
+      cached: false,
+      supplyAPY: finalSupplyAPY.toFixed(2),
+      borrowAPY: finalBorrowAPY.toFixed(2),
+    });
+
+    return { supplyAPY: finalSupplyAPY, borrowAPY: finalBorrowAPY };
   } catch (error) {
-    console.error('[Aave Rates] Error fetching rates:', error);
+    const duration = Date.now() - startTime;
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[Aave Rates] Error fetching rates:', {
+      message,
+      duration: `${duration}ms`,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    
     // Return fallback values if fetch fails
     return { supplyAPY: 3.5, borrowAPY: 5.0 };
   }
@@ -125,9 +192,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('[Aave Rates] Error:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[Aave Rates] API Error:', {
+      message,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    
     return res.status(500).json({
-      error: error instanceof Error ? error.message : String(error),
+      success: false,
+      error: 'Failed to fetch rates',
+      details: process.env.NODE_ENV === 'development' ? message : undefined,
     });
   }
 }

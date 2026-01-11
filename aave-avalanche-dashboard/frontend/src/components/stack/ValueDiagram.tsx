@@ -154,7 +154,7 @@ export function ValueDiagram({ aaveAPY }: ValueDiagramProps) {
               <div className="flex-1">
                 <div className="font-semibold mb-1">Why Hold 100+ ERGC?</div>
                 <div className="text-sm text-muted-foreground">
-                  Holding 100+ ERGC ($10) makes deposits over $100 <strong className="text-green-400">completely FREE</strong> - no platform fees! 
+                  Holding 100+ ERGC makes deposits over $100 <strong className="text-green-400">completely FREE</strong> - no platform fees! 
                   This creates a strong incentive to buy and hold ERGC tokens.
                 </div>
               </div>

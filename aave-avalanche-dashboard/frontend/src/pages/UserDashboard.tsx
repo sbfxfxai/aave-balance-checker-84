@@ -51,6 +51,9 @@ import { ConnectWalletButton } from '@/components/ConnectWalletButton';
 import { OptimizedLogo } from '@/components/OptimizedLogo';
 import { PrivyLogin } from '@/components/PrivyLogin';
 import { Input } from '@/components/ui/input';
+import { useErgcPurchaseModal } from '@/contexts/ErgcPurchaseModalContext';
+// @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them
+import { usePrivy } from '@privy-io/react-auth';
 
 // USDC contract on Avalanche
 const USDC_ADDRESS = '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E' as const;
@@ -127,6 +130,7 @@ interface GmxMarketData {
  };
 
 export default function UserDashboard() {
+  const { openModal } = useErgcPurchaseModal();
   const [searchParams] = useSearchParams();
   const walletAddress = searchParams.get('wallet');
   const riskProfileParam = searchParams.get('risk') as RiskProfileKey | null;
@@ -138,6 +142,15 @@ export default function UserDashboard() {
   const { switchChain } = useSwitchChain();
   const { toast } = useToast();
   const { supplyUSDC } = useAaveSupply();
+  const { authenticated: isPrivyAuthenticated } = usePrivy();
+  
+  // Check if user is logged out of both Privy and wagmi
+  const isLoggedOut = !isConnected && !isPrivyAuthenticated;
+  
+  // Determine which auth method is active
+  const isPrivyLoggedIn = isPrivyAuthenticated && !isConnected; // Privy but not web3
+  const isWeb3LoggedIn = isConnected && !isPrivyAuthenticated; // Web3 but not Privy
+  const isBothLoggedIn = isConnected && isPrivyAuthenticated; // Both logged in
 
   // Get positions
   const aaveData = useAavePositions();
@@ -438,22 +451,139 @@ export default function UserDashboard() {
             <div className="flex items-center gap-2 sm:gap-3">
               <OptimizedLogo loading="eager" />
             </div>
-            <nav className="flex items-center gap-4 sm:gap-6" aria-label="Main navigation">
-              <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors text-sm">
-                Banking
-              </Link>
-              <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors text-sm">
-                Savings & Lending
-              </Link>
-              <Link to="/stack" className="text-muted-foreground hover:text-foreground transition-colors text-sm">
-                Start Investing
-              </Link>
-            </nav>
+            <div className="flex items-center gap-4">
+              <nav className="flex items-center gap-4 sm:gap-6" aria-label="Main navigation">
+                <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors text-sm">
+                  Banking
+                </Link>
+                <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors text-sm">
+                  Savings & Lending
+                </Link>
+                <Link to="/stack" className="text-muted-foreground hover:text-foreground transition-colors text-sm">
+                  Start Investing
+                </Link>
+              </nav>
+              
+              {/* When logged out: Email button where ConnectWalletButton normally is (web3 spot) */}
+              {isLoggedOut && (
+                <Button 
+                  size="sm" 
+                  className="bg-success hover:bg-success/90 text-white"
+                  onClick={() => {
+                    const section = document.getElementById('email-signup-section');
+                    if (section) {
+                      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                  }}
+                >
+                  <Mail className="h-4 w-4 mr-2" />
+                  Sign Up with Email
+                </Button>
+              )}
+              
+              {/* When logged in via Privy: Web3 button in small button spot (where email normally is) */}
+              {isPrivyLoggedIn && (
+                <ConnectWalletButton />
+              )}
+              
+              {/* When logged in via Web3: Email button in web3 spot (where ConnectWalletButton normally is) */}
+              {isWeb3LoggedIn && (
+                <>
+                  <Button 
+                    size="sm" 
+                    className="bg-success hover:bg-success/90 text-white"
+                    onClick={() => {
+                      toast({
+                        title: 'Already logged in',
+                        description: 'You are logged in via web3 wallet. Sign out to create an email account.',
+                      });
+                    }}
+                  >
+                    <Mail className="h-4 w-4 mr-2" />
+                    Sign Up with Email
+                  </Button>
+                  {address && (
+                    <div className="text-xs text-muted-foreground font-mono">
+                      {truncatedAddress}
+                    </div>
+                  )}
+                </>
+              )}
+              
+              {/* When both logged in: Show wallet address and email button */}
+              {isBothLoggedIn && (
+                <>
+                  {address && (
+                    <div className="text-xs text-muted-foreground font-mono">
+                      {truncatedAddress}
+                    </div>
+                  )}
+                  <Button 
+                    size="sm" 
+                    className="bg-success hover:bg-success/90 text-white"
+                    onClick={() => {
+                      toast({
+                        title: 'Already logged in',
+                        description: 'You are logged in with both email and web3 wallet.',
+                      });
+                    }}
+                  >
+                    <Mail className="h-4 w-4 mr-2" />
+                    Sign Up with Email
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
       <main>
+        {/* Email Signup Section - Show at top when logged out */}
+        {isLoggedOut && (
+          <section id="email-signup-section" className="container mx-auto px-4 py-8">
+            <Card className="max-w-2xl mx-auto card-gradient border-border">
+              <CardHeader className="text-center">
+                <CardTitle className="text-2xl font-bold text-foreground mb-2">
+                  Sign up with email for fully automated crypto investing
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex gap-2">
+                  <Input 
+                    type="email" 
+                    placeholder="Enter your email" 
+                    className="flex-1"
+                  />
+                  <Button className="bg-primary hover:bg-primary/90">
+                    Get Started
+                  </Button>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 text-sm text-foreground">
+                    <Check className="h-4 w-4 text-success" />
+                    <span>Automated DeFi strategies</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-sm text-foreground">
+                    <Check className="h-4 w-4 text-success" />
+                    <span>Non-custodial - you own your funds</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-sm text-foreground">
+                    <Check className="h-4 w-4 text-success" />
+                    <span>No wallet setup required</span>
+                  </div>
+                </div>
+                <p className="text-xs text-center text-muted-foreground">
+                  By signing up, you agree to our{' '}
+                  <a href="#" className="text-primary hover:underline">Terms of Service</a>
+                  {' '}and{' '}
+                  <a href="#" className="text-primary hover:underline">Privacy Policy</a>
+                </p>
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
         {/* Connecting State */}
         {dashboardState === 'connecting' && (
           <Card className="text-center py-12">
@@ -561,49 +691,6 @@ export default function UserDashboard() {
         {/* Completed State - Show Positions - Matching left image (goal) layout */}
         {dashboardState === 'completed' && (
           <>
-            {/* Email Signup Section - matching left image */}
-            <section className="container mx-auto px-4 py-12">
-              <Card className="max-w-2xl mx-auto card-gradient border-border">
-                <CardHeader className="text-center">
-                  <CardTitle className="text-2xl font-bold text-foreground mb-2">
-                    Sign up with email for fully automated crypto investing
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="flex gap-2">
-                    <Input 
-                      type="email" 
-                      placeholder="Enter your email" 
-                      className="flex-1"
-                    />
-                    <Button className="bg-primary hover:bg-primary/90">
-                      Get Started
-                    </Button>
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3 text-sm text-foreground">
-                      <Check className="h-4 w-4 text-success" />
-                      <span>Automated DeFi strategies</span>
-                    </div>
-                    <div className="flex items-center gap-3 text-sm text-foreground">
-                      <Check className="h-4 w-4 text-success" />
-                      <span>Non-custodial - you own your funds</span>
-                    </div>
-                    <div className="flex items-center gap-3 text-sm text-foreground">
-                      <Check className="h-4 w-4 text-success" />
-                      <span>No wallet setup required</span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-center text-muted-foreground">
-                    By signing up, you agree to our{' '}
-                    <a href="#" className="text-primary hover:underline">Terms of Service</a>
-                    {' '}and{' '}
-                    <a href="#" className="text-primary hover:underline">Privacy Policy</a>
-                  </p>
-                </CardContent>
-              </Card>
-            </section>
-
             {/* Your Account Section - matching left image */}
             <div className="border-t border-border">
               <h2 className="container pt-12 text-2xl font-bold text-foreground">Your Account</h2>
@@ -831,20 +918,20 @@ export default function UserDashboard() {
                       <div className="flex items-center gap-3">
                         <Sparkles className="h-5 w-5 text-primary flex-shrink-0" />
                         <span className="text-foreground">Get ERGC on Uniswap (AVAX → ERGC)</span>
-                        <a
-                          href="https://app.uniswap.org/explore/pools/avalanche/0x3c83d0058e9d1652534be264dba75cfcc2e1d48a3ff1d2c3611a194a361a16ee"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openModal();
+                          }}
                           className="ml-auto mr-2 hover:text-primary transition-colors"
                         >
                           <ExternalLink className="h-4 w-4" />
-                        </a>
+                        </button>
                       </div>
                     </AccordionTrigger>
                     <AccordionContent className="pt-2 pb-4">
                       <p className="text-sm text-muted-foreground">
-                        <span className="font-medium">Fee Discount:</span> Holding 100+ ERGC = <span className="font-bold text-primary">56% discount</span> on TiltVault platform fees
+                        <span className="font-medium">Free Transfers:</span> Holding 100+ ERGC = <span className="font-bold text-primary">Free transfers</span> on TiltVault platform
                       </p>
                     </AccordionContent>
                   </AccordionItem>
