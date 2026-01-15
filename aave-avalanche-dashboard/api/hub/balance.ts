@@ -35,12 +35,24 @@ let _ratelimit: any = null;
 
 async function getRatelimit() {
   if (!_ratelimit) {
-    const redis = getRedis();
-    _ratelimit = new Ratelimit({
-      redis,
-      limiter: Ratelimit.slidingWindow(20, '1 m'), // 20 requests per minute per IP
-      analytics: true,
-    });
+    try {
+      const redis = await getRedis().catch(() => null);
+      if (redis) {
+        _ratelimit = new Ratelimit({
+          redis: redis as any,
+          limiter: Ratelimit.slidingWindow(20, '1 m'), // 20 requests per minute per IP
+          analytics: true,
+        });
+      } else {
+        throw new Error('Redis not available');
+      }
+    } catch (error) {
+      console.warn('[Hub Balance] Redis unavailable for rate limiting, continuing without rate limit:', error instanceof Error ? error.message : String(error));
+      // Return a no-op rate limiter that always allows requests
+      _ratelimit = {
+        limit: async () => ({ success: true, remaining: 999 })
+      };
+    }
   }
   return _ratelimit;
 }
@@ -150,29 +162,45 @@ async function getHubUsdcBalance(chain: 'avalanche' | 'arbitrum' = 'avalanche'):
 
 // Get balance with cache
 async function getHubUsdcBalanceWithCache(chain: 'avalanche' | 'arbitrum') {
-  const redis = getRedis();
   const cacheKey = `hub_balance:${chain}:usdc`;
   
-  // Check cache
+  // Check cache (gracefully handle Redis failures)
   try {
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      console.log(`[Hub Balance] Cache hit for ${chain} USDC balance`);
-      return JSON.parse(cached as string);
+    const redis = await getRedis().catch(() => null);
+    if (redis) {
+      try {
+        const cached = await redis.get(cacheKey);
+        if (cached) {
+          console.log(`[Hub Balance] Cache hit for ${chain} USDC balance`);
+          return JSON.parse(cached as string);
+        }
+      } catch (cacheError) {
+        console.warn('[Hub Balance] Cache read error, continuing without cache:', cacheError instanceof Error ? cacheError.message : String(cacheError));
+      }
     }
   } catch (error) {
-    console.warn('[Hub Balance] Cache read failed:', error);
+    // Redis unavailable - continue without cache
+    console.warn('[Hub Balance] Redis unavailable, continuing without cache:', error instanceof Error ? error.message : String(error));
   }
   
   // Fetch from blockchain
   const result = await getHubUsdcBalance(chain);
   
-  // Cache successful results
+  // Cache successful results (gracefully handle Redis failures)
   if (result.success) {
     try {
-      await redis.set(cacheKey, JSON.stringify(result), { ex: CACHE_TTL });
+      const redis = await getRedis().catch(() => null);
+      if (redis) {
+        try {
+          await redis.set(cacheKey, JSON.stringify(result), { ex: CACHE_TTL });
+        } catch (cacheError) {
+          // Redis unavailable - continue without caching
+          console.warn('[Hub Balance] Cache write error, continuing without cache:', cacheError instanceof Error ? cacheError.message : String(cacheError));
+        }
+      }
     } catch (error) {
-      console.warn('[Hub Balance] Cache write failed:', error);
+      // Redis unavailable - continue without caching
+      console.warn('[Hub Balance] Redis unavailable for caching:', error instanceof Error ? error.message : String(error));
     }
   }
   
@@ -180,6 +208,8 @@ async function getHubUsdcBalanceWithCache(chain: 'avalanche' | 'arbitrum') {
 }
 
 export default async function handler(request: VercelRequest, response: VercelResponse) {
+  const startTime = Date.now();
+  
   // CORS headers
   response.setHeader('Access-Control-Allow-Origin', '*');
   response.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -199,21 +229,30 @@ export default async function handler(request: VercelRequest, response: VercelRe
   }
 
   try {
-    // Rate limiting
-    const ratelimit = await getRatelimit();
-    const identifier = (request.headers['x-forwarded-for'] as string) || 
-                       (request.headers['x-real-ip'] as string) || 
-                       'anonymous';
-    
-    const { success, remaining } = await ratelimit.limit(identifier);
-    
-    response.setHeader('X-RateLimit-Remaining', remaining.toString());
-    
-    if (!success) {
-      return response.status(429).json({
-        success: false,
-        error: 'Too many requests. Please try again later.',
-      });
+    // Rate limiting (with error handling)
+    let rateLimitSuccess = true;
+    try {
+      const ratelimit = await getRatelimit().catch(() => ({
+        limit: async () => ({ success: true, remaining: 999 })
+      }));
+      const identifier = (request.headers['x-forwarded-for'] as string) || 
+                         (request.headers['x-real-ip'] as string) || 
+                         'anonymous';
+      
+      const rateLimitResult = await ratelimit.limit(identifier).catch(() => ({ success: true, remaining: 999 }));
+      rateLimitSuccess = rateLimitResult.success;
+      
+      response.setHeader('X-RateLimit-Remaining', rateLimitResult.remaining.toString());
+      
+      if (!rateLimitSuccess) {
+        return response.status(429).json({
+          success: false,
+          error: 'Too many requests. Please try again later.',
+        });
+      }
+    } catch (rateLimitError) {
+      // If rate limiting fails, log but continue (fail open)
+      console.warn('[Hub Balance] Rate limiting check failed, continuing:', rateLimitError instanceof Error ? rateLimitError.message : String(rateLimitError));
     }
 
     // Get chain parameter from query string (defaults to 'avalanche')
@@ -232,14 +271,23 @@ export default async function handler(request: VercelRequest, response: VercelRe
     }
 
   } catch (error) {
-    console.error('[Hub Balance] API endpoint error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    console.error('[Hub Balance] API endpoint error:', {
+      error: errorMessage,
+      stack: errorStack,
+      duration: Date.now() - startTime
+    });
     
     return response.status(500).json({
       success: false,
       error: "Internal server error",
-      details: process.env.NODE_ENV === 'development' 
-        ? error instanceof Error ? error.message : String(error)
-        : undefined,
+      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
     });
   }
 }
+
+export const config = {
+  maxDuration: 10,
+};

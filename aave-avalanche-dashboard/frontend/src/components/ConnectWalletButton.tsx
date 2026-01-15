@@ -13,7 +13,6 @@ import { useToast } from '@/hooks/use-toast';
 import { useEffect, useRef } from 'react';
 import { formatAddress } from '@/lib/utils';
 import React from 'react';
-// @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy } from '@privy-io/react-auth';
 
 export function ConnectWalletButton() {

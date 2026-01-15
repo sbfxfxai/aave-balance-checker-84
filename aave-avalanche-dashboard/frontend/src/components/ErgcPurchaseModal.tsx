@@ -46,7 +46,13 @@ export const ErgcPurchaseModal: React.FC<ErgcPurchaseModalProps> = ({
       try {
         const config = await ensureSquareConfigAvailable();
         if (config) {
-          setSquareConfig(config);
+          // Add sdkUrl to match the expected type
+          setSquareConfig({
+            ...config,
+            sdkUrl: config.environment === 'production'
+              ? 'https://web.squarecdn.com/v1/square.js'
+              : 'https://sandbox.web.squarecdn.com/v1/square.js',
+          });
           setIsConfigured(true);
         } else {
           const fallbackConfig = getSquareConfig();

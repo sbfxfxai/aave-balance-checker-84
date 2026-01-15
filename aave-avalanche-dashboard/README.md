@@ -28,13 +28,13 @@ Production-grade dashboard for interacting with Aave V3 on Avalanche C-Chain. Fe
 pip install -r requirements.txt
 ```
 
-2. **Start backend server**:
+1. **Start backend server**:
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-3. **Open frontend**:
+1. **Open frontend**:
    - Navigate to `app/dashboard/templates/index.html`
    - Open this file in a web browser
 

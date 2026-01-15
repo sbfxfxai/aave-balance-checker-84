@@ -83,6 +83,40 @@ export function IntegratedWithdraw({ availableBalances, onWithdrawComplete }: In
     }
   }, [address]);
 
+  // Complete withdrawal after Cash App is linked
+  const completeWithdrawal = useCallback(async (grantId: string) => {
+    setStep('processing');
+
+    try {
+      const res = await fetch(`${API_BASE}/api/withdraw/complete-flow`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          walletAddress: address,
+          amount,
+          source,
+          cashappGrantId: grantId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success && !data.needsLinking) {
+        setPaymentId(data.paymentId);
+        setStep('success');
+        toast.success('Withdrawal complete!', {
+          description: `$${parseFloat(amount).toFixed(2)} sent to your Cash App`,
+        });
+        onWithdrawComplete?.();
+      } else {
+        throw new Error(data.error || 'Withdrawal failed');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Withdrawal failed');
+      setStep('error');
+    }
+  }, [address, amount, source, onWithdrawComplete]);
+
   // Poll for Cash App approval
   const pollForApproval = useCallback(async (customerRequestId: string) => {
     const maxAttempts = 120;
@@ -130,41 +164,7 @@ export function IntegratedWithdraw({ availableBalances, onWithdrawComplete }: In
     };
 
     poll();
-  }, [address]);
-
-  // Complete withdrawal after Cash App is linked
-  const completeWithdrawal = async (grantId: string) => {
-    setStep('processing');
-
-    try {
-      const res = await fetch(`${API_BASE}/api/withdraw/complete-flow`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          walletAddress: address,
-          amount,
-          source,
-          cashappGrantId: grantId,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (data.success && !data.needsLinking) {
-        setPaymentId(data.paymentId);
-        setStep('success');
-        toast.success('Withdrawal complete!', {
-          description: `$${parseFloat(amount).toFixed(2)} sent to your Cash App`,
-        });
-        onWithdrawComplete?.();
-      } else {
-        throw new Error(data.error || 'Withdrawal failed');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Withdrawal failed');
-      setStep('error');
-    }
-  };
+  }, [address, completeWithdrawal]);
 
   // Initiate withdrawal
   const handleWithdraw = async () => {

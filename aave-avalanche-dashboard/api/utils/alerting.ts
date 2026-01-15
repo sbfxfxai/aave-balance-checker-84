@@ -54,7 +54,14 @@ interface SendResult {
   channel?: string;
 }
 
-class AlertingSystem {
+interface AlertStats {
+  totalAlerts: number;
+  activeAlerts: number;
+  alertsBySeverity: Record<string, number>;
+  alertsByType: Record<string, number>;
+}
+
+export class AlertingSystem {
   private static instance: AlertingSystem;
   private isEnabled: boolean;
   private rules: Map<AlertType, AlertRule> = new Map();
@@ -125,7 +132,7 @@ class AlertingSystem {
       type: AlertType.ERROR_RATE_HIGH,
       severity: AlertSeverity.HIGH,
       condition: async () => {
-        const stats = errorTracker.getErrorStats();
+        const stats = await errorTracker.getErrorStats();
         const totalErrors = stats.totalErrors;
         const criticalErrors = stats.errorsBySeverity.critical || 0;
         
@@ -158,7 +165,7 @@ class AlertingSystem {
       type: AlertType.PAYMENT_FAILURE,
       severity: AlertSeverity.CRITICAL,
       condition: async () => {
-        const stats = errorTracker.getErrorStats();
+        const stats = await errorTracker.getErrorStats();
         const paymentErrors = stats.errorsByCategory.payment || 0;
         return paymentErrors > 0;
       },
@@ -172,7 +179,7 @@ class AlertingSystem {
       type: AlertType.GMX_FAILURE,
       severity: AlertSeverity.CRITICAL,
       condition: async () => {
-        const stats = errorTracker.getErrorStats();
+        const stats = await errorTracker.getErrorStats();
         const gmxErrors = stats.errorsByCategory.gmx || 0;
         return gmxErrors > 0;
       },
@@ -352,10 +359,11 @@ class AlertingSystem {
     const cooldownKey = context?.paymentId || context?.tradeId || context?.serviceName || 'default';
     
     if (!this.checkCooldown(type, cooldownKey)) {
+      const lastTriggeredTime = rule.lastTriggered?.get(`${type}:${cooldownKey}`) || 0;
       logger.info('Alert suppressed by cooldown', LogCategory.API, { 
         type, 
         cooldownKey,
-        timeSinceLast: Date.now() - (rule.lastTriggered?.get(`${type}:${cooldownKey}` || 0)
+        timeSinceLast: Date.now() - lastTriggeredTime
       });
       return;
     }
@@ -495,12 +503,7 @@ class AlertingSystem {
     }
   }
 
-  public async getAlertStats(): Promise<{
-    totalAlerts: number;
-    activeAlerts: number;
-    alertsBySeverity: Record<string, number>;
-    alertsByType: Record<string, number>;
-  }> {
+  public async getAlertStats(): Promise<AlertStats> {
     try {
       const history = await this.getAlertHistory(this.maxHistorySize);
       const alertsBySeverity: Record<string, number> = {};
@@ -537,6 +540,7 @@ class AlertingSystem {
       this.ruleCheckerInterval = undefined;
       logger.info('Alerting system shutdown', LogCategory.API);
     }
+  }
 }
 
-export const alertingSystem = AlertingSystem.getInstance();
+export const alertingSystem: AlertingSystem = AlertingSystem.getInstance();

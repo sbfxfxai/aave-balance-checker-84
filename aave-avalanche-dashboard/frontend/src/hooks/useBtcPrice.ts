@@ -1,15 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
 
-const COINGECKO_BTC_API = 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd';
+const BTC_PRICE_API = '/api/price/btc';
 
 interface BtcPriceResponse {
-  bitcoin: {
-    usd: number;
-  };
+  price: number;
+  source: string;
+  timestamp: number;
+  confidence: 'high' | 'medium' | 'low';
+  cached?: boolean;
+  stale?: boolean;
 }
 
 /**
  * Hook to fetch current BTC price with frequent updates
+ * Uses backend API endpoint to avoid CORS issues and rate limiting
  * Updates every 10 seconds for real-time price tracking
  */
 export function useBtcPrice() {
@@ -17,16 +21,25 @@ export function useBtcPrice() {
     queryKey: ['btcPrice'],
     queryFn: async (): Promise<number> => {
       try {
-        const response = await fetch(COINGECKO_BTC_API, {
+        const response = await fetch(BTC_PRICE_API, {
           signal: AbortSignal.timeout(5000),
         });
 
         if (!response.ok) {
+          // Handle rate limiting gracefully - don't throw, let React Query retry
+          if (response.status === 429) {
+            console.warn('[useBtcPrice] Rate limited (429), will retry');
+            throw new Error('Rate limited');
+          }
+          if (response.status === 503) {
+            console.warn('[useBtcPrice] Service unavailable (503), will retry');
+            throw new Error('Service unavailable');
+          }
           throw new Error(`Failed to fetch BTC price: HTTP ${response.status}`);
         }
 
         const data = (await response.json()) as BtcPriceResponse;
-        const price = data.bitcoin?.usd;
+        const price = data.price;
 
         if (!price || typeof price !== 'number') {
           throw new Error('Invalid BTC price data');
@@ -34,7 +47,11 @@ export function useBtcPrice() {
 
         return price;
       } catch (error) {
-        console.error('[useBtcPrice] Error fetching BTC price:', error);
+        // Suppress network errors - they're expected and React Query will retry
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (!errorMsg.includes('Failed to fetch') && !errorMsg.includes('aborted') && !errorMsg.includes('Rate limited') && !errorMsg.includes('Service unavailable')) {
+          console.error('[useBtcPrice] Error fetching BTC price:', error);
+        }
         // Return cached price or fallback
         throw error;
       }

@@ -37,31 +37,31 @@ export default async function handler(req: any, res: any) {
         if (emailRecipients.length === 0) {
           result = { success: false, message: 'No email recipients configured' };
         } else {
-          const emailSuccess = await emailService.testEmailConfiguration(emailRecipients);
+          const emailResult = await emailService.testEmailConfiguration(emailRecipients);
           result = { 
-            success: emailSuccess, 
-            message: emailSuccess ? 'Email test sent successfully' : 'Email test failed'
+            success: emailResult.success, 
+            message: emailResult.success ? 'Email test sent successfully' : `Email test failed: ${emailResult.error || 'Unknown error'}`
           };
         }
         break;
 
       case 'slack':
-        const slackTestResult = await slackService.testSlackConfiguration();
+        const slackResult = await slackService.testSlackConfiguration();
         result = { 
-          success: slackTestResult, 
-          message: slackTestResult ? 'Slack test sent successfully' : 'Slack test failed'
+          success: slackResult.success, 
+          message: slackResult.success ? 'Slack test sent successfully' : `Slack test failed: ${slackResult.error || 'Unknown error'}`
         };
         break;
 
       case 'all':
-        const [emailSuccess, slackSuccess] = await Promise.all([
-          emailRecipients.length > 0 ? emailService.testEmailConfiguration(emailRecipients) : Promise.resolve(true),
+        const [emailResult, slackResultAll] = await Promise.all([
+          emailRecipients.length > 0 ? emailService.testEmailConfiguration(emailRecipients) : Promise.resolve({ success: true } as { success: boolean }),
           slackService.testSlackConfiguration()
         ]);
         
         result = {
-          success: emailSuccess && slackSuccess,
-          message: `Email test: ${emailSuccess ? 'PASSED' : 'FAILED'}, Slack test: ${slackSuccess ? 'PASSED' : 'FAILED'}`
+          success: emailResult.success && slackResultAll.success,
+          message: `Email test: ${emailResult.success ? 'PASSED' : 'FAILED'}, Slack test: ${slackResultAll.success ? 'PASSED' : 'FAILED'}`
         };
         break;
 

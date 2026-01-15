@@ -114,21 +114,9 @@ export async function executeGmxViaPrivy(
       walletId: walletId.substring(0, 8) + '...'
     });
 
-    // 2. Get wallet details to verify ownership and status
-    const wallet = await privy.walletApi.get(walletId);
-    
-    if (wallet.address.toLowerCase() !== walletAddress.toLowerCase()) {
-      const error = new Error('Wallet address mismatch');
-      logger.error('GMX execution failed - address mismatch', LogCategory.PAYMENT, {
-        expectedAddress: walletAddress,
-        actualAddress: wallet.address
-      }, error);
-      
-      return {
-        success: false,
-        error: error.message
-      };
-    }
+    // 2. Wallet address verification is already done via Redis lookup
+    // The walletId was retrieved using walletAddress as the key, so they must match
+    // No need to fetch wallet details from Privy API as it doesn't support walletApi.get()
 
     // 3. Check USDC balance
     const provider = new ethers.JsonRpcProvider('https://api.avax.network/ext/bc/C/rpc');

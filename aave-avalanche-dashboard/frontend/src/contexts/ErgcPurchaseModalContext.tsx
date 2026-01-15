@@ -1,15 +1,8 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode, Suspense, lazy } from 'react';
+import React, { useState, useCallback, ReactNode, Suspense, lazy } from 'react';
+import { ErgcPurchaseModalContext } from './ergcPurchaseModalContext';
 
 // Lazy load the modal component to avoid loading wagmi hooks until it's actually needed
 const ErgcPurchaseModal = lazy(() => import('@/components/ErgcPurchaseModal').then(m => ({ default: m.ErgcPurchaseModal })));
-
-interface ErgcPurchaseModalContextType {
-  openModal: () => void;
-  closeModal: () => void;
-  isOpen: boolean;
-}
-
-const ErgcPurchaseModalContext = createContext<ErgcPurchaseModalContextType | undefined>(undefined);
 
 // Minimal fallback for modal loading
 const ModalFallback = () => (
@@ -41,11 +34,4 @@ export function ErgcPurchaseModalProvider({ children }: { children: ReactNode })
   );
 }
 
-export function useErgcPurchaseModal() {
-  const context = useContext(ErgcPurchaseModalContext);
-  if (context === undefined) {
-    throw new Error('useErgcPurchaseModal must be used within ErgcPurchaseModalProvider');
-  }
-  return context;
-}
 

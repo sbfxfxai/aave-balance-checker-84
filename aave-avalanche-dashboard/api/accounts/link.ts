@@ -13,6 +13,8 @@ function validateWalletAddress(address: string): boolean {
 
 // Helper function for safe logging
 function hashEmail(email: string): string {
+  // Buffer is available globally in Node.js runtime
+  const Buffer = (globalThis as any).Buffer;
   return Buffer.from(email).toString('base64').substring(0, 8);
 }
 

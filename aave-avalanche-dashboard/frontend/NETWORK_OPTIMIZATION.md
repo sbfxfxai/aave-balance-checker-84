@@ -25,34 +25,41 @@ Vercel automatically compresses assets, but we've added explicit headers:
 
 Implemented aggressive caching for different asset types:
 
-#### Static Assets (JS, CSS, Fonts, Images):
-```
+#### Static Assets (JS, CSS, Fonts, Images)
+
+```http
 Cache-Control: public, max-age=31536000, immutable
 ```
+
 - **Duration**: 1 year (31536000 seconds)
 - **Immutable**: Assets with hashed filenames never change
 - **Impact**: Eliminates redundant downloads
 
-#### HTML:
-```
+#### HTML
+
+```http
 Cache-Control: public, max-age=0, must-revalidate
 ```
+
 - **No Cache**: HTML must be revalidated on each request
 - **Impact**: Always serves latest HTML while caching assets
 
-#### Fonts:
+#### Fonts
+
 - Added `Access-Control-Allow-Origin: *` for cross-origin font loading
 - Long-term caching with immutable flag
 
 ### 3. **Build Optimizations** (`vite.config.ts`)
 
-#### Minification:
+#### Minification
+
 - **ESBuild Minification**: Fast and efficient
 - **CSS Minification**: Enabled
 - **Source Maps**: Disabled in production
 - **Impact**: 30-50% size reduction
 
-#### Code Splitting:
+#### Code Splitting
+
 - Already implemented (see `CODE_SPLITTING.md`)
 - Separate chunks for different vendors
 - Lazy loading for routes
@@ -68,12 +75,14 @@ Different caching strategies for different file types:
 
 ## Expected Results
 
-### Before Optimization:
+### Before Optimization
+
 - **Total Payload**: 3,950 KiB
 - **Uncompressed**: ~4,000 KiB
 - **Cache Hit Rate**: Low (no long-term caching)
 
-### After Optimization:
+### After Optimization
+
 - **Total Payload**: ~1,200-1,500 KiB (60-70% reduction)
   - Compressed JS/CSS: ~800-1,000 KiB
   - Images: ~200-300 KiB (after logo optimization)
@@ -85,20 +94,23 @@ Different caching strategies for different file types:
 
 ## Compression Ratios
 
-### Typical Compression:
+### Typical Compression
+
 - **JavaScript**: 60-80% reduction (gzip/brotli)
 - **CSS**: 70-85% reduction (gzip/brotli)
 - **HTML**: 60-75% reduction (gzip/brotli)
 - **JSON**: 70-90% reduction (gzip/brotli)
 
-### Example:
+### Example
+
 - **Uncompressed JS**: 500 KiB
 - **Gzipped**: ~150-200 KiB (60-70% reduction)
 - **Brotli**: ~120-150 KiB (70-80% reduction)
 
 ## Caching Strategy
 
-### First Visit:
+### First Visit
+
 1. Download HTML (~10-20 KiB)
 2. Download JS chunks (~800-1,000 KiB compressed)
 3. Download CSS (~50-100 KiB compressed)
@@ -106,12 +118,14 @@ Different caching strategies for different file types:
 5. Download images (~200-300 KiB)
 6. **Total**: ~1,200-1,500 KiB
 
-### Subsequent Visits:
+### Subsequent Visits
+
 1. Download HTML (~10-20 KiB) - revalidated
 2. All other assets served from cache
 3. **Total**: ~10-20 KiB
 
-### After Deployment:
+### After Deployment
+
 1. HTML revalidated
 2. New assets (with new hashes) downloaded
 3. Old assets remain cached (different hashes)
@@ -119,50 +133,60 @@ Different caching strategies for different file types:
 
 ## Best Practices
 
-### ✅ Do:
+### ✅ Do
 
 1. **Use hashed filenames**:
+
    - Vite automatically adds content hashes
    - Enables long-term caching with `immutable`
 
 2. **Compress all text assets**:
+
    - Vercel automatically compresses
    - Brotli preferred over gzip
 
 3. **Cache static assets aggressively**:
+
    - 1 year for hashed assets
    - `immutable` flag for never-changing assets
 
 4. **Don't cache HTML**:
+
    - Always serve fresh HTML
    - Enables instant updates
 
 5. **Optimize images**:
+
    - Use WebP/AVIF formats
    - Compress images before upload
    - Use responsive images
 
-### ❌ Don't:
+### ❌ Don't
 
 1. **Don't cache HTML**:
+
    - HTML must be fresh for updates
    - Use `max-age=0, must-revalidate`
 
 2. **Don't cache API responses**:
+
    - API responses are dynamic
    - Use appropriate cache headers
 
 3. **Don't use large unoptimized images**:
+
    - Optimize before upload
    - Use modern formats (WebP, AVIF)
 
 4. **Don't bundle everything together**:
+
    - Use code splitting
    - Lazy load routes
 
 ## Monitoring
 
-### Check Compression:
+### Check Compression
+
 ```bash
 # Check if assets are compressed
 curl -H "Accept-Encoding: gzip" -I https://www.tiltvault.com/assets/index.js
@@ -173,7 +197,8 @@ curl -H "Accept-Encoding: gzip" -I https://www.tiltvault.com/assets/index.js
 # Content-Encoding: br (Brotli)
 ```
 
-### Check Cache Headers:
+### Check Cache Headers
+
 ```bash
 # Check cache headers
 curl -I https://www.tiltvault.com/assets/index.js
@@ -182,7 +207,8 @@ curl -I https://www.tiltvault.com/assets/index.js
 # Cache-Control: public, max-age=31536000, immutable
 ```
 
-### Lighthouse Audit:
+### Lighthouse Audit
+
 - Run Lighthouse performance audit
 - Check "Uses efficient cache policies"
 - Check "Enable text compression"
@@ -191,12 +217,14 @@ curl -I https://www.tiltvault.com/assets/index.js
 ## Vercel-Specific Notes
 
 Vercel automatically:
+
 - ✅ Compresses assets (gzip/brotli)
 - ✅ Serves from edge cache
 - ✅ Optimizes images (if using Vercel Image Optimization)
 - ✅ Handles HTTP/2 and HTTP/3
 
 Our configuration:
+
 - ✅ Explicit cache headers for better control
 - ✅ Asset-specific caching strategies
 - ✅ Compression headers for clarity
@@ -246,4 +274,3 @@ After deployment, verify:
    - Lighthouse: "Total network payload"
    - Should be <2,000 KiB after optimization
    - Target: <1,500 KiB
-

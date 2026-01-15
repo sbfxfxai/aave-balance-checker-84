@@ -11,7 +11,7 @@ function hashEmail(email: string): string {
 // Rate limiting with proper atomic operations
 async function checkRateLimit(
   email: string, 
-  redis: ReturnType<typeof getRedis>
+  redis: Awaited<ReturnType<typeof getRedis>>
 ): Promise<{ allowed: boolean; remaining: number; retryAfter?: number }> {
   const key = `verify_rate_limit:${email.toLowerCase()}`;
   const data = await redis.get(key);
@@ -74,7 +74,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Code must be 6 digits' });
     }
 
-    const redis = getRedis();
+    const redis = await getRedis();
 
     // Rate limiting
     const rateLimit = await checkRateLimit(normalizedEmail, redis);

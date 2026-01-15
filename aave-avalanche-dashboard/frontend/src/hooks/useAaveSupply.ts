@@ -69,32 +69,7 @@ export function useAaveSupply() {
         
         console.log('Approval transaction hash:', approveHash);
 
-        // Wait for approval confirmation
-        const { waitForTransactionReceipt } = await import('@wagmi/core');
-        const { config } = await import('@/config/wagmi');
-        const approvalReceipt = await waitForTransactionReceipt(config, { 
-          hash: approveHash,
-          timeout: 30000
-        });
-        
-        console.log('Approval confirmed:', approvalReceipt.status);
-        
-        if (approvalReceipt.status === 'reverted') {
-          throw new Error('Approval transaction was reverted');
-        }
-        
-        // Refetch allowance after approval
-        console.log('Refetching allowance after approval...');
-        const { data: newAllowanceData } = await refetchAllowance();
-        
-        // Check allowance again after refetch
-        const newAllowance = newAllowanceData || 0n;
-        console.log('New allowance after refetch:', newAllowance.toString());
-        
-        if (newAllowance < amountInWei) {
-          console.error('Allowance still insufficient after approval!');
-          throw new Error('Approval succeeded but allowance is still insufficient');
-        }
+        return approveHash;
       } catch (approvalError) {
         console.error('Approval failed:', approvalError);
         throw new Error(`Approval failed: ${approvalError instanceof Error ? approvalError.message : 'Unknown error'}`);
@@ -126,22 +101,7 @@ export function useAaveSupply() {
       
       console.log('Supply transaction hash:', supplyHash);
 
-      // Wait for supply confirmation
-      const { waitForTransactionReceipt } = await import('@wagmi/core');
-      const { config } = await import('@/config/wagmi');
-      
-      console.log('Waiting for supply confirmation...');
-      const receipt = await waitForTransactionReceipt(config, { 
-        hash: supplyHash,
-        timeout: 30000
-      });
-      
-      console.log('Supply transaction confirmed:', receipt);
-      
-      if (receipt.status === 'reverted') {
-        console.error('Supply transaction was reverted');
-        throw new Error('Supply transaction was reverted');
-      }
+      return supplyHash;
     } catch (supplyError) {
       console.error('Supply transaction failed:', supplyError);
       throw new Error(`Supply failed: ${supplyError instanceof Error ? supplyError.message : 'Unknown error'}`);
@@ -176,22 +136,7 @@ export function useAaveSupply() {
 
     console.log('Withdraw transaction hash:', withdrawHash);
 
-    // Wait for withdrawal confirmation
-    const { waitForTransactionReceipt } = await import('@wagmi/core');
-    const { config } = await import('@/config/wagmi');
-    const receipt = await waitForTransactionReceipt(config, { 
-      hash: withdrawHash,
-      timeout: 30000
-    });
-
-    console.log('Withdraw transaction confirmed:', receipt);
-
-    if (receipt.status === 'reverted') {
-      throw new Error('Withdraw transaction was reverted');
-    }
-
-    // Refetch balances after successful transaction
-    await refetchBalance();
+    return withdrawHash;
   };
 
   // Enable/disable USDC as collateral

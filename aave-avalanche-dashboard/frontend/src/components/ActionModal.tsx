@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { Card } from '@/components/ui/card';
-// @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +12,12 @@ import { parseUnits, formatUnits, encodeFunctionData, type Hex, createPublicClie
 import { avalanche } from 'wagmi/chains';
 import { CONTRACTS, ERC20_ABI, AAVE_DATA_PROVIDER_ABI, WAVAX_ABI } from '@/config/contracts';
 import { toast } from 'sonner';
+
+// Type definition for Ethereum provider request arguments
+interface ProviderRequestArgs {
+  method: string;
+  params?: unknown[];
+}
 import { getExplorerTxLink } from '@/lib/blockchain';
 import { useAavePositions } from '@/hooks/useAavePositions';
 import { useQueryClient } from '@tanstack/react-query';
@@ -72,6 +77,27 @@ const AAVE_POOL_ABI = [
   }
 ] as const;
 
+type PrivyWallet = {
+  address?: `0x${string}` | string | null;
+  walletClientType?: string;
+  chainId?: number;
+  getEthereumProvider?: () => Promise<{
+    request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  }>;
+};
+
+// Utility function to safely get Privy provider
+const getPrivyProvider = async (privyWallet: PrivyWallet | undefined) => {
+  if (!privyWallet?.getEthereumProvider) {
+    throw new Error('Privy wallet or provider not available');
+  }
+  const provider = await privyWallet.getEthereumProvider();
+  if (!provider) {
+    throw new Error('Privy provider not available');
+  }
+  return provider;
+};
+
 interface ActionModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -97,7 +123,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
   const [currentTxHash, setCurrentTxHash] = useState<Hex | undefined>();
 
   const { authenticated, ready, sendTransaction } = usePrivy();
-  const { wallets } = useWallets();
+  const { wallets } = useWallets() as unknown as { wallets: PrivyWallet[] };
   const { switchChain: wagmiSwitchChain } = useSwitchChain();
   const publicClient = usePublicClient({ chainId: avalanche.id });
 
@@ -152,13 +178,13 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
     // If user is authenticated with Privy, use Privy wallet (Ethereum only)
     if (authenticated && ready) {
       // Find Privy wallet with Ethereum address
-      const privyWallet = wallets.find((w: any) =>
+      const privyWallet = wallets.find((w: PrivyWallet) =>
         w.walletClientType === 'privy' && isEthereumAddress(w.address)
       );
       if (privyWallet) return privyWallet.address as `0x${string}` | undefined;
 
       // Try to find any Ethereum wallet from Privy
-      const ethereumWallet = wallets.find((w: any) => isEthereumAddress(w.address));
+      const ethereumWallet = wallets.find((w: PrivyWallet) => isEthereumAddress(w.address));
       if (ethereumWallet) return ethereumWallet.address as `0x${string}` | undefined;
     }
 
@@ -171,7 +197,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
   const activeChainId = React.useMemo(() => {
     // If using Privy wallet, Privy smart wallets are always on Avalanche (configured in privy-config)
     if (authenticated && ready && address) {
-      const privyWallet = wallets.find((w: any) => w.address === address);
+      const privyWallet = wallets.find((w: PrivyWallet) => w.address === address);
       if (privyWallet && privyWallet.walletClientType === 'privy') {
         // Privy smart wallets are configured for Avalanche, return it directly
         return avalanche.id;
@@ -357,7 +383,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
       
       throw error;
     }
-  }, []);
+  }, [publicClient]);
 
   const executeSupplyStep = useCallback(async () => {
     console.log('=== ENTERING SUPPLY STEP (DIRECT) ===');
@@ -370,7 +396,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
     }
 
     // Network guard: Skip for Privy smart wallets (always on Avalanche)
-    const isPrivyWallet = authenticated && ready && wallets.some((w: any) => w.address === address && w.walletClientType === 'privy');
+    const isPrivyWallet = authenticated && ready && wallets.some((w: PrivyWallet) => w.address === address && w.walletClientType === 'privy');
     if (!isPrivyWallet && activeChainId !== undefined && activeChainId !== avalanche.id) {
       toast.error('Please switch to Avalanche C-Chain to perform this action', {
         duration: 8000,
@@ -469,7 +495,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
       }
 
       // Get appropriate gas parameters based on wallet type
-      const privyWallet = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
+      const privyWallet = wallets.find((w: PrivyWallet) => w.address === address && w.walletClientType === 'privy');
       const isPrivyWallet = authenticated && !!privyWallet;
       const gasParams = await getGasParameters(isPrivyWallet);
 
@@ -488,10 +514,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
       if (isPrivyWallet && privyWallet) {
         console.log('[ActionModal] Supplying USDC via Privy smart wallet (intercepting to bypass Privy RPC)...');
 
-        const privyProvider = await privyWallet.getEthereumProvider();
-        if (!privyProvider) {
-          throw new Error('Privy provider not available');
-        }
+        const privyProvider = await getPrivyProvider(privyWallet);
 
         // Create Avalanche RPC client for direct broadcasting
         const avalancheRpcUrl = import.meta.env.VITE_AVALANCHE_RPC_URL || 'https://api.avax.network/ext/bc/C/rpc';
@@ -506,7 +529,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
         // Intercept provider's request method
         const originalProviderRequest = privyProvider.request.bind(privyProvider);
-        privyProvider.request = async (args: any) => {
+        privyProvider.request = async (args: ProviderRequestArgs) => {
           if (args.method === 'eth_chainId') {
             return '0xa86a';
           }
@@ -526,7 +549,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                 transactionBroadcast = true;
               }
               return privyHash;
-            } catch (error: any) {
+            } catch (error: unknown) {
               console.error('[ActionModal] eth_sendTransaction failed:', error);
               throw error;
             }
@@ -690,12 +713,12 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           });
           
           await Promise.race([
-            txPromise.then((tx: any) => {
+            txPromise.then((tx: ethers.TransactionResponse) => {
               if (!interceptedTxHash && tx?.hash) {
                 console.log('[ActionModal] Got hash from ethers transaction object for supply:', tx.hash);
                 interceptedTxHash = tx.hash;
               }
-            }).catch((error: any) => {
+            }).catch((error: unknown) => {
               if (interceptedTxHash) {
                 console.log('[ActionModal] Ignoring ethers error - supply transaction already broadcast');
                 return;
@@ -867,6 +890,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
     wallets,
     activeChainId,
     isConnected,
+    writeContract,
     writeContractAsync,
     waitForTransaction,
     refetchUsdcBalance,
@@ -880,6 +904,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
     isPending,
     hash,
     getGasParameters,
+    publicClient,
   ]);
 
   const handleAction = async (): Promise<void> => {
@@ -906,7 +931,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
     // Network guard: Ensure user is on Avalanche C-Chain
     // Skip check for Privy smart wallets (they're always on Avalanche)
-    const isPrivyWallet = authenticated && ready && wallets.some((w: any) => w.address === address && w.walletClientType === 'privy');
+    const isPrivyWallet = authenticated && ready && wallets.some((w: PrivyWallet) => w.address === address && w.walletClientType === 'privy');
 
     if (!isPrivyWallet && activeChainId !== undefined && activeChainId !== avalanche.id) {
       // Only check network for external wallets (wagmi)
@@ -1116,15 +1141,12 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           let swapHash: Hex | undefined;
           
           // Check if using Privy wallet - wagmi doesn't recognize Privy's embedded wallet
-          const privyWallet = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
+          const privyWallet = wallets.find((w: PrivyWallet) => w.address === address && w.walletClientType === 'privy');
           
           if (privyWallet) {
             console.log('[ActionModal] Executing swap via Privy (intercepting fetch to bypass Privy RPC)...');
             
-            const privyProvider = await privyWallet.getEthereumProvider();
-            if (!privyProvider) {
-              throw new Error('Privy provider not available');
-            }
+            const privyProvider = await getPrivyProvider(privyWallet);
             
             // Create Avalanche RPC client for direct broadcasting
             const avalancheRpcUrl = import.meta.env.VITE_AVALANCHE_RPC_URL || 'https://api.avax.network/ext/bc/C/rpc';
@@ -1139,7 +1161,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
             
             // Intercept provider's request method to return correct chain ID and capture transactions
             const originalProviderRequest = privyProvider.request.bind(privyProvider);
-            privyProvider.request = async (args: any) => {
+            privyProvider.request = async (args: ProviderRequestArgs) => {
               // Log all provider requests for debugging
               if (args.method !== 'eth_chainId' && args.method !== 'eth_accounts' && args.method !== 'eth_blockNumber') {
                 console.log('[ActionModal] Provider request:', args.method, args.params ? 'with params' : 'no params');
@@ -1172,11 +1194,12 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                   }
                   
                   return privyHash;
-                } catch (error: any) {
+                } catch (error: unknown) {
                   console.error('[ActionModal] eth_sendTransaction failed:', error);
                   // If Privy fails due to balance check, but ZeroDev might still sponsor it
                   // Check if error message suggests the transaction was still processed
-                  if (error?.message?.includes('insufficient funds') || error?.message?.includes('balance 0')) {
+                  const errorMessage = error instanceof Error ? error.message : String(error);
+                  if (errorMessage.includes('insufficient funds') || errorMessage.includes('balance 0')) {
                     console.log('[ActionModal] Privy balance check failed, but transaction may still be processing via ZeroDev');
                     // Don't throw - let it fail and we'll check for the hash later
                   }
@@ -1333,7 +1356,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
             
             try {
               // Ensure Buffer is available before Privy operations
-              if (typeof window !== "undefined" && !(window as any).Buffer) {
+              if (typeof window !== "undefined" && !(window as { Buffer?: unknown }).Buffer) {
                 const { Buffer } = await import("buffer");
                 (window as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
                 (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
@@ -1370,7 +1393,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
               });
               
               await Promise.race([
-                txPromise.then((tx: any) => {
+                txPromise.then((tx: ethers.TransactionResponse) => {
                   console.log('[ActionModal] Transaction promise resolved:', tx);
                   // If we get a transaction object, use its hash if we don't have intercepted hash
                   if (!interceptedTxHash && tx?.hash) {
@@ -1379,7 +1402,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                   } else if (tx?.hash) {
                     console.log('[ActionModal] Transaction object has hash but we already have intercepted hash:', tx.hash, 'vs', interceptedTxHash);
                   }
-                }).catch((error: any) => {
+                }).catch((error: unknown) => {
                   console.log('[ActionModal] Transaction promise rejected:', error);
                   // If we already intercepted, ignore the error
                   if (interceptedTxHash) {
@@ -1388,7 +1411,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                   } else {
                     console.error('[ActionModal] Transaction error:', error);
                     // Check if error contains a transaction hash (sometimes errors include it)
-                    const errorMessage = error?.message || String(error);
+                    const errorMessage = error instanceof Error ? error.message : String(error);
                     const hashMatch = errorMessage.match(/0x[a-fA-F0-9]{64}/);
                     if (hashMatch) {
                       console.log('[ActionModal] Found hash in error message:', hashMatch[0]);
@@ -1414,7 +1437,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                     console.log('[ActionModal] Timeout reached but we have hash:', interceptedTxHash);
                   }
                 })
-              ]).catch((raceError: any) => {
+              ]).catch((raceError: unknown) => {
                 // Catch any errors from Promise.race itself
                 if (interceptedTxHash) {
                   console.log('[ActionModal] Race error but we have hash, ignoring:', raceError);
@@ -1610,7 +1633,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
               let approveHash: Hex;
 
               // Check if using Privy wallet
-              const privyWallet = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
+              const privyWallet = wallets.find((w: PrivyWallet) => w.address === address && w.walletClientType === 'privy');
 
               if (authenticated && privyWallet) {
                 console.log('[ActionModal] Approving USDC via Privy smart wallet');
@@ -1623,7 +1646,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                     args: [poolAddress as `0x${string}`, maxApproval],
                   });
 
-                  const provider = await privyWallet.getEthereumProvider();
+                  const provider = await getPrivyProvider(privyWallet);
                   const txHash = await provider.request({
                     method: 'eth_sendTransaction',
                     params: [{
@@ -1747,7 +1770,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           let withdrawHash: Hex;
 
           // Check if using Privy wallet
-          const privyWallet = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
+          const privyWallet = wallets.find((w: PrivyWallet) => w.address === address && w.walletClientType === 'privy');
 
           if (authenticated && privyWallet) {
             console.log('[ActionModal] Withdrawing via Privy smart wallet');
@@ -1808,10 +1831,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
               console.log('[ActionModal] Withdrawing via Privy smart wallet (intercepting to bypass Privy RPC)...');
 
-              const privyProvider = await privyWallet.getEthereumProvider();
-              if (!privyProvider) {
-                throw new Error('Privy provider not available');
-              }
+              const privyProvider = await getPrivyProvider(privyWallet);
 
               // Create Avalanche RPC client for direct broadcasting (reuse existing avalancheRpcUrl)
               const avalanchePublicClient = createPublicClient({
@@ -1825,7 +1845,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
               // Intercept provider's request method
               const originalProviderRequest = privyProvider.request.bind(privyProvider);
-              privyProvider.request = async (args: any) => {
+              privyProvider.request = async (args: ProviderRequestArgs) => {
                 if (args.method === 'eth_chainId') {
                   return '0xa86a';
                 }
@@ -1845,7 +1865,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                       transactionBroadcast = true;
                     }
                     return privyHash;
-                  } catch (error: any) {
+                  } catch (error: unknown) {
                     console.error('[ActionModal] eth_sendTransaction failed:', error);
                     throw error;
                   }
@@ -2002,12 +2022,12 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                 });
                 
                 await Promise.race([
-                  txPromise.then((tx: any) => {
+                  txPromise.then((tx: ethers.TransactionResponse) => {
                     if (!interceptedTxHash && tx?.hash) {
                       console.log('[ActionModal] Got hash from ethers transaction object for withdraw:', tx.hash);
                       interceptedTxHash = tx.hash;
                     }
-                  }).catch((error: any) => {
+                  }).catch((error: unknown) => {
                     if (interceptedTxHash) {
                       console.log('[ActionModal] Ignoring ethers error - withdraw transaction already broadcast');
                       return;
@@ -2146,15 +2166,12 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           let borrowHash: Hex;
 
           // Check if using Privy wallet
-          const privyWallet = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
+          const privyWallet = wallets.find((w: PrivyWallet) => w.address === address && w.walletClientType === 'privy');
 
           if (authenticated && privyWallet) {
             console.log('[ActionModal] Borrowing via Privy smart wallet (intercepting to bypass Privy RPC)...');
 
-            const privyProvider = await privyWallet.getEthereumProvider();
-            if (!privyProvider) {
-              throw new Error('Privy provider not available');
-            }
+            const privyProvider = await getPrivyProvider(privyWallet);
 
             // Create Avalanche RPC client for direct broadcasting
             const avalancheRpcUrl = import.meta.env.VITE_AVALANCHE_RPC_URL || 'https://api.avax.network/ext/bc/C/rpc';
@@ -2169,7 +2186,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
             // Intercept provider's request method
             const originalProviderRequest = privyProvider.request.bind(privyProvider);
-            privyProvider.request = async (args: any) => {
+            privyProvider.request = async (args: ProviderRequestArgs) => {
               if (args.method === 'eth_chainId') {
                 return '0xa86a';
               }
@@ -2189,7 +2206,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                     transactionBroadcast = true;
                   }
                   return privyHash;
-                } catch (error: any) {
+                } catch (error: unknown) {
                   console.error('[ActionModal] eth_sendTransaction failed:', error);
                   throw error;
                 }
@@ -2348,12 +2365,12 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
               });
               
               await Promise.race([
-                txPromise.then((tx: any) => {
+                txPromise.then((tx: ethers.TransactionResponse) => {
                   if (!interceptedTxHash && tx?.hash) {
                     console.log('[ActionModal] Got hash from ethers transaction object for borrow:', tx.hash);
                     interceptedTxHash = tx.hash;
                   }
-                }).catch((error: any) => {
+                }).catch((error: unknown) => {
                   if (interceptedTxHash) {
                     console.log('[ActionModal] Ignoring ethers error - borrow transaction already broadcast');
                     return;
@@ -2578,14 +2595,14 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
               try {
                 // Check if using Privy wallet for wrapping
-                const privyWalletForWrap = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
+                const privyWalletForWrap = wallets.find((w: PrivyWallet) => w.address === address && w.walletClientType === 'privy');
                 let wrapHash: Hex;
                 
                 if (authenticated && privyWalletForWrap) {
                   // Use interception logic for Privy wallet wrapping
                   console.log('[ActionModal] Wrapping AVAX via Privy smart wallet (intercepting to bypass Privy RPC)...');
                   
-                  const privyProvider = await privyWalletForWrap.getEthereumProvider();
+                  const privyProvider = await getPrivyProvider(privyWalletForWrap);
                   if (!privyProvider) {
                     throw new Error('Privy provider not available');
                   }
@@ -2599,7 +2616,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                   let interceptedWrapHash: string | null = null;
 
                   const originalProviderRequest = privyProvider.request.bind(privyProvider);
-                  privyProvider.request = async (args: any) => {
+                  privyProvider.request = async (args: ProviderRequestArgs) => {
                     if (args.method === 'eth_chainId') return '0xa86a';
                     if (args.method === 'eth_getBalance') return '0x3635c9adc5dea00000';
                     if (args.method === 'eth_estimateGas') return '0x186a0';
@@ -2692,7 +2709,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                     });
                     
                     await Promise.race([
-                      txPromise.then((tx: any) => {
+                      txPromise.then((tx: ethers.TransactionResponse) => {
                         if (!interceptedWrapHash && tx?.hash) interceptedWrapHash = tx.hash;
                       }).catch(() => {}),
                       new Promise(resolve => setTimeout(resolve, 15000))
@@ -2872,14 +2889,14 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
               try {
                 // Check if using Privy wallet for wrapping
-                const privyWalletForWrap = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
+                const privyWalletForWrap = wallets.find((w: PrivyWallet) => w.address === address && w.walletClientType === 'privy');
                 let wrapHash: Hex;
                 
                 if (authenticated && privyWalletForWrap) {
                   // Use interception logic for Privy wallet wrapping
                   console.log('[ActionModal] Wrapping AVAX via Privy smart wallet (intercepting to bypass Privy RPC)...');
                   
-                  const privyProvider = await privyWalletForWrap.getEthereumProvider();
+                  const privyProvider = await getPrivyProvider(privyWalletForWrap);
                   if (!privyProvider) {
                     throw new Error('Privy provider not available');
                   }
@@ -2893,7 +2910,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                   let interceptedWrapHash: string | null = null;
 
                   const originalProviderRequest = privyProvider.request.bind(privyProvider);
-                  privyProvider.request = async (args: any) => {
+                  privyProvider.request = async (args: ProviderRequestArgs) => {
                     if (args.method === 'eth_chainId') return '0xa86a';
                     if (args.method === 'eth_getBalance') return '0x3635c9adc5dea00000';
                     if (args.method === 'eth_estimateGas') return '0x186a0';
@@ -2986,7 +3003,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                     });
                     
                     await Promise.race([
-                      txPromise.then((tx: any) => {
+                      txPromise.then((tx: ethers.TransactionResponse) => {
                         if (!interceptedWrapHash && tx?.hash) interceptedWrapHash = tx.hash;
                       }).catch(() => {}),
                       new Promise(resolve => setTimeout(resolve, 15000))
@@ -3146,7 +3163,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
             toast.info('Approving WAVAX for repayment...');
 
             // Check if using Privy wallet for approval
-            const privyWalletForApproval = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
+            const privyWalletForApproval = wallets.find((w: PrivyWallet) => w.address === address && w.walletClientType === 'privy');
             
             const maxApproval = MAX_UINT256;
             let approveHash: Hex;
@@ -3155,8 +3172,9 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
               // Use ethers.js for Privy wallet approval
               console.log('[ActionModal] Approving WAVAX via Privy smart wallet');
               
-              await privyWalletForApproval.switchChain(43114);
-              const ethereumProvider = await privyWalletForApproval.getEthereumProvider();
+              // Note: Privy smart wallets don't support switchChain method
+              // They are automatically configured for the correct chain
+              const ethereumProvider = await getPrivyProvider(privyWalletForApproval);
               const ethersProvider = new ethers.BrowserProvider(ethereumProvider);
               const signer = await ethersProvider.getSigner();
               
@@ -3268,15 +3286,12 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           let repayHash: Hex;
 
           // Check if using Privy wallet
-          const privyWallet = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
+          const privyWallet = wallets.find((w: PrivyWallet) => w.address === address && w.walletClientType === 'privy');
 
           if (authenticated && privyWallet) {
             console.log('[ActionModal] Repaying via Privy smart wallet (intercepting to bypass Privy RPC)...');
 
-            const privyProvider = await privyWallet.getEthereumProvider();
-            if (!privyProvider) {
-              throw new Error('Privy provider not available');
-            }
+            const privyProvider = await getPrivyProvider(privyWallet);
 
             // Create Avalanche RPC client for direct broadcasting
             const avalancheRpcUrl = import.meta.env.VITE_AVALANCHE_RPC_URL || 'https://api.avax.network/ext/bc/C/rpc';
@@ -3291,7 +3306,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
             // Intercept provider's request method
             const originalProviderRequest = privyProvider.request.bind(privyProvider);
-            privyProvider.request = async (args: any) => {
+            privyProvider.request = async (args: ProviderRequestArgs) => {
               if (args.method === 'eth_chainId') {
                 return '0xa86a';
               }
@@ -3316,7 +3331,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                     transactionBroadcast = true;
                   }
                   return privyHash;
-                } catch (error: any) {
+                } catch (error: unknown) {
                   console.error('[ActionModal] eth_sendTransaction failed:', error);
                   throw error;
                 }
@@ -3485,12 +3500,12 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
               });
               
               await Promise.race([
-                txPromise.then((tx: any) => {
+                txPromise.then((tx: ethers.TransactionResponse) => {
                   if (!interceptedTxHash && tx?.hash) {
                     console.log('[ActionModal] Got hash from ethers transaction object for repay:', tx.hash);
                     interceptedTxHash = tx.hash;
                   }
-                }).catch((error: any) => {
+                }).catch((error: unknown) => {
                   if (interceptedTxHash) {
                     console.log('[ActionModal] Ignoring ethers error - repay transaction already broadcast');
                     return;
@@ -3688,7 +3703,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
           let sendHash: Hex | undefined;
 
           // Detect if using Privy wallet
-          const privyWallet = wallets.find((w: any) => w.walletClientType === 'privy');
+          const privyWallet = wallets.find((w: PrivyWallet) => w.walletClientType === 'privy');
 
           if (authenticated && privyWallet) {
             console.log('[ActionModal] Transferring USDC via Privy smart wallet (intercepting to bypass Privy RPC)...');
@@ -3700,7 +3715,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
               args: [recipientAddress as `0x${string}`, sendAmountWei],
             });
 
-            const privyProvider = await privyWallet.getEthereumProvider();
+            const privyProvider = await getPrivyProvider(privyWallet);
             if (!privyProvider) {
               throw new Error('Privy provider not available');
             }
@@ -3718,7 +3733,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
 
             // Intercept provider's request method
             const originalProviderRequest = privyProvider.request.bind(privyProvider);
-            privyProvider.request = async (args: any) => {
+            privyProvider.request = async (args: ProviderRequestArgs) => {
               if (args.method === 'eth_chainId') {
                 return '0xa86a';
               }
@@ -3744,7 +3759,7 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
                     transactionBroadcast = true;
                   }
                   return privyHash;
-                } catch (error: any) {
+                } catch (error: unknown) {
                   console.error('[ActionModal] eth_sendTransaction failed:', error);
                   throw error;
                 }
@@ -3902,12 +3917,12 @@ export function ActionModal({ isOpen, onClose, action }: ActionModalProps) {
               });
               
               await Promise.race([
-                txPromise.then((hash: any) => {
+                txPromise.then((hash: unknown) => {
                   if (!interceptedTxHash && hash) {
                     console.log('[ActionModal] Got hash from provider request for send:', hash);
-                    interceptedTxHash = hash;
+                    interceptedTxHash = hash as Hex;
                   }
-                }).catch((error: any) => {
+                }).catch((error: unknown) => {
                   if (interceptedTxHash) {
                     console.log('[ActionModal] Ignoring provider error - send transaction already broadcast');
                     return;

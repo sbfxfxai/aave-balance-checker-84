@@ -47,14 +47,44 @@ export interface GmxPositionData {
   decreasedAtTime?: number; // Timestamp when position was decreased
   createdAt?: number; // Timestamp when position was created
   positionAge?: string; // Human-readable age
-  
-  // Market data
-  indexTokenPriceMin?: string; // Min oracle price
-  indexTokenPriceMax?: string; // Max oracle price
-  
-  // Liquidity
-  canBeClosed?: boolean; // Whether there's enough liquidity
-  maxSizeIncrease?: string; // Max additional size that can be added
+}
+
+interface RawGmxPosition {
+  addresses: {
+    market: string;
+    collateralToken: string;
+  };
+  numbers: {
+    sizeInUsd: bigint;
+    collateralAmount: bigint;
+    sizeInTokens: bigint;
+    increasedAtTime: bigint;
+    decreasedAtTime: bigint;
+    longTokenClaimableFundingAmountPerSize: bigint;
+    shortTokenClaimableFundingAmountPerSize: bigint;
+    borrowingFactor?: bigint;
+    fundingFeeAmountPerSize?: bigint;
+  };
+  flags: {
+    isLong: boolean;
+  };
+}
+
+interface GmxMarketData {
+  markets: Array<{
+    marketToken?: string;
+    indexToken?: string;
+    price?: string;
+    markPrice?: string;
+    indexTokenPrice?: string;
+  }>;
+}
+
+interface GmxTokenData {
+  tokens: Array<{
+    symbol: string;
+    price: string;
+  }>;
 }
 
 const MARKET_INFO: Record<string, { name: string; indexToken: string }> = {
@@ -160,7 +190,7 @@ export function useGmxPositions(overrideAddress?: string | null) {
         // Process positions synchronously but in smaller batches to prevent blocking
         // For small arrays (< 10), process all at once
         // For larger arrays, process in chunks to yield to main thread
-        const processPosition = (pos: any, index: number) => {
+        const processPosition = (pos: RawGmxPosition, index: number, accountAddress: string) => {
           const market = pos.addresses.market.toLowerCase();
           const marketInfo = MARKET_INFO[market];
           const sizeUsd = Number(formatUnits(pos.numbers.sizeInUsd, 30));
@@ -188,11 +218,13 @@ export function useGmxPositions(overrideAddress?: string | null) {
           const decreasedAt = Number(pos.numbers.decreasedAtTime);
           
           // Borrowing factor is stored as a decimal (e.g., 0.0001 = 0.01%)
-          const borrowingFactorValue = Number(formatUnits(pos.numbers.borrowingFactor, 30));
+          const borrowingFactorValue = pos.numbers.borrowingFactor 
+            ? Number(formatUnits(pos.numbers.borrowingFactor, 30))
+            : 0;
 
           return {
             id: `${pos.addresses.market}-${pos.addresses.collateralToken}-${index}`,
-            account: pos.addresses.account,
+            account: accountAddress,
             market: pos.addresses.market,
             marketInfo,
             collateralToken: pos.addresses.collateralToken,
@@ -204,7 +236,9 @@ export function useGmxPositions(overrideAddress?: string | null) {
             isLong,
             // Additional fields from contract
             borrowingFactor: borrowingFactorValue.toString(),
-            fundingFeeAmountPerSize: formatUnits(pos.numbers.fundingFeeAmountPerSize, 30),
+            fundingFeeAmountPerSize: pos.numbers.fundingFeeAmountPerSize 
+            ? formatUnits(pos.numbers.fundingFeeAmountPerSize, 30)
+            : '0',
             claimableFundingAmount: totalClaimableFunding.toFixed(4),
             increasedAtTime: increasedAt,
             decreasedAtTime: decreasedAt,
@@ -219,15 +253,15 @@ export function useGmxPositions(overrideAddress?: string | null) {
         // Process positions
         let processedPositions: GmxPositionData[];
         if (positions.length <= 10) {
-          processedPositions = positions.map(processPosition).filter((p: GmxPositionData) => parseFloat(p.sizeInUsd) > 0);
+          processedPositions = positions.map((pos, index) => processPosition(pos, index, address!)).filter((p: GmxPositionData) => parseFloat(p.sizeInUsd) > 0);
         } else {
           // For larger arrays, process in batches to yield to main thread
-          const results: any[] = [];
+          const results: GmxPositionData[] = [];
           const batchSize = 5;
           
           for (let i = 0; i < positions.length; i += batchSize) {
             const batch = positions.slice(i, i + batchSize);
-            const batchResults = batch.map((pos: any, batchIndex: number) => processPosition(pos, i + batchIndex));
+            const batchResults = batch.map((pos: RawGmxPosition, batchIndex: number) => processPosition(pos, i + batchIndex, address!));
             results.push(...batchResults);
             
             // Yield to main thread after each batch (except the last)
@@ -249,31 +283,41 @@ export function useGmxPositions(overrideAddress?: string | null) {
           let btcPrice: number | undefined;
           if (btcPositions.length > 0) {
             try {
-              console.log('[GMX] Fetching BTC price from CoinGecko...');
-              const btcResponse = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd', {
+              console.log('[GMX] Fetching BTC price from backend API...');
+              const btcResponse = await fetch('/api/price/btc', {
                 signal: AbortSignal.timeout(5000),
               });
-              console.log('[GMX] CoinGecko response status:', btcResponse.status);
+              console.log('[GMX] BTC price API response status:', btcResponse.status);
               if (btcResponse.ok) {
                 const btcData = await btcResponse.json();
-                btcPrice = btcData.bitcoin?.usd;
-                if (btcPrice) {
-                  console.log(`[GMX] ✅ Successfully fetched BTC price from CoinGecko: $${btcPrice.toFixed(2)}`);
+                btcPrice = btcData.price;
+                if (btcPrice && typeof btcPrice === 'number') {
+                  console.log(`[GMX] ✅ Successfully fetched BTC price: $${btcPrice.toFixed(2)} (source: ${btcData.source})`);
                 } else {
-                  console.error('[GMX] ❌ CoinGecko response missing bitcoin.usd:', btcData);
+                  console.error('[GMX] ❌ BTC price API response missing price:', btcData);
                 }
+              } else if (btcResponse.status === 429) {
+                // Rate limited - silently fail, will use GMX API as fallback
+                console.warn('[GMX] BTC price API rate limited (429), using GMX API fallback');
+              } else if (btcResponse.status === 503) {
+                // Service unavailable - silently fail, will use GMX API as fallback
+                console.warn('[GMX] BTC price API unavailable (503), using GMX API fallback');
               } else {
-                console.error('[GMX] ❌ CoinGecko API error:', btcResponse.status, btcResponse.statusText);
+                console.error('[GMX] ❌ BTC price API error:', btcResponse.status, btcResponse.statusText);
               }
             } catch (e) {
-              console.error('[GMX] ❌ Failed to fetch BTC price from CoinGecko:', e);
+              // Suppress network errors - they're expected and we have fallbacks
+              const errorMsg = e instanceof Error ? e.message : String(e);
+              if (!errorMsg.includes('Failed to fetch') && !errorMsg.includes('aborted')) {
+                console.error('[GMX] ❌ Failed to fetch BTC price:', e);
+              }
             }
           } else {
-            console.log('[GMX] No BTC positions found, skipping CoinGecko fetch');
+            console.log('[GMX] No BTC positions found, skipping BTC price fetch');
           }
           
           // Try GMX markets endpoint for other tokens or as fallback
-          let marketsData: any = null;
+          let marketsData: GmxMarketData | null = null;
           try {
             const marketsRes = await fetch(`${GMX_AVALANCHE_API}/markets`);
             if (marketsRes.ok) {
@@ -308,7 +352,7 @@ export function useGmxPositions(overrideAddress?: string | null) {
             
             // Try to get from markets data if available (for non-BTC or as fallback)
             if (!markPrice && marketsData?.markets) {
-              const matchingMarket = marketsData.markets.find((m: any) => {
+              const matchingMarket = marketsData.markets.find((m: GmxMarketData['markets'][0]) => {
                 // Try to match by market address or index token
                 return m.marketToken?.toLowerCase() === position.market.toLowerCase() ||
                        m.indexToken?.toLowerCase() === position.market.toLowerCase();
@@ -383,7 +427,7 @@ export function useGmxPositions(overrideAddress?: string | null) {
               const tokenPriceMap = new Map<string, number>();
               
               if (tokensData?.tokens) {
-                tokensData.tokens.forEach((token: any) => {
+                tokensData.tokens.forEach((token: GmxTokenData['tokens'][0]) => {
                   if (token.symbol && token.price) {
                     tokenPriceMap.set(token.symbol.toUpperCase(), parseFloat(token.price));
                   }

@@ -3,7 +3,6 @@
  * Structured logging for monitoring and debugging
  */
 
-import { logger, LogCategory } from './logger'; // Import existing logger
 import { Redis } from '@upstash/redis';
 
 export enum LogLevel {
@@ -21,7 +20,8 @@ export enum LogCategory {
   WEBHOOK = 'WEBHOOK',
   DATABASE = 'DATABASE',
   INFRASTRUCTURE = 'INFRASTRUCTURE',
-  USER_ACTION = 'USER_ACTION'
+  USER_ACTION = 'USER_ACTION',
+  SECURITY = 'SECURITY'
 }
 
 interface LogEntry {
@@ -593,9 +593,9 @@ class Logger {
       let totalDuration = 0;
       let durationCount = 0;
       
-      recentLogs.forEach(log => {
-        logsByLevel[log.level] = (logsByLevel[log.level] || 0) + 1);
-        logsByCategory[log.category] = (logsByCategory[log.category] || 0) + 1);
+      recentLogs.forEach((log: LogEntry) => {
+        logsByLevel[log.level] = (logsByLevel[log.level] || 0) + 1;
+        logsByCategory[log.category] = (logsByCategory[log.category] || 0) + 1;
         
         if (log.duration) {
           totalDuration += log.duration;

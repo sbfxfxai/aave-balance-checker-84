@@ -1,5 +1,4 @@
 import React, { useRef } from 'react';
-// @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useAccount, useDisconnect } from 'wagmi';
 import { Button } from '@/components/ui/button';
@@ -7,13 +6,23 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Loader2, Mail, Shield, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 
+type PrivyWallet = {
+  address?: `0x${string}` | string | null;
+  walletClientType?: string;
+  chainId?: number;
+  getEthereumProvider?: () => Promise<{
+    request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  }>;
+  sign?: (message: string) => Promise<string>;
+};
+
 /**
  * PrivyLogin component for email-based authentication
  * Provides a simple "Sign up with email" experience
  */
 export function PrivyLogin() {
     const { login, authenticated, ready, user, logout } = usePrivy();
-    const { wallets } = useWallets();
+    const { wallets } = useWallets() as unknown as { wallets: PrivyWallet[] };
     const { isConnected: isWagmiConnected } = useAccount();
     const { disconnect: wagmiDisconnect } = useDisconnect();
     const associationCompletedRef = useRef(false);
@@ -24,7 +33,7 @@ export function PrivyLogin() {
     };
     
     // Find Privy smart wallet with Ethereum address
-    const smartWallet = wallets.find((w: any) => 
+    const smartWallet = wallets.find((w: PrivyWallet) => 
         w.walletClientType === 'privy' && isEthereumAddress(w.address)
     );
     
@@ -40,7 +49,7 @@ export function PrivyLogin() {
             userWalletAddress: user?.wallet?.address,
             selectedWalletAddress: walletAddress,
             totalWallets: wallets.length,
-            walletTypes: wallets.map((w: any) => ({ type: w.walletClientType, address: w.address }))
+            walletTypes: wallets.map((w: PrivyWallet) => ({ type: w.walletClientType, address: w.address }))
         });
     }
 
@@ -93,47 +102,15 @@ export function PrivyLogin() {
                     
                     let signature = '';
                     try {
-                        // CRITICAL: Ensure Buffer is available before signing
-                        // Privy's sign() method uses Buffer internally for message encoding
-                        if (typeof window !== "undefined" && !(window as any).Buffer) {
-                            console.log('[PrivyLogin] Buffer not available, loading...');
-                            try {
-                                const { Buffer } = await import("buffer");
-                                (window as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
-                                (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
-                                
-                                // Ensure process is set up
-                                if (typeof process === 'undefined') {
-                                    (globalThis as any).process = {
-                                        browser: true,
-                                        env: {},
-                                        versions: { node: 'v16.0.0' },
-                                        nextTick: (fn: Function) => setTimeout(fn, 0),
-                                        version: 'v16.0.0'
-                                    };
-                                }
-                                
-                                // Verify Buffer works
-                                const testBuffer = Buffer.from('test');
-                                if (!testBuffer || typeof testBuffer.toString !== 'function') {
-                                    throw new Error('Buffer loaded but not functional');
-                                }
-                                console.log('[PrivyLogin] ✅ Buffer loaded and verified');
-                            } catch (bufferError) {
-                                console.error('[PrivyLogin] ❌ Failed to load Buffer:', bufferError);
-                                throw new Error('Buffer polyfill required for signature generation');
-                            }
-                        }
-                        
                         // Try to sign with Privy smart wallet first
-                        if (smartWallet) {
+                        if (smartWallet && smartWallet.sign) {
                             console.log('[PrivyLogin] Signing with Privy smart wallet...');
                             signature = await smartWallet.sign(message);
                             console.log('[PrivyLogin] ✅ Signature generated:', signature.slice(0, 20) + '...');
                         } else {
                             // Fallback: try to find any wallet that can sign
-                            const activeWallet = wallets.find((w: any) => w.address === walletAddress);
-                            if (activeWallet) {
+                            const activeWallet = wallets.find((w: PrivyWallet) => w.address === walletAddress);
+                            if (activeWallet && activeWallet.sign) {
                                 console.log('[PrivyLogin] Signing with active wallet...');
                                 signature = await activeWallet.sign(message);
                                 console.log('[PrivyLogin] ✅ Signature generated:', signature.slice(0, 20) + '...');
@@ -147,7 +124,7 @@ export function PrivyLogin() {
                         const errorMsg = signError instanceof Error ? signError.message : String(signError);
                         if (errorMsg.includes('fromByteArray') || errorMsg.includes('Buffer') || errorMsg.includes('undefined')) {
                             console.error('[PrivyLogin] ❌ CRITICAL: Buffer polyfill issue detected. Buffer may not be properly loaded.');
-                            console.error('[PrivyLogin] Buffer available:', !!(window as any).Buffer);
+                            console.error('[PrivyLogin] Buffer available:', typeof (window as unknown as { Buffer?: typeof Buffer }).Buffer !== 'undefined');
                             console.error('[PrivyLogin] Process available:', typeof process !== 'undefined');
                         }
                         console.warn('[PrivyLogin] ⚠️ Will attempt association without signature (fallback)');
@@ -197,7 +174,7 @@ export function PrivyLogin() {
                             console.error('[PrivyLogin] Result:', result);
                         }
                     } else {
-                        let errorData: any = { error: 'Unknown error' };
+                        let errorData: { error: string; details?: string; message?: string } = { error: 'Unknown error' };
                         try {
                             const text = await response.text();
                             errorData = text ? JSON.parse(text) : { error: `HTTP ${response.status}` };

@@ -1,153 +1,241 @@
-interface SquareConfig {plction_id: sting;
-  loati_d: strin;nvironmen: 'poductio' | 'andbox';
- api_base_rl: string;
-  hs_access_token: boolean;
-  web_payments_sdk_ul: string;
-  incomplte?:boolean;
- warnings?: string[];
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+
+interface SquareConfig {
+  application_id: string;
+  location_id: string;
+  environment: 'production' | 'sandbox';
+  api_base_url: string;
+  has_access_token: boolean;
+  web_payments_sdk_url: string;
+  incomplete?: boolean;
+  warnings?: string[];
 }
 
-// Cahe creduces env vr reads)
-et chedConfg: SquareCfig|nul = null;
-let cheTmestamp = 0;
-cstCACHE_TTL= 300000; // 5 minues// Rat limiting
-cnsconigReqesLog= new Mp<trig, number[]>();
-onstMAX_REQUESTS_PER_MINUTE = 60;
+// Cache to reduce env var reads
+let cachedConfig: SquareConfig | null = null;
+let cacheTimestamp = 0;
+const CACHE_TTL = 300000; // 5 minutes
 
-ceckRteLimit(ip: strig): boolean {
+// Rate limiting
+const configRequestLog = new Map<string, number[]>();
+const MAX_REQUESTS_PER_MINUTE = 60;
+
+function checkRateLimit(ip: string): boolean {
   const now = Date.now();
-  const winowStart = now - 60000;
+  const windowStart = now - 60000;
   
-  const recentRequests = (configRequestLog.get(ip) || []).fittime => time > windowStat);
+  const recentRequests = (configRequestLog.get(ip) || []).filter(time => time > windowStart);
   
-  if (rcentReuests.length>= MAX_REQUESTS_PER_MINUTE) {
-    rtun false;
+  if (recentRequests.length >= MAX_REQUESTS_PER_MINUTE) {
+    return false;
   }
   
-  rents.push(now);
-  configRequestLog.set(ipcentRequets);
+  recentRequests.push(now);
+  configRequestLog.set(ip, recentRequests);
   
   return true;
 }
 
-function setCorsHeaders(res:void constallowedrigins= procss.nv.ALLOWED_ORIGINS?.plit(',') || ['*'];allowedOrigins[0]  res.setHeader('Access-Control-Max-Age', '3600');res.setHeader('Cache-Control', 'publc, max-age=300'); // 5 minute client cache
+function setCorsHeaders(res: VercelResponse): void {
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['*'];
+  res.setHeader('Access-Control-Allow-Origin', allowedOrigins[0]);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Max-Age', '3600');
+  res.setHeader('Cache-Control', 'public, max-age=300'); // 5 minute client cache
 }
 
-unctionvalidateEnvironmentenv: sting | undfind): 'producin' | 'sanbox'{
-  if (env sandbox || env === 'production'v  // Default to producton orsecuity
-  if (nv && nvproductioncoolewrn`[Square Cfig]Invalid nvinmn"${ev}",defuting to pruction`  reun'production';
+function validateEnvironment(env: string | undefined): 'production' | 'sandbox' {
+  if (env === 'sandbox' || env === 'production') {
+    return env;
+  }
+  // Default to production for security
+  if (env && env !== 'production') {
+    console.warn(`[Square Config] Invalid environment "${env}", defaulting to production`);
+  }
+  return 'production';
 }
-function getSquareConfig():SquareConfig{
- Returnchofig iftillvalid
-i (chedConfig &&Dae.nw() -cacheimestamp < CCHTT) {
-    return cachedonfig;
+
+function getSquareConfig(): SquareConfig {
+  // Return cached config if still valid
+  if (cachedConfig && Date.now() - cacheTimestamp < CACHE_TTL) {
+    return cachedConfig;
   }
   
-  const warnings:tring[] = [];
+  const warnings: string[] = [];
   
-  // Get configurtion fro nironmntaccssTkACCSS_TKrwEnvirnmtNVIRNMT
- Validatenvimt
-ns nvimt=teEnvironmen(rawEnvrnmet;
-Waboumisigcitic onfig) {
+  // Get configuration from environment
+  const accessToken = process.env.SQUARE_ACCESS_TOKEN;
+  const rawEnvironment = process.env.SQUARE_ENVIRONMENT;
+  const applicationId = process.env.SQUARE_APPLICATION_ID || process.env.VITE_SQUARE_APPLICATION_ID || '';
+  const locationId = process.env.SQUARE_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || '';
+  
+  // Validate environment
+  const environment = validateEnvironment(rawEnvironment);
+  
+  // Check for missing configuration
+  if (!applicationId) {
     warnings.push('Missing SQUARE_APPLICATION_ID');
   }
   
- if(
-    warnings.push('Missing SQUARE_LOCATION_ID'); }
-
-if(!acesTkn) {
-    nigs.pushMissing SQUARE_ACCES_TOKEN - pymntprce willal);
- } 
-//ValidateapplicationIDformat(sould strt with 'q0id-' or 'sandbox-sq0ib-')
-  if() {constisValidProd=pplid.startsWith('sq0ip-');
-    constisVaidSandbx = applid.startsWith('sandbox-sq0ib-');
-        if (!isValidProd &&!isValidSandbox){
-wrnings.puh('ppliati ID formatppar ivalid'); Warn ifenvironmn does'tmch ppiatiID
-i (envimt === 'proutio' &&!iVlidPod) {wanigph'Productienvironmentconfiguredbut ID looks lke sanbox');
-    }ese f (envrnmet===sandbox && !isValidSandbox) {warnings.push('Sandboxenvirnmen cfgurebut appi Dlookslike production);}
-}
-//DetermineAPIURLs
-constBU= ;
+  if (!locationId) {
+    warnings.push('Missing SQUARE_LOCATION_ID');
+  }
+  
+  if (!accessToken) {
+    warnings.push('Missing SQUARE_ACCESS_TOKEN - payment processing will fail');
+  }
+  
+  // Validate application ID format (should start with 'sq0id-' or 'sandbox-sq0id-')
+  if (applicationId) {
+    const isValidProd = applicationId.startsWith('sq0id-');
+    const isValidSandbox = applicationId.startsWith('sandbox-sq0id-');
+    
+    if (!isValidProd && !isValidSandbox) {
+      warnings.push('Application ID format appears invalid');
+    }
+    
+    // Warn if environment doesn't match application ID
+    if (environment === 'production' && !isValidProd) {
+      warnings.push('Production environment configured but ID looks like sandbox');
+    } else if (environment === 'sandbox' && !isValidSandbox) {
+      warnings.push('Sandbox environment configured but application ID looks like production');
+    }
+  }
+  
+  // Determine API URLs
+  const apiBaseUrl = environment === 'sandbox'
+    ? 'https://connect.squareupsandbox.com'
+    : 'https://connect.squareup.com';
   
   const webPaymentsSdkUrl = environment === 'sandbox'
     ? 'https://sandbox.web.squarecdn.com/v1/square.js'
     : 'https://web.squarecdn.com/v1/square.js';
   
   const config: SquareConfig = {
-    application_id: applicationId || ''location_id:locationId||'',
-   environment,
+    application_id: applicationId || '',
+    location_id: locationId || '',
+    environment,
     api_base_url: apiBaseUrl,
+    has_access_token: !!accessToken,
     web_payments_sdk_url: webPaymentsSdkUrl,
-    ,...(warnings.length>0 && { warnings 
-  }
-// Cache the configuration  cachedConfig = config;cacheTimestamp=Date.now();
+    incomplete: !applicationId || !locationId,
+    ...(warnings.length > 0 && { warnings })
+  };
+  
+  // Cache the configuration
+  cachedConfig = config;
+  cacheTimestamp = Date.now();
   
   return config;
 }
 
-**
- * GET api/square/config
-* Rus Squarconfigurtion(application ID, location ID, SDK )
+/**
+ * GET /api/square/config
+ * Returns Square configuration (application ID, location ID, SDK URL)
  */
-xport efaultasycfuct hadler(req: VercelReques,res:VercelResponse){
- strtTme = Dte.now();
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const startTime = Date.now();
   
-  // CORS header
-  stCosHeaders(res);
- 
-  if (req.method =='OPTIONS') {
-    rtur es.status(200).ed();
+  // CORS headers
+  setCorsHeaders(res);
+  
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
   }
   
-  if (req.hod!GET') {
-    re.setHeer('Allw,'GET, OPTIONS');returnres.status(405).json({
-     success: false,
-      error: Metod no allowed',
-      allowed ['GET', 'OPTIONS']
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET, OPTIONS');
+    return res.status(405).json({
+      success: false,
+      error: 'Method not allowed',
+      allowed: ['GET', 'OPTIONS']
     });
   }
   
   try {
-    st lienIp = (reqheader['x-forwdd-for'] || req.header['x-rel-ip'] || 'uknwn) as string;
- // Rate limiting
-    if (!ceckRaeLimi(clientI)) {
-      solwarn('[S Cnfig] Rate liit exceeded, { ip: clientIp })  49
-        success: false,   error:'Rte imt exeeded',
-        message: `Mximum ${MAX_REQUESTS_PER_MINUTE} requess per mnute` 
-      });
+    const clientIp = (req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown') as string;
+    
+    // Rate limiting (with error handling)
+    try {
+      if (!checkRateLimit(clientIp)) {
+        console.warn('[Square Config] Rate limit exceeded', { ip: clientIp });
+        return res.status(429).json({
+          success: false,
+          error: 'Rate limit exceeded',
+          message: `Maximum ${MAX_REQUESTS_PER_MINUTE} requests per minute` 
+        });
+      }
+    } catch (rateLimitError) {
+      // If rate limiting fails, log but continue (fail open)
+      console.warn('[Square Config] Rate limiting check failed, continuing:', rateLimitError instanceof Error ? rateLimitError.message : String(rateLimitError));
     }
     
-    const cfg =getSqureConfig();
-    const resonseTime = Date.now() - startTme;
-    
-    // Log onfigurion issues
-    if (config.warnngs && cnfig.warnings.legth > 0) {consoe.warn('[Square Config] Cnfigurn warngs',cnfig.wrnings);
+    // Get configuration (with error handling)
+    let config: SquareConfig;
+    try {
+      config = getSquareConfig();
+    } catch (configError) {
+      console.error('[Square Config] Failed to get configuration:', configError instanceof Error ? configError.message : String(configError));
+      // Return a minimal config on error
+      config = {
+        application_id: process.env.SQUARE_APPLICATION_ID || process.env.VITE_SQUARE_APPLICATION_ID || '',
+        location_id: process.env.SQUARE_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || '',
+        environment: validateEnvironment(process.env.SQUARE_ENVIRONMENT),
+        api_base_url: validateEnvironment(process.env.SQUARE_ENVIRONMENT) === 'sandbox'
+          ? 'https://connect.squareupsandbox.com'
+          : 'https://connect.squareup.com',
+        has_access_token: !!process.env.SQUARE_ACCESS_TOKEN,
+        web_payments_sdk_url: validateEnvironment(process.env.SQUARE_ENVIRONMENT) === 'sandbox'
+          ? 'https://sandbox.web.squarecdn.com/v1/square.js'
+          : 'https://web.squarecdn.com/v1/square.js',
+        incomplete: true,
+        warnings: ['Configuration error occurred']
+      };
     }
-    
-    f (cnfig.icomplete) {consol.war('[Squae Cnfig] Icoplet configuratio reurned' {   hasAppId:!!config.plicatonid,
-        hLocationId!!config.loction_d   hasAccessToken:config.token
-      });
-    }
-    
-    // Return 200 even if incomplee (allows frntend fallbac to env vars)
-    rturres.sttus(200).json({
-      su: true,
-      ...cnfig,
-      timestamp: new Dat().toISOStrig()
-      responseTime: `${responseTime}ms` 
     
     const responseTime = Date.now() - startTime;
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    , {
-      error: errorMessage
-      stack: error instanceof Error ?rro.stack : undefined,
-      espnseTime: `${esponseTime}ms` 
+    
+    // Log configuration issues
+    if (config.warnings && config.warnings.length > 0) {
+      console.warn('[Square Config] Configuration warnings', config.warnings);
     }
-     
-      success:false,process.nv.NODE_ENV === 'poductin' 
-        ?'Faled o lod niguatin' 
-       :M,
-    esponseTm: `${espnseTime}ms` 
+    
+    if (config.incomplete) {
+      console.warn('[Square Config] Incomplete configuration returned', {
+        hasAppId: !!config.application_id,
+        hasLocationId: !!config.location_id,
+        hasAccessToken: config.has_access_token
+      });
+    }
+    
+    // Return 200 even if incomplete (allows frontend fallback to env vars)
+    return res.status(200).json({
+      success: true,
+      ...config,
+      timestamp: new Date().toISOString(),
+      responseTime: `${responseTime}ms` 
+    });
+  } catch (error) {
+    const responseTime = Date.now() - startTime;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    console.error('[Square Config] Error loading configuration', {
+      error: errorMessage,
+      stack: error instanceof Error ? error.stack : undefined,
+      responseTime: `${responseTime}ms` 
+    });
+    
+    return res.status(500).json({
+      success: false,
+      error: process.env.NODE_ENV === 'production' 
+        ? 'Failed to load configuration' 
+        : errorMessage,
+      responseTime: `${responseTime}ms` 
+    });
+  }
+}
 
 export const config = {
-  maxDuration: 5,};
+  maxDuration: 5,
+};

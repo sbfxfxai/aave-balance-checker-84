@@ -1,4 +1,3 @@
-// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { PrivyClientConfig } from '@privy-io/react-auth';
 import { avalanche, mainnet } from 'viem/chains';
 
@@ -52,6 +51,10 @@ export const privyConfig: PrivyClientConfig = {
         },
     },
 
+    // Disable analytics to prevent CORS errors
+    // Privy analytics endpoints are not meant to be called directly from browser
+    // and will cause CORS errors. The SDK handles analytics internally when enabled.
+    disableAnalytics: true,
 
     // Legal notices
     legal: {

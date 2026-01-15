@@ -1,5 +1,5 @@
 import { Suspense, lazy, ReactNode } from 'react';
-import { ErgcPurchaseModalProvider } from '@/contexts/ErgcPurchaseModalContext';
+import { ErgcPurchaseModalProvider } from '@/contexts';
 
 // Lazy load Web3Providers and AuthGuard together (they're always used together)
 const Web3Providers = lazy(() =>

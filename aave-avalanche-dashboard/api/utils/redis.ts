@@ -11,6 +11,10 @@ let _errorTimestamp: number | null = null;
 // Configuration
 const ERROR_RESET_TIMEOUT = 60000; // 1 minute
 const CONNECTION_TIMEOUT = 5000; // 5 seconds
+const HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
+let _healthCheckInterval: NodeJS.Timeout | null = null;
+let _lastHealthCheck: number | null = null;
+let _healthCheckRunning = false;
 
 /**
  * Get the shared Redis client instance.
@@ -86,14 +90,7 @@ export async function getRedis(): Promise<Redis> {
 
       const redis = new Redis({ 
         url, 
-        token,
-        // Add connection timeout and retry options
-        retry: {
-          retries: 3,
-          factor: 2,
-          minTimeout: 1000,
-          maxTimeout: 5000
-        }
+        token
       });
 
       // Validate connection with a ping (with timeout)
@@ -214,10 +211,14 @@ export function resetRedis(): void {
   const wasInitialized = _redis !== null;
   const hadError = _redisError !== null;
   
+  // Stop health check if running
+  stopPeriodicHealthCheck();
+  
   _redis = null;
   _redisError = null;
   _redisPromise = null;
   _errorTimestamp = null;
+  _lastHealthCheck = null;
   
   logger.info('Redis: State reset', LogCategory.DATABASE, {
     wasInitialized,
@@ -293,6 +294,8 @@ export async function getRedisMetrics(): Promise<{
   connected: boolean;
   lastErrorAge: number | null;
   configurationStatus: 'complete' | 'partial' | 'missing';
+  lastHealthCheck: number | null;
+  healthCheckActive: boolean;
 }> {
   const status = getRedisStatus();
   
@@ -308,7 +311,170 @@ export async function getRedisMetrics(): Promise<{
   return {
     connected: status.ready,
     lastErrorAge: status.errorAge,
-    configurationStatus
+    configurationStatus,
+    lastHealthCheck: _lastHealthCheck,
+    healthCheckActive: _healthCheckInterval !== null
   };
+}
+
+/**
+ * Start periodic background health checks
+ * Automatically detects and recovers from Redis connection issues
+ */
+export function startPeriodicHealthCheck(): void {
+  if (_healthCheckInterval) {
+    logger.debug('Redis: Health check already running', LogCategory.DATABASE);
+    return;
+  }
+  
+  logger.info('Redis: Starting periodic health check', LogCategory.DATABASE, {
+    interval: HEALTH_CHECK_INTERVAL
+  });
+  
+  _healthCheckInterval = setInterval(async () => {
+    if (_healthCheckRunning) {
+      return; // Skip if previous check still running
+    }
+    
+    _healthCheckRunning = true;
+    const startTime = Date.now();
+    
+    try {
+      const isHealthy = await testRedisConnectivity();
+      _lastHealthCheck = Date.now();
+      
+      if (!isHealthy && _redis) {
+        // Connection lost - reset state to trigger reconnection
+        logger.warn('Redis: Health check failed, resetting connection', LogCategory.DATABASE, {
+          duration: Date.now() - startTime
+        });
+        resetRedis();
+      } else if (!isHealthy && !_redis) {
+        // Not initialized - try to initialize
+        logger.info('Redis: Health check detected uninitialized state, attempting init', LogCategory.DATABASE);
+        try {
+          await getRedis();
+        } catch (error) {
+          // Initialization failed - expected if config missing
+          logger.debug('Redis: Health check init attempt failed (may be expected)', LogCategory.DATABASE);
+        }
+      }
+    } catch (error) {
+      logger.error('Redis: Health check error', LogCategory.DATABASE, {
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime
+      }, error instanceof Error ? error : new Error(String(error)));
+    } finally {
+      _healthCheckRunning = false;
+    }
+  }, HEALTH_CHECK_INTERVAL);
+}
+
+/**
+ * Stop periodic background health checks
+ */
+export function stopPeriodicHealthCheck(): void {
+  if (_healthCheckInterval) {
+    clearInterval(_healthCheckInterval);
+    _healthCheckInterval = null;
+    logger.info('Redis: Stopped periodic health check', LogCategory.DATABASE);
+  }
+}
+
+/**
+ * Execute Redis operations in a transaction (MULTI/EXEC)
+ * Useful for critical operations that must be atomic
+ * 
+ * Note: Upstash REST API supports transactions via pipeline
+ * 
+ * @example
+ * await executeRedisTransaction(async (pipeline) => {
+ *   pipeline.set('key1', 'value1');
+ *   pipeline.set('key2', 'value2');
+ *   // All operations execute atomically
+ * });
+ */
+export async function executeRedisTransaction<T>(
+  operations: (pipeline: any) => Promise<void> | void
+): Promise<T[]> {
+  try {
+    const redis = await getRedis();
+    const pipeline = redis.pipeline();
+    
+    // Execute operations (they're queued in pipeline)
+    await operations(pipeline);
+    
+    // Execute all operations atomically
+    const results = await pipeline.exec();
+    return results as T[];
+  } catch (error) {
+    logger.error('Redis: Transaction failed', LogCategory.DATABASE, {
+      error: error instanceof Error ? error.message : String(error)
+    }, error instanceof Error ? error : new Error(String(error)));
+    throw error;
+  }
+}
+
+/**
+ * Watch a key and execute transaction if key hasn't changed
+ * Prevents race conditions in concurrent webhook processing
+ * 
+ * Note: Upstash REST API has limited WATCH support, but pipeline provides atomicity
+ * For true WATCH/MULTI/EXEC, consider using a Redis instance that supports it
+ * 
+ * @example
+ * const result = await watchAndExecute(
+ *   'payment:123',
+ *   async (pipeline) => {
+ *     pipeline.set('payment:123:processed', 'true');
+ *     pipeline.incr('payment:count');
+ *   }
+ * );
+ */
+export async function watchAndExecute<T>(
+  watchKey: string,
+  operations: (pipeline: any) => Promise<void> | void
+): Promise<{ success: boolean; results?: T[]; error?: string }> {
+  try {
+    const redis = await getRedis();
+    
+    // Get current value to detect changes
+    const initialValue = await redis.get(watchKey);
+    
+    // Execute operations in pipeline (atomic)
+    const pipeline = redis.pipeline();
+    await operations(pipeline);
+    const results = await pipeline.exec();
+    
+    // Verify key hasn't changed (best-effort check)
+    const finalValue = await redis.get(watchKey);
+    if (initialValue !== finalValue) {
+      logger.warn('Redis: Watched key changed during transaction', LogCategory.DATABASE, {
+        watchKey,
+        initialValue,
+        finalValue
+      });
+      return {
+        success: false,
+        error: 'Key changed during transaction'
+      };
+    }
+    
+    return {
+      success: true,
+      results: results as T[]
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error('Redis: Watch and execute failed', LogCategory.DATABASE, {
+      watchKey,
+      error: errorMessage
+    }, error instanceof Error ? error : new Error(errorMessage));
+    
+    return {
+      success: false,
+      error: errorMessage
+    };
+  }
 }
 

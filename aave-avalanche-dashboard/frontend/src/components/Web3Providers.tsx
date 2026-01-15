@@ -5,14 +5,25 @@ import { WagmiProvider } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { config } from '@/config/wagmi';
 
+// Define global window interface extensions
+declare global {
+  interface Window {
+    React?: {
+      createContext: (...args: unknown[]) => React.Context<unknown>;
+      [key: string]: unknown;
+    };
+    Buffer?: typeof Buffer;
+  }
+}
+
 // CRITICAL: Verify React is available before importing wagmi
 // Wagmi uses React.createContext at module load time, so React must be available
 if (typeof window !== "undefined") {
-  if (!(window as any).React) {
+  if (!window.React) {
     console.error('[Web3Providers] CRITICAL: React not available globally! Wagmi will fail.');
     console.error('[Web3Providers] This indicates the CDN React script failed to load.');
   } else {
-    const globalReact = (window as any).React;
+    const globalReact = window.React;
     if (!globalReact.createContext) {
       console.error('[Web3Providers] CRITICAL: React.createContext not available! Wagmi will fail.');
     } else {
@@ -24,11 +35,11 @@ if (typeof window !== "undefined") {
 // Eagerly load Buffer polyfill - Privy needs it synchronously for transaction signing
 // This must be loaded before Privy operations to prevent "fromByteArray" errors
 const ensureBufferPolyfill = async () => {
-  if (typeof window !== "undefined" && !(window as any).Buffer) {
+  if (typeof window !== "undefined" && !window.Buffer) {
     try {
       const { Buffer } = await import("buffer");
-      (window as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
-      (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
+      window.Buffer = Buffer;
+      (globalThis as { Buffer?: typeof Buffer }).Buffer = Buffer;
       console.log('[Web3Providers] Buffer polyfill loaded');
     } catch (error) {
       console.error('Failed to load Buffer polyfill:', error);
@@ -71,8 +82,8 @@ export function Web3Providers({ children }: Web3ProvidersProps) {
   useEffect(() => {
     // Check immediately - React should already be available
     const checkReact = () => {
-      if (typeof window !== "undefined" && (window as any).React) {
-        const globalReact = (window as any).React;
+      if (typeof window !== "undefined" && window.React) {
+        const globalReact = window.React;
         if (typeof globalReact.createContext === 'function') {
           console.log('[Web3Providers] ✅ React.createContext verified - ready to render WagmiProvider');
           setReactReady(true);

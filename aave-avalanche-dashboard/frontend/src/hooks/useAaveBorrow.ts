@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { parseUnits, formatUnits } from 'viem';
-import { waitForTransactionReceipt } from '@wagmi/core';
 import { CONTRACTS, AAVE_POOL_ABI, ERC20_ABI } from '@/config/contracts';
 import { config } from '@/config/wagmi';
 
@@ -67,7 +66,7 @@ export function useAaveBorrow() {
       args: [CONTRACTS.USDC as `0x${string}`, amountInWei, 2n, 0, address as `0x${string}`],
     });
 
-    await waitForTransactionReceipt(config, { hash: txHash });
+    return txHash;
   };
 
   // Borrow AVAX from Aave  
@@ -85,7 +84,7 @@ export function useAaveBorrow() {
       args: [CONTRACTS.WAVAX as `0x${string}`, amountInWei, 2n, 0, address as `0x${string}`],
     });
 
-    await waitForTransactionReceipt(config, { hash: txHash });
+    return txHash;
   };
 
   // Repay USDC to Aave (requires approval first)
@@ -111,8 +110,6 @@ export function useAaveBorrow() {
         args: [poolAddress as `0x${string}`, maxApproval],
       });
 
-      await waitForTransactionReceipt(config, { hash: approveHash });
-      
       // Refetch and verify allowance after approval
       const { data: newAllowance } = await refetchAllowance();
       const verifiedAllowance = newAllowance || 0n;
@@ -129,7 +126,7 @@ export function useAaveBorrow() {
       args: [CONTRACTS.USDC as `0x${string}`, amountInWei, 2n, address as `0x${string}`],
     });
 
-    await waitForTransactionReceipt(config, { hash: repayHash });
+    return repayHash;
   };
 
   // Repay AVAX to Aave
@@ -148,7 +145,7 @@ export function useAaveBorrow() {
       value: amountInWei,
     });
 
-    await waitForTransactionReceipt(config, { hash: txHash });
+    return txHash;
   };
 
   // Calculate borrowed amounts

@@ -90,7 +90,8 @@ async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({
         success: true,
         message: 'Morpho execution successful',
-        txHash: result.txHash,
+        gauntletTxHash: result.gauntletTxHash,
+        hyperithmTxHash: result.hyperithmTxHash,
         result
       });
     } else {

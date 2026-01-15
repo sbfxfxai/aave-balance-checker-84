@@ -2,22 +2,43 @@
 // This ensures Buffer is available before any Web3 libraries try to use it
 // The vite-plugin-node-polyfills should handle this, but manual import ensures it works
 import { Buffer } from 'buffer';
-if (typeof window !== "undefined") {
+
+// Define interface for window with custom properties
+interface WindowWithSES extends Window {
+  lockdown?: unknown;
+  harden?: unknown;
+  __SES__?: unknown;
+  __SES_DETECTED__?: boolean;
+  __GMX_SDK_ERROR__?: {
+    type: string;
+    message: string;
+    source: string;
+    timestamp: number;
+  };
+  __TILTVAULT_MAIN_LOADED__?: boolean;
+  Buffer?: typeof Buffer;
+}
+
+// Define windowWithSES at module level so it's available throughout
+const windowWithSES: WindowWithSES | null = typeof window !== "undefined" ? window as WindowWithSES : null;
+
+if (typeof window !== "undefined" && windowWithSES) {
   // Expose Buffer globally for libraries that expect it
-  (window as any).Buffer = Buffer;
-  (globalThis as any).Buffer = Buffer;
+  windowWithSES.Buffer = Buffer;
+  (globalThis as typeof globalThis & { Buffer?: typeof Buffer }).Buffer = Buffer;
 }
 
 // CRITICAL: Detect SES lockdown from wallet extensions
 // SES lockdown enforces stricter JavaScript semantics and can cause TDZ errors
-if (typeof window !== "undefined") {
+if (typeof window !== "undefined" && windowWithSES) {
+  
   // Check for SES lockdown (from MetaMask or other wallet extensions)
-  if (typeof (window as any).lockdown !== 'undefined' || 
-      typeof (window as any).harden !== 'undefined' ||
-      (window as any).__SES__) {
+  if (typeof windowWithSES.lockdown !== 'undefined' || 
+      typeof windowWithSES.harden !== 'undefined' ||
+      windowWithSES.__SES__) {
     console.warn('[TiltVault] SES Lockdown detected - likely from wallet extension');
     console.warn('[TiltVault] This may cause compatibility issues with some bundles');
-    (window as any).__SES_DETECTED__ = true;
+    windowWithSES.__SES_DETECTED__ = true;
   }
   
   // Track GMX SDK TDZ errors for error boundary handling
@@ -26,7 +47,7 @@ if (typeof window !== "undefined") {
     if (messageStr.includes("can't access lexical declaration") && 
         (messageStr.includes('before initialization') || messageStr.includes('uo'))) {
       console.error('[TiltVault] Caught GMX SDK TDZ error - likely due to SES lockdown');
-      (window as any).__GMX_SDK_ERROR__ = {
+      windowWithSES.__GMX_SDK_ERROR__ = {
         type: 'TDZ_ERROR',
         message: messageStr,
         source: event.filename || 'unknown',
@@ -42,7 +63,7 @@ if (typeof window !== "undefined") {
       if (msg.includes("can't access lexical declaration") && 
           (msg.includes('before initialization') || msg.includes('uo'))) {
         console.error('[TiltVault] Caught GMX SDK TDZ error in promise rejection');
-        (window as any).__GMX_SDK_ERROR__ = {
+        windowWithSES.__GMX_SDK_ERROR__ = {
           type: 'TDZ_ERROR',
           message: msg,
           source: 'unhandledrejection',
@@ -62,10 +83,9 @@ import ReactDOM from "react-dom/client";
 
 // CRITICAL: Expose React globally for Privy and other libraries that expect it
 // This must happen BEFORE Privy loads
-if (typeof window !== "undefined") {
-  (window as any).React = React;
-  (window as any).ReactDOM = ReactDOM;
-  console.log('[Entry] ✅ React and ReactDOM exposed globally');
+if (typeof window !== "undefined" && windowWithSES) {
+  windowWithSES.React = React;
+  console.log('[Entry] ✅ React exposed globally');
   
   // Verify React is actually available
   if (!React || !React.useLayoutEffect || !React.createContext) {
@@ -86,12 +106,12 @@ import "./index.css";
 
 // Buffer polyfill is manually imported at the top and exposed globally
 // Verify it's available and log status
-if (typeof window !== "undefined") {
-  if ((window as any).Buffer) {
+if (typeof window !== "undefined" && windowWithSES) {
+  if (windowWithSES.Buffer) {
     console.log('[TiltVault] ✅ Buffer polyfill available (manually imported)');
     // Verify Buffer works
     try {
-      const test = (window as any).Buffer.from('test');
+      const test = windowWithSES.Buffer.from('test');
       if (test && typeof test.toString === 'function') {
         console.log('[TiltVault] ✅ Buffer verified and working');
       } else {
@@ -107,11 +127,67 @@ if (typeof window !== "undefined") {
 
 // Hide the initial loading shell once React app mounts
 // CRITICAL: Log immediately to verify script execution
-if (typeof window !== 'undefined') {
-  window.__TILTVAULT_MAIN_LOADED__ = true;
+if (typeof window !== 'undefined' && windowWithSES) {
+  // Type assertion for custom window property
+  windowWithSES.__TILTVAULT_MAIN_LOADED__ = true;
 }
 console.log('[TiltVault] ✅ main.tsx script loaded and executing');
 console.log('[TiltVault] Starting app initialization...');
+
+// Filter out verbose Privy debug logs
+const originalConsoleLog = console.log;
+const originalConsoleInfo = console.info;
+const originalConsoleDebug = console.debug;
+
+const shouldSuppressLog = (message: unknown): boolean => {
+  const messageStr = String(message || '');
+  return (
+    messageStr.includes('Detected injected providers') ||
+    (messageStr.includes('Embedded') && messageStr.includes('Provider.request')) ||
+    messageStr.includes('eth_accounts for privy') ||
+    messageStr.includes('Unable to initialize all expected connectors') ||
+    messageStr.includes('Wallet did not respond to eth_accounts') ||
+    messageStr.includes('Defaulting to prefetched accounts') ||
+    messageStr.includes('Error in parsing value for') ||
+    messageStr.includes('Declaration dropped') ||
+    messageStr.includes('Unknown property') ||
+    messageStr.includes('-webkit-text-size-adjust') ||
+    messageStr.includes('-moz-column-gap') ||
+    messageStr.includes('NS_BINDING_ABORTED') ||
+    messageStr.includes('XHR') && (messageStr.includes('ABORTED') || messageStr.includes('CORS Missing')) ||
+    messageStr.includes('csp-report.browser-intake-datadoghq.com') ||
+    messageStr.includes('dd-api-key') ||
+    messageStr.includes('ddsource=csp-report') ||
+    messageStr.includes('SES Removing unpermitted intrinsics') ||
+    messageStr.includes('Removing intrinsics.%') ||
+    messageStr.includes('Content-Security-Policy') ||
+    messageStr.includes('blocked an inline script') ||
+    messageStr.includes('violates the following directive') ||
+    messageStr.includes('Cookie') && messageStr.includes('has been rejected') ||
+    messageStr.includes('squareGeo') ||
+    messageStr.includes('SameSite') ||
+    messageStr.includes('DialogContent') && messageStr.includes('requires a DialogTitle') ||
+    messageStr.includes('requires a DialogTitle')
+  );
+};
+
+console.log = (...args: unknown[]) => {
+  if (!shouldSuppressLog(args[0])) {
+    originalConsoleLog.apply(console, args);
+  }
+};
+
+console.info = (...args: unknown[]) => {
+  if (!shouldSuppressLog(args[0])) {
+    originalConsoleInfo.apply(console, args);
+  }
+};
+
+console.debug = (...args: unknown[]) => {
+  if (!shouldSuppressLog(args[0])) {
+    originalConsoleDebug.apply(console, args);
+  }
+};
 
 // Global error handler to catch any uncaught errors
 window.addEventListener('error', (event) => {
@@ -129,11 +205,37 @@ window.addEventListener('error', (event) => {
     errorMessage.includes('MetaMask') ||
     errorMessage.includes('lockdown') ||
     errorMessage.includes('SES') ||
+    errorMessage.includes('Removing unpermitted intrinsics') ||
+    errorMessage.includes('Removing intrinsics.%') ||
     errorMessage.includes('Content-Security-Policy') ||
+    errorMessage.includes('blocked an inline script') ||
+    errorMessage.includes('violates the following directive') ||
+    errorMessage.includes('Ignoring') && errorMessage.includes('unsafe-inline') ||
+    errorMessage.includes('CORS Missing Allow Origin') ||
+    errorMessage.includes('analytics_events') ||
+    errorMessage.includes('OpaqueResponseBlocking') ||
+    errorMessage.includes('Partitioned cookie') ||
+    errorMessage.includes('Cookie') && errorMessage.includes('has been rejected') ||
+    errorMessage.includes('squareGeo') ||
+    errorMessage.includes('SameSite') ||
+    errorMessage.includes('Detected injected providers') ||
+    errorMessage.includes('Error in parsing value for') ||
+    errorMessage.includes('Declaration dropped') ||
+    errorMessage.includes('Unknown property') ||
+    errorMessage.includes('-webkit-text-size-adjust') ||
+    errorMessage.includes('-moz-column-gap') ||
+    errorMessage.includes('Embedded') && errorMessage.includes('Provider.request') ||
+    errorMessage.includes('eth_accounts for privy') ||
+    errorMessage.includes('Unable to initialize all expected connectors') ||
+    errorMessage.includes('Wallet did not respond to eth_accounts') ||
+    errorMessage.includes('Exceeded max attempts') && errorMessage.includes('eth_accounts') ||
+    errorMessage.includes('DialogContent') && errorMessage.includes('requires a DialogTitle') ||
+    errorMessage.includes('requires a DialogTitle') ||
     filename.includes('lockdown-install.js') ||
     filename.includes('contentscript.js') ||
     filename.includes('inpage.js') ||
     filename.includes('embedded-wallets') ||
+    filename.includes('index-C2WInh_O.js') || // Privy bundle
     (errorMessage === 'Unknown error' && !event.error) // Generic undefined errors
   ) {
     return; // Don't log these as they're expected
@@ -166,8 +268,26 @@ window.addEventListener('unhandledrejection', (event) => {
     reasonStr.includes('MetaMask') ||
     reasonStr.includes('lockdown') ||
     reasonStr.includes('SES') ||
+    reasonStr.includes('Removing unpermitted intrinsics') ||
     reasonStr.includes('Content-Security-Policy') ||
-    reasonStr.includes('Exceeded max attempts') && reasonStr.includes('eth_accounts')
+    reasonStr.includes('Ignoring') && reasonStr.includes('unsafe-inline') ||
+    reasonStr.includes('CORS Missing Allow Origin') ||
+    reasonStr.includes('analytics_events') ||
+    reasonStr.includes('OpaqueResponseBlocking') ||
+    reasonStr.includes('Partitioned cookie') ||
+    reasonStr.includes('Detected injected providers') ||
+    reasonStr.includes('Error in parsing value for') ||
+    reasonStr.includes('Declaration dropped') ||
+    reasonStr.includes('Unknown property') ||
+    reasonStr.includes('-webkit-text-size-adjust') ||
+    reasonStr.includes('-moz-column-gap') ||
+    reasonStr.includes('Embedded') && reasonStr.includes('Provider.request') ||
+    reasonStr.includes('eth_accounts for privy') ||
+    reasonStr.includes('Unable to initialize all expected connectors') ||
+    reasonStr.includes('Wallet did not respond to eth_accounts') ||
+    reasonStr.includes('DialogContent') && reasonStr.includes('requires a DialogTitle') ||
+    reasonStr.includes('requires a DialogTitle') ||
+    (reasonStr.includes('Exceeded max attempts') && reasonStr.includes('eth_accounts'))
   ) {
     return; // Don't log these as they're expected
   }

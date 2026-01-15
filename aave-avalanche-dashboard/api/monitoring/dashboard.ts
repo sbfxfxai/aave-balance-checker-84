@@ -8,7 +8,8 @@ import { Ratelimit } from '@upstash/ratelimit';
 import { getRedis } from '../utils/redis';
 import { logger, LogCategory } from '../utils/logger';
 import { errorTracker } from '../utils/errorTracker';
-import { alertingSystem } from '../utils/alerting';
+import { AlertingSystem } from '../utils/alerting';
+const alertingSystem = AlertingSystem.getInstance();
 import { healthMonitor } from '../utils/healthCheck';
 import { verifyMessage } from 'ethers';
 
@@ -17,9 +18,9 @@ let _ratelimit: any = null;
 
 async function getRatelimit() {
   if (!_ratelimit) {
-    const redis = getRedis();
+    const redis = await getRedis();
     _ratelimit = new Ratelimit({
-      redis,
+      redis: redis as any,
       limiter: Ratelimit.slidingWindow(10, '1 m'), // 10 requests per minute per IP
       analytics: true,
     });
@@ -78,7 +79,7 @@ async function verifyAdminAuth(req: VercelRequest): Promise<{ valid: boolean; ad
     const recoveredAddress = verifyMessage(expectedMessage, token);
     
     // Check if this address is an admin (stored in Redis)
-    const redis = getRedis();
+    const redis = await getRedis();
     const isAdmin = await redis.get(`admin_wallet:${recoveredAddress.toLowerCase()}`);
     
     if (isAdmin) {
@@ -126,7 +127,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Authentication and authorization
     const auth = await verifyAdminAuth(req);
     if (!auth.valid) {
-      logger.warn('Unauthorized dashboard access attempt', LogCategory.SECURITY, {
+      logger.warn('Unauthorized dashboard access attempt', LogCategory.AUTH, {
         ip: identifier,
         userAgent: req.headers['user-agent']
       });
@@ -137,7 +138,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    logger.info('Dashboard accessed by admin', LogCategory.SECURITY, {
+    logger.info('Dashboard accessed by admin', LogCategory.AUTH, {
       adminId: hashPII(auth.adminId),
       ip: identifier
     });

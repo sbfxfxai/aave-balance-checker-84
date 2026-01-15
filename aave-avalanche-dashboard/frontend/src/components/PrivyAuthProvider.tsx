@@ -1,9 +1,15 @@
 // React is already exposed globally in main.tsx before any imports
 // No need to expose it again here - it's already available for Privy
 import React, { useEffect, useState } from 'react';
-// @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { PrivyProvider } from '@privy-io/react-auth';
 import { PRIVY_APP_ID, privyConfig } from '@/lib/privy-config';
+
+// Extend Window interface to include Buffer property
+declare global {
+    interface Window {
+        Buffer?: typeof Buffer;
+    }
+}
 
 interface PrivyAuthProviderProps {
     children: React.ReactNode;
@@ -21,14 +27,17 @@ export function PrivyAuthProvider({ children }: PrivyAuthProviderProps) {
 
     // Ensure Buffer is available (vite-plugin-node-polyfills should provide it, but ensure it's on window)
     useEffect(() => {
-        let timeoutId: NodeJS.Timeout;
+        const timeoutId = setTimeout(() => {
+            console.warn('[PrivyAuthProvider] Timeout reached, proceeding without Buffer verification');
+            setBufferReady(true);
+        }, 2000); // 2 second max wait
         
         const ensureBuffer = async () => {
             if (typeof window !== "undefined") {
                 // Check if Buffer is already available
-                if ((window as any).Buffer) {
+                if (window.Buffer) {
                     try {
-                        const testBuffer = (window as any).Buffer.from('test');
+                        const testBuffer = window.Buffer.from('test');
                         if (testBuffer && typeof testBuffer.toString === 'function') {
                             console.log('[PrivyAuthProvider] Buffer verified and working');
                             setBufferReady(true);
@@ -42,8 +51,8 @@ export function PrivyAuthProvider({ children }: PrivyAuthProviderProps) {
                 // Try to import Buffer if not available (vite-plugin-node-polyfills should make this work)
                 try {
                     const { Buffer } = await import("buffer");
-                    (window as any).Buffer = Buffer;
-                    (globalThis as any).Buffer = Buffer;
+                    window.Buffer = Buffer;
+                    (globalThis as typeof globalThis & { Buffer?: typeof Buffer }).Buffer = Buffer;
                     
                     // Verify it works
                     const testBuffer = Buffer.from('test');
@@ -64,12 +73,6 @@ export function PrivyAuthProvider({ children }: PrivyAuthProviderProps) {
                 setBufferReady(true);
             }
         };
-        
-        // Set a maximum timeout to prevent infinite loading
-        timeoutId = setTimeout(() => {
-            console.warn('[PrivyAuthProvider] Timeout reached, proceeding without Buffer verification');
-            setBufferReady(true);
-        }, 2000); // 2 second max wait
         
         ensureBuffer().then(() => {
             clearTimeout(timeoutId);

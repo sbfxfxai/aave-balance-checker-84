@@ -145,7 +145,7 @@ export function CashAppPayButton({ availableBalance, onWithdrawComplete }: CashA
       hasRenderedRef.current = false;
       setStatus('idle');
     }
-  }, [amount]);
+  }, [amount, restart, status]);
 
   // Handle reset
   const handleReset = useCallback(() => {

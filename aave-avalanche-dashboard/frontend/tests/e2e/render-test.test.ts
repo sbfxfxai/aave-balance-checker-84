@@ -1,5 +1,12 @@
 import { test, expect } from '@playwright/test';
 
+// Define window interface for test environment
+interface TestWindow extends Window {
+  __TILTVAULT_HTML_LOADED__?: boolean;
+  React?: unknown;
+  __TILTVAULT_MAIN_LOADED__?: boolean;
+}
+
 test('App should render without errors', async ({ page }) => {
   // Navigate to the app
   await page.goto('/');
@@ -9,13 +16,13 @@ test('App should render without errors', async ({ page }) => {
   
   // Check that the HTML script executed
   const htmlScriptExecuted = await page.evaluate(() => {
-    return !!(window as any).__TILTVAULT_HTML_LOADED__;
+    return !!(window as TestWindow).__TILTVAULT_HTML_LOADED__;
   });
   expect(htmlScriptExecuted).toBe(true);
   
   // Check that React loaded
   const reactLoaded = await page.evaluate(() => {
-    return !!(window as any).React;
+    return !!(window as TestWindow).React;
   });
   expect(reactLoaded).toBe(true);
   
@@ -80,8 +87,8 @@ test('App should show loading screen initially then render', async ({ page }) =>
   // Wait for app to load - check for React content or loading screen hidden
   await page.waitForFunction(() => {
     const bodyHasLoaded = document.body.classList.contains('tv-app-loaded');
-    const hasReact = !!(window as any).React;
-    const rootHasContent = document.getElementById('root')?.children.length > 0;
+    const hasReact = !!(window as TestWindow).React;
+    const rootHasContent = (document.getElementById('root')?.children.length ?? 0) > 0;
     return bodyHasLoaded || (hasReact && rootHasContent);
   }, { timeout: 15000 });
   

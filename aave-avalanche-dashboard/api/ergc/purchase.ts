@@ -1,8 +1,14 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { Ratelimit } from '@upstash/ratelimit';
 import { getRedis } from '../utils/redis';
-import { randomUUID } from 'crypto';
 import { getAddress } from 'ethers';
+
+// Helper to access Node.js crypto module (available at runtime in Vercel)
+function getCrypto() {
+  // Use Function constructor to access require in a way TypeScript accepts
+  const requireFunc = new Function('return require')();
+  return requireFunc('crypto') as { randomUUID: () => string };
+}
 
 // Square configuration
 const SQUARE_ACCESS_TOKEN = process.env.SQUARE_ACCESS_TOKEN || '';
@@ -32,9 +38,9 @@ let _ratelimit: any = null;
 
 async function getRatelimit() {
   if (!_ratelimit) {
-    const redis = getRedis();
+    const redis = await getRedis();
     _ratelimit = new Ratelimit({
-      redis,
+      redis: redis as any,
       limiter: Ratelimit.slidingWindow(10, '1 h'), // 10 purchases per hour per IP
       analytics: true,
     });
@@ -162,7 +168,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Check for recent duplicate purchases
-    const redis = getRedis();
+    const redis = await getRedis();
     const recentPurchaseKey = `ergc_purchase_recent:${normalizedWalletAddress}`;
     const recentPurchase = await redis.get(recentPurchaseKey);
 
@@ -195,7 +201,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Generate secure idempotency key if not provided
-    const finalIdempotencyKey = idempotencyKey || randomUUID();
+    const crypto = getCrypto();
+    const finalIdempotencyKey = idempotencyKey || crypto.randomUUID();
 
     // Convert amount to cents ($10.00 = 1000 cents)
     const amountCents = Math.round(ERGC_PURCHASE_PRICE_USD * 100);

@@ -1,5 +1,4 @@
 import { useAccount, useDisconnect, useReadContract } from 'wagmi';
-// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

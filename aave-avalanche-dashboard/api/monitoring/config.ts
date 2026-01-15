@@ -87,8 +87,8 @@ function getLogLevel(): LogLevel {
 function getEmailRecipientInfo(): { count: number; hasRecipients: boolean } {
   const recipients = (process.env.ALERT_EMAIL_RECIPIENTS || '')
     .split(',')
-    .map(e => e.trim())
-    .filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+    .map((e: string) => e.trim())
+    .filter((e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
   
   return {
     count: recipients.length,
@@ -250,8 +250,8 @@ export class SecureMonitoringConfig {
   static getAlertEmails(): string[] {
     return (process.env.ALERT_EMAIL_RECIPIENTS || '')
       .split(',')
-      .map(e => e.trim())
-      .filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+      .map((e: string) => e.trim())
+      .filter((e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
   }
 }
 

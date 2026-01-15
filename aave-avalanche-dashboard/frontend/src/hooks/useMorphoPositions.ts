@@ -1,10 +1,15 @@
 import { useAccount, useReadContract } from 'wagmi';
-// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useMemo, useState, useEffect } from 'react';
 import { formatUnits } from 'viem';
 import { arbitrum } from 'wagmi/chains';
 import { CONTRACTS, ERC4626_VAULT_ABI } from '@/config/contracts';
+
+type PrivyWallet = {
+  address?: `0x${string}` | string | null;
+  walletClientType?: string;
+  chainId?: number;
+};
 
 export interface MorphoPosition {
   eurcShares: string;
@@ -45,12 +50,12 @@ const DEFAULT_EUR_USD_RATE = 1.08;
 export function useMorphoPositions() {
   const { address: wagmiAddress, isConnected: isWagmiConnected } = useAccount();
   const { authenticated } = usePrivy();
-  const { wallets } = useWallets();
+  const { wallets } = useWallets() as unknown as { wallets: PrivyWallet[] };
 
   // Get the active wallet address
   const address = useMemo(() => {
     if (wagmiAddress) return wagmiAddress;
-    const privyWallet = wallets.find((w: any) => w.walletClientType === 'privy');
+    const privyWallet = wallets.find((w: PrivyWallet) => w.walletClientType === 'privy');
     return privyWallet?.address || null;
   }, [wagmiAddress, wallets]);
 
@@ -84,7 +89,7 @@ export function useMorphoPositions() {
             
             if (exchangeData.rates?.USD && typeof exchangeData.rates.USD === 'number') {
               rate = exchangeData.rates.USD;
-              console.log(`[Morpho] ✅ EUR/USD rate from ExchangeRate API: ${rate.toFixed(4)}`);
+              console.log(`[Morpho] ✅ EUR/USD rate from ExchangeRate API: ${rate!.toFixed(4)}`);
             }
           }
         } catch (exchangeError) {
@@ -111,7 +116,7 @@ export function useMorphoPositions() {
               
               if (eurcData.eurc?.usd && typeof eurcData.eurc.usd === 'number') {
                 rate = eurcData.eurc.usd;
-                console.log(`[Morpho] ✅ EUR/USD rate from CoinGecko (EURC): ${rate.toFixed(4)}`);
+                console.log(`[Morpho] ✅ EUR/USD rate from CoinGecko (EURC): ${rate!.toFixed(4)}`);
               }
             } else {
               console.warn(`[Morpho] CoinGecko API returned status ${eurcResponse.status}`);

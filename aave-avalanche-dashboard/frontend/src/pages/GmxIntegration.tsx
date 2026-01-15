@@ -1,7 +1,6 @@
 import { useMemo, useState, useCallback, useEffect, useRef, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAccount, usePublicClient, useWalletClient, useBalance, useSwitchChain } from 'wagmi';
-// @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { ethers } from 'ethers';
 import { avalanche } from 'wagmi/chains';
@@ -9,7 +8,7 @@ import { avalanche } from 'wagmi/chains';
 // Static imports cause the entire GMX SDK bundle to evaluate at module load time,
 // which triggers Temporal Dead Zone errors when SES lockdown is active
 // const { CONTRACTS: GMX_SDK_CONTRACTS } = await import('@gmx-io/sdk/configs/contracts');
-import { erc20Abi, maxUint256, formatUnits, parseUnits, WalletClient, Abi, createPublicClient, http, Hex } from 'viem';
+import { erc20Abi, maxUint256, formatUnits, parseUnits, WalletClient, Abi, createPublicClient, http, Hex, WriteContractParameters } from 'viem';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,7 +31,7 @@ import { CONTRACTS } from '@/config/contracts';
 import { OptimizedLogo } from '@/components/OptimizedLogo';
 import { ConnectWalletButton } from '@/components/ConnectWalletButton';
 import { Bitcoin, AlertTriangle, Zap, ExternalLink, Sparkles, Home } from 'lucide-react';
-import { useErgcPurchaseModal } from '@/contexts/ErgcPurchaseModalContext';
+import { useErgcPurchaseModal } from '@/contexts';
 import styles from './GmxIntegration.module.css';
 
 // GMX SDK Type Definitions
@@ -56,6 +55,16 @@ interface GmxSdk {
       skipSimulation?: boolean;
     }) => Promise<void>;
   };
+}
+
+// Privy Wallet interface
+interface PrivyWallet {
+  address: string;
+  walletClientType: string;
+  getEthereumProvider?: () => Promise<{
+    request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  }>;
+  [key: string]: unknown;
 }
 
 // GMX Type Definitions
@@ -205,8 +214,8 @@ export default function GmxIntegration() {
   // CRITICAL: Check for GMX SDK TDZ errors on mount
   // SES lockdown can cause TDZ errors during module evaluation that bypass React error boundaries
   useEffect(() => {
-    if (typeof window !== 'undefined' && (window as any).__GMX_SDK_ERROR__) {
-      const error = (window as any).__GMX_SDK_ERROR__;
+    if (typeof window !== 'undefined' && (window as Window & { __GMX_SDK_ERROR__?: Error }).__GMX_SDK_ERROR__) {
+      const error = (window as Window & { __GMX_SDK_ERROR__?: Error }).__GMX_SDK_ERROR__;
       console.error('[GmxIntegration] GMX SDK TDZ error detected:', error);
       
       // Show error toast
@@ -217,12 +226,12 @@ export default function GmxIntegration() {
       });
       
       // Clear the error flag
-      delete (window as any).__GMX_SDK_ERROR__;
+      delete (window as Window & { __GMX_SDK_ERROR__?: Error }).__GMX_SDK_ERROR__;
     }
   }, [toast]);
   const { address: wagmiAddress, isConnected: isWagmiConnected, chainId } = useAccount();
   const { authenticated, ready } = usePrivy();
-  const { wallets } = useWallets();
+  const { wallets } = useWallets() as unknown as { wallets: PrivyWallet[] };
   const publicClient = usePublicClient({ chainId: avalanche.id });
   const { data: walletClient } = useWalletClient({ chainId: avalanche.id });
   const { switchToAvalanche, isSwitching } = useNetworkGuard();
@@ -239,13 +248,13 @@ export default function GmxIntegration() {
     // If user is authenticated with Privy, use Privy wallet (Ethereum only)
     if (authenticated && ready) {
       // Find Privy wallet with Ethereum address
-      const privyWallet = wallets.find((w: any) =>
+      const privyWallet = wallets.find((w: PrivyWallet) =>
         w.walletClientType === 'privy' && isEthereumAddress(w.address)
       );
       if (privyWallet) return privyWallet.address as `0x${string}`;
 
       // Try to find any Ethereum wallet from Privy
-      const ethereumWallet = wallets.find((w: any) => isEthereumAddress(w.address));
+      const ethereumWallet = wallets.find((w: PrivyWallet) => isEthereumAddress(w.address));
       if (ethereumWallet) return ethereumWallet.address as `0x${string}`;
     }
 
@@ -257,7 +266,7 @@ export default function GmxIntegration() {
   const isConnected = (authenticated && ready && !!address) || isWagmiConnected;
 
   // Check if using Privy wallet
-  const isPrivyWallet = authenticated && ready && wallets.some((w: any) => w.address === address && w.walletClientType === 'privy');
+  const isPrivyWallet = authenticated && ready && wallets.some((w: PrivyWallet) => w.address === address && w.walletClientType === 'privy');
 
   // Market data caching
   const [marketData, setMarketData] = useState<GmxMarketData | null>(null);
@@ -382,7 +391,7 @@ export default function GmxIntegration() {
     setMarketData(marketData);
 
     return marketData;
-  }, []);
+  }, [CACHE_DURATION]);
 
   const hasEnoughUsdc = useMemo(() => {
     try {
@@ -403,14 +412,18 @@ export default function GmxIntegration() {
     ]);
     
     // Check if using Privy wallet
-    const isPrivyWallet = authenticated && ready && wallets.some((w: any) => w.address === address && w.walletClientType === 'privy');
+    const isPrivyWallet = authenticated && ready && wallets.some((w: PrivyWallet) => w.address === address && w.walletClientType === 'privy');
     const rpcUrl = import.meta.env.VITE_AVALANCHE_RPC_URL || 'https://api.avax.network/ext/bc/C/rpc';
     
     // For Privy wallets, we need to use ethers.js provider
     if (isPrivyWallet) {
-      const privyWallet = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
+      const privyWallet = wallets.find((w: PrivyWallet) => w.address === address && w.walletClientType === 'privy');
       if (!privyWallet) {
         throw new Error('Privy wallet not found');
+      }
+      
+      if (!privyWallet.getEthereumProvider) {
+        throw new Error('Privy Ethereum provider not available');
       }
       
       const privyProvider = await privyWallet.getEthereumProvider();
@@ -438,15 +451,15 @@ export default function GmxIntegration() {
               return await signer.signTypedData(parsed.domain, parsed.types, parsed.message);
             }
             // For other methods, use the provider directly
-            return await privyProvider.request({ method, params } as any);
+            return await privyProvider.request({ method, params });
           },
         },
-        writeContract: async ({ address: contractAddress, abi, functionName, args, value }: any) => {
-          const contract = new ethers.Contract(contractAddress, abi, signer);
-          const tx = await contract[functionName](...args, { value });
+        writeContract: async ({ address: contractAddress, abi, functionName, args, value }: WriteContractParameters) => {
+          const contract = new ethers.Contract(contractAddress, abi as ethers.InterfaceAbi, signer);
+          const tx = await contract[functionName](...(args || []), { value });
           return tx.hash;
         },
-        sendTransaction: async (transaction: any) => {
+        sendTransaction: async (transaction: { to?: string; value?: string | bigint; data?: string; gas?: string | bigint; maxFeePerGas?: string | bigint; maxPriorityFeePerGas?: string | bigint; gasPrice?: string | bigint }) => {
           // GMX SDK calls sendTransaction with a transaction object
           // Convert viem transaction format to ethers format
           const ethersTx: ethers.TransactionRequest = {
@@ -827,9 +840,13 @@ export default function GmxIntegration() {
         
         if (isPrivyWallet) {
           // Use Privy wallet for approval
-          const privyWallet = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
+          const privyWallet = wallets.find((w: PrivyWallet) => w.address === address && w.walletClientType === 'privy');
           if (!privyWallet) {
             throw new Error('Privy wallet not found');
+          }
+          
+          if (!privyWallet.getEthereumProvider) {
+            throw new Error('Privy Ethereum provider not available');
           }
           
           const privyProvider = await privyWallet.getEthereumProvider();
@@ -839,7 +856,7 @@ export default function GmxIntegration() {
           
           const ethersProvider = new ethers.BrowserProvider(privyProvider);
           const signer = await ethersProvider.getSigner();
-          const usdcContract = new ethers.Contract(payTokenAddress, erc20Abi, signer);
+          const usdcContract = new ethers.Contract(payTokenAddress, erc20Abi as ethers.InterfaceAbi, signer);
           
           const tx = await usdcContract.approve(router, maxUint256);
           approveTxHash = tx.hash as `0x${string}`;
@@ -1009,9 +1026,13 @@ export default function GmxIntegration() {
           // For Privy wallets, intercept and route through Privy provider with RPC bypass
           if (isPrivyWallet && method === 'multicall') {
             try {
-              const privyWallet = wallets.find((w: any) => w.address === address && w.walletClientType === 'privy');
+              const privyWallet = wallets.find((w: PrivyWallet) => w.address === address && w.walletClientType === 'privy');
               if (!privyWallet) {
                 throw new Error('Privy wallet not found');
+              }
+              
+              if (!privyWallet.getEthereumProvider) {
+                throw new Error('Privy Ethereum provider not available');
               }
               
               const privyProvider = await privyWallet.getEthereumProvider();
@@ -1028,17 +1049,18 @@ export default function GmxIntegration() {
               let interceptedTxHash: string | null = null;
 
               const originalProviderRequest = privyProvider.request.bind(privyProvider);
-              privyProvider.request = async (args: any) => {
+              privyProvider.request = async (args: { method: string; params?: unknown[] }) => {
                 if (args.method === 'eth_chainId') return '0xa86a';
                 if (args.method === 'eth_getBalance') return '0x3635c9adc5dea00000';
                 if (args.method === 'eth_estimateGas' && args.params && args.params[0]) {
                   // Get real gas estimate from Avalanche RPC, bypassing Privy's balance check
                   try {
+                    const txParams = args.params[0] as { from?: string; to?: string; value?: string; data?: string };
                     const estimate = await avalanchePublicClient.estimateGas({
-                      account: args.params[0].from as `0x${string}`,
-                      to: args.params[0].to as `0x${string}`,
-                      value: args.params[0].value ? BigInt(args.params[0].value) : undefined,
-                      data: args.params[0].data as `0x${string}`,
+                      account: txParams.from as `0x${string}`,
+                      to: txParams.to as `0x${string}`,
+                      value: txParams.value ? BigInt(txParams.value) : undefined,
+                      data: txParams.data as `0x${string}`,
                     });
                     // Add 20% buffer for safety
                     const bufferedEstimate = (estimate * 120n) / 100n;
@@ -1156,7 +1178,7 @@ export default function GmxIntegration() {
                 const contract = new ethers.Contract(contractAddress, abi as ethers.InterfaceAbi, signer);
                 
                 // Build the multicall transaction
-                const dataItems = params[0] as string[];
+                const dataItems = (params[0] as string[]) || [];
                 const txValue = (opts as { value?: bigint } | undefined)?.value || 0n;
                 
                 console.log('[GMX] Sending multicall via Privy (intercepting to bypass Privy RPC):', {
@@ -1168,7 +1190,7 @@ export default function GmxIntegration() {
                 const txPromise = contract.multicall(dataItems, { value: txValue });
                 
                 await Promise.race([
-                  txPromise.then((tx: any) => {
+                  txPromise.then((tx: ethers.ContractTransactionResponse) => {
                     if (!interceptedTxHash && tx?.hash) interceptedTxHash = tx.hash;
                   }).catch(() => {}),
                   new Promise(resolve => setTimeout(resolve, 15000))

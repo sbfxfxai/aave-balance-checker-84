@@ -68,7 +68,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    const redis = getRedis();
+    const redis = await getRedis();
     const normalizedEmail = userEmail ? userEmail.toLowerCase().trim() : '';
     const normalizedWallet = walletAddress.toLowerCase();
 
@@ -85,6 +85,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Store with 24 hour TTL (matches payment processing window)
     // @ts-ignore - @upstash/redis types may not include set method in some TypeScript versions, but it exists at runtime
     await redis.set(`payment_info:${paymentId}`, JSON.stringify(paymentInfo), {
+      ex: 24 * 60 * 60, // 24 hours
+    });
+    
+    // Also store a reverse mapping: frontend payment ID -> payment info key
+    // This allows webhook to find payment_info even if only frontend payment ID is known
+    // @ts-ignore
+    await redis.set(`payment_info_lookup:${paymentId}`, paymentId, {
+      ex: 24 * 60 * 60, // 24 hours
+    });
+    
+    // CRITICAL: Store wallet -> payment_id mapping for webhook lookup
+    // When Square order arrives without note, webhook can find payment_info by wallet address
+    // @ts-ignore
+    await redis.set(`wallet_payment:${normalizedWallet}`, paymentId, {
+      ex: 24 * 60 * 60, // 24 hours
+    });
+    
+    // Reverse lookup: payment_id -> wallet (for debugging/support)
+    // @ts-ignore
+    await redis.set(`payment_wallet:${paymentId}`, normalizedWallet, {
       ex: 24 * 60 * 60, // 24 hours
     });
 

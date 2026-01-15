@@ -18,6 +18,7 @@ import { useAavePositions } from '@/hooks/useAavePositions';
 import { useGmxPositions } from '@/hooks/useGmxPositions';
 import { useMorphoPositions } from '@/hooks/useMorphoPositions';
 import { useWalletBalances } from '@/hooks/useWalletBalances';
+import { useAaveRates } from '@/hooks/useAaveRates';
 import { CONTRACTS } from '@/config/contracts';
 import { 
   Loader2, 
@@ -45,14 +46,15 @@ import {
   Home,
   Bitcoin,
   Mail,
-  Check
+  Check,
+  HandCoins,
+  Circle
 } from 'lucide-react';
 import { ConnectWalletButton } from '@/components/ConnectWalletButton';
 import { OptimizedLogo } from '@/components/OptimizedLogo';
 import { PrivyLogin } from '@/components/PrivyLogin';
 import { Input } from '@/components/ui/input';
-import { useErgcPurchaseModal } from '@/contexts/ErgcPurchaseModalContext';
-// @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them
+import { useErgcPurchaseModal } from '@/contexts';
 import { usePrivy } from '@privy-io/react-auth';
 
 // USDC contract on Avalanche
@@ -157,6 +159,7 @@ export default function UserDashboard() {
   const { positions: gmxPositions, isLoading: gmxLoading, refetch: refetchGmx } = useGmxPositions();
   const morphoData = useMorphoPositions();
   const walletBalances = useWalletBalances();
+  const { supplyAPY, borrowAPY } = useAaveRates();
 
   // Get USDC balance using readContract for ERC20 token
   const { data: usdcBalanceRaw, isLoading: balanceLoading, refetch: refetchBalance } = useReadContract({
@@ -559,23 +562,29 @@ export default function UserDashboard() {
                     Get Started
                   </Button>
                 </div>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 text-sm text-foreground">
-                    <Check className="h-4 w-4 text-success" />
-                    <span>Automated DeFi strategies</span>
+                <div className="flex items-center justify-center gap-6 text-sm text-foreground">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="h-10 w-10 rounded-full bg-success/20 flex items-center justify-center">
+                      <Check className="h-5 w-5 text-success" />
+                    </div>
+                    <span className="text-center">Automated Defi strategies</span>
                   </div>
-                  <div className="flex items-center gap-3 text-sm text-foreground">
-                    <Check className="h-4 w-4 text-success" />
-                    <span>Non-custodial - you own your funds</span>
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center">
+                      <Circle className="h-5 w-5 text-primary" />
+                    </div>
+                    <span className="text-center">Non-custodial - you own your funds</span>
                   </div>
-                  <div className="flex items-center gap-3 text-sm text-foreground">
-                    <Check className="h-4 w-4 text-success" />
-                    <span>No wallet setup required</span>
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center">
+                      <Wallet className="h-5 w-5 text-primary" />
+                    </div>
+                    <span className="text-center">No wallet setup required</span>
                   </div>
                 </div>
                 <p className="text-xs text-center text-muted-foreground">
                   By signing up, you agree to our{' '}
-                  <a href="#" className="text-primary hover:underline">Terms of Service</a>
+                  <a href="#" className="text-primary hover:underline">Term of Service</a>
                   {' '}and{' '}
                   <a href="#" className="text-primary hover:underline">Privacy Policy</a>
                 </p>
@@ -700,7 +709,8 @@ export default function UserDashboard() {
                     {/* External Wallet */}
                     <Card className="card-gradient border-border">
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">
+                        <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                          <Wallet className="h-4 w-4" />
                           External Wallet
                         </CardTitle>
                       </CardHeader>
@@ -719,15 +729,6 @@ export default function UserDashboard() {
                           >
                             <Copy className="h-3 w-3 text-muted-foreground" />
                           </button>
-                          <a 
-                            href={`https://snowtrace.io/address/${address}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="cursor-pointer hover:text-primary transition-colors p-1"
-                            aria-label="View on explorer"
-                          >
-                            <ExternalLink className="h-3 w-3 text-muted-foreground" />
-                          </a>
                         </div>
                       </CardContent>
                     </Card>
@@ -755,8 +756,9 @@ export default function UserDashboard() {
                     {/* USD Balance */}
                     <Card className="card-gradient border-border">
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">
-                          $ USD Balance
+                        <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                          <DollarSign className="h-4 w-4" />
+                          USD Balance
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
@@ -770,14 +772,15 @@ export default function UserDashboard() {
                     {/* ERGC */}
                     <Card className="card-gradient border-border">
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">
+                        <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                          <Sparkles className="h-4 w-4" />
                           ERGC
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-1">
                           <span className="text-2xl font-bold text-foreground">{ergcBalance.toFixed(2)}</span>
-                          <p className="text-xs text-muted-foreground">EnergyCoin tokens</p>
+                          <p className="text-xs text-muted-foreground">EnergyCoin token</p>
                         </div>
                       </CardContent>
                     </Card>
@@ -796,7 +799,7 @@ export default function UserDashboard() {
                   <Card className="card-gradient border-border">
                     <CardHeader className="pb-2">
                       <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                        <LineChart className="h-4 w-4" />
+                        <PiggyBank className="h-4 w-4" />
                         Savings Balance
                       </CardTitle>
                     </CardHeader>
@@ -805,7 +808,7 @@ export default function UserDashboard() {
                         <span className="text-3xl font-bold text-foreground">${totalSavings.toFixed(2)}</span>
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-success">
-                            Earning {aaveData.usdcSupplyApy?.toFixed(2) || '3.40'}% APY
+                            Earning {supplyAPY.toFixed(2)}% APY
                           </span>
                         </div>
                       </div>
@@ -816,7 +819,7 @@ export default function UserDashboard() {
                   <Card className="card-gradient border-border">
                     <CardHeader className="pb-2">
                       <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                        <Building className="h-4 w-4" />
+                        <HandCoins className="h-4 w-4" />
                         Loan Balance
                       </CardTitle>
                     </CardHeader>
@@ -824,8 +827,8 @@ export default function UserDashboard() {
                       <div className="space-y-2">
                         <span className="text-3xl font-bold text-foreground">{totalLoanBalance.toFixed(4)}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-warning">
-                            Pay {aaveData.avaxBorrowApy?.toFixed(2) || '3.63'}% APY
+                          <span className="text-sm font-medium text-orange-500">
+                            Pay {borrowAPY.toFixed(2)}% APY
                           </span>
                         </div>
                       </div>
@@ -857,10 +860,10 @@ export default function UserDashboard() {
                             ))}
                           </div>
                         ) : (
-                          <p className="text-sm text-muted-foreground">No open GMX positions</p>
+                          <p className="text-sm text-muted-foreground mb-4">No open GMX positions</p>
                         )}
                         <Link to="/gmx">
-                          <Button variant="action" size="sm" className="w-full bg-primary hover:bg-primary/90">
+                          <Button variant="outline" size="sm" className="w-full bg-card border-border hover:bg-muted">
                             Open a Position
                           </Button>
                         </Link>

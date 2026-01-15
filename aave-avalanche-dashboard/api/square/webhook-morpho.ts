@@ -6,7 +6,7 @@
  */
 
 import { ethers } from 'ethers';
-import { updatePosition } from './store';
+import { updatePosition } from '../positions/store';
 
 // Configuration with fallbacks
 const ARBITRUM_RPC = process.env.ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc';
@@ -43,6 +43,8 @@ const ERC4626_VAULT_ABI = [
   'function balanceOf(address account) view returns (uint256)',
   'function previewDeposit(uint256 assets) public view returns (uint256)',
   'function totalAssets() external view returns (uint256)',
+  'function paused() external view returns (bool)', // Some vaults have pause functionality
+  'function maxDeposit(address) external view returns (uint256)', // ERC-4626 optional: max deposit per user
 ];
 
 interface MorphoDepositResult {
@@ -127,9 +129,9 @@ async function getOptimalGasPrice(provider: ethers.Provider): Promise<bigint> {
 }
 
 async function waitForTransaction(
-  tx: ethers.ContractTransaction,
+  tx: ethers.TransactionResponse,
   description: string
-): Promise<{ success: boolean; receipt?: ethers.ContractTransactionReceipt; error?: string }> {
+): Promise<{ success: boolean; receipt?: ethers.TransactionReceipt; error?: string }> {
   try {
     const receipt = await Promise.race([
       tx.wait(),
@@ -217,8 +219,7 @@ export async function executeMorphoFromHubWallet(
     // Update position status
     if (positionId) {
       await updatePosition(positionId, { 
-        status: 'executing',
-        lastUpdatedAt: new Date().toISOString()
+        status: 'executing'
       });
     }
     
@@ -293,6 +294,91 @@ export async function executeMorphoFromHubWallet(
     console.log(`[MORPHO] Using gas price: ${gasPriceGwei.toFixed(2)} gwei`);
     
     let totalGasUsed = 0n;
+    
+    // === Pre-flight checks: Vault utilization and health ===
+    console.log(`[MORPHO] Performing pre-flight vault checks...`);
+    
+    // Check Gauntlet vault
+    const gauntletVaultContract = new ethers.Contract(MORPHO_GAUNTLET_USDC_VAULT, ERC4626_VAULT_ABI, provider);
+    try {
+      const gauntletTotalAssets = await gauntletVaultContract.totalAssets();
+      const gauntletTotalAssetsUsd = Number(gauntletTotalAssets) / 1_000_000;
+      console.log(`[MORPHO] GauntletUSDC vault total assets: $${gauntletTotalAssetsUsd.toFixed(2)}`);
+      
+      // Check if vault is paused (if supported)
+      try {
+        const gauntletPaused = await gauntletVaultContract.paused();
+        if (gauntletPaused) {
+          return {
+            success: false,
+            error: 'GauntletUSDC vault is paused - deposits are temporarily disabled',
+            errorCode: 'VAULT_PAUSED'
+          };
+        }
+      } catch {
+        // Pause function not available - vault doesn't support pausing, continue
+      }
+      
+      // Preview deposit to check if it would succeed
+      try {
+        const gauntletPreviewShares = await gauntletVaultContract.previewDeposit(gauntletAmountWei);
+        console.log(`[MORPHO] GauntletUSDC deposit preview: ${gauntletAmountWei} assets → ${gauntletPreviewShares} shares`);
+        if (gauntletPreviewShares === 0n) {
+          return {
+            success: false,
+            error: 'GauntletUSDC vault deposit would result in zero shares - vault may be at capacity',
+            errorCode: 'VAULT_CAPACITY_EXCEEDED'
+          };
+        }
+      } catch (previewError) {
+        console.warn('[MORPHO] Could not preview GauntletUSDC deposit (may not be supported):', previewError);
+      }
+    } catch (checkError) {
+      console.warn('[MORPHO] Could not check GauntletUSDC vault status:', checkError);
+      // Continue with deposit attempt - some checks may not be available
+    }
+    
+    // Check Hyperithm vault
+    const hyperithmVaultContract = new ethers.Contract(MORPHO_HYPERITHM_USDC_VAULT, ERC4626_VAULT_ABI, provider);
+    try {
+      const hyperithmTotalAssets = await hyperithmVaultContract.totalAssets();
+      const hyperithmTotalAssetsUsd = Number(hyperithmTotalAssets) / 1_000_000;
+      console.log(`[MORPHO] HyperithmUSDC vault total assets: $${hyperithmTotalAssetsUsd.toFixed(2)}`);
+      
+      // Check if vault is paused (if supported)
+      try {
+        const hyperithmPaused = await hyperithmVaultContract.paused();
+        if (hyperithmPaused) {
+          return {
+            success: false,
+            error: 'HyperithmUSDC vault is paused - deposits are temporarily disabled',
+            errorCode: 'VAULT_PAUSED'
+          };
+        }
+      } catch {
+        // Pause function not available - vault doesn't support pausing, continue
+      }
+      
+      // Preview deposit to check if it would succeed
+      try {
+        const hyperithmPreviewShares = await hyperithmVaultContract.previewDeposit(hyperithmAmountWei);
+        console.log(`[MORPHO] HyperithmUSDC deposit preview: ${hyperithmAmountWei} assets → ${hyperithmPreviewShares} shares`);
+        if (hyperithmPreviewShares === 0n) {
+          return {
+            success: false,
+            error: 'HyperithmUSDC vault deposit would result in zero shares - vault may be at capacity',
+            errorCode: 'VAULT_CAPACITY_EXCEEDED'
+          };
+        }
+      } catch (previewError) {
+        console.warn('[MORPHO] Could not preview HyperithmUSDC deposit (may not be supported):', previewError);
+      }
+    } catch (checkError) {
+      console.warn('[MORPHO] Could not check HyperithmUSDC vault status:', checkError);
+      // Continue with deposit attempt - some checks may not be available
+    }
+    
+    console.log(`[MORPHO] ✅ Pre-flight checks passed - proceeding with deposits`);
     
     // === Step 1: Deposit to GauntletUSDC Vault ===
     console.log(`[MORPHO] Step 1: Depositing $${gauntletAmount} to GauntletUSDC vault...`);

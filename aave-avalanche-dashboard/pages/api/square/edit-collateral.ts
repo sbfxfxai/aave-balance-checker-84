@@ -1,4 +1,4 @@
-import { editGmxCollateral } from '../../../api/square/webhook';
+import { editGmxCollateral } from '../../../api/square/edit-collateral';
 import { getWalletKey, deleteWalletKey, decryptWalletKeyWithAuth } from '../../../api/wallet/keystore';
 
 // Type definitions for Vercel API routes
@@ -48,7 +48,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Decrypt with user authentication (verifies email and paymentId match)
-    const walletData = decryptWalletKeyWithAuth(encryptedData, userEmail, paymentId);
+    const walletData = await decryptWalletKeyWithAuth(encryptedData, userEmail, paymentId);
     const { privateKey } = walletData;
 
     if (!privateKey) {

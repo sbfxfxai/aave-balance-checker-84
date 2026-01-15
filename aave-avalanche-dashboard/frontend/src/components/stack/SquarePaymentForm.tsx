@@ -82,7 +82,7 @@ export const SquarePaymentForm: React.FC<SquarePaymentFormProps> = ({
       squareServiceRef.current?.destroy();
       squareServiceRef.current = null;
     };
-  }, []);
+  }, [onPaymentError]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

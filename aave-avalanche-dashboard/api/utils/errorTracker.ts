@@ -121,7 +121,7 @@ class ErrorTracker {
     // Extract first meaningful stack frame (skip node_modules)
     const stackLine = stack
       .split('\n')
-      .find(line => !line.includes('node_modules')) || '';
+      .find((line: string) => !line.includes('node_modules')) || '';
 
     // Create fingerprint from category, message, and location
     const fingerprintStr = `${category}:${message}:${stackLine}:${context.endpoint || 'no-endpoint'}`;
@@ -130,7 +130,7 @@ class ErrorTracker {
     let hash = 0;
     for (let i = 0; i < fingerprintStr.length; i++) {
       const char = fingerprintStr.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char);
+      hash = ((hash << 5) - hash) + char;
       hash = hash & hash; // Convert to 32-bit integer
     }
 
@@ -155,7 +155,7 @@ class ErrorTracker {
     if (message.includes('gmx') && (message.includes('trade') || message.includes('position'))) {
       return 'gmx';
     }
-    if (message.includes('privy') || message.includes('auth') || message.includes('wallet'))) {
+    if (message.includes('privy') || message.includes('auth') || message.includes('wallet')) {
       return 'auth';
     }
     if (message.includes('timeout') || message.includes('network') || message.includes('fetch')) {

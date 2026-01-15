@@ -6,7 +6,6 @@ import { TrendingUp, Zap, Wallet } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ConnectWalletButton } from '@/components/ConnectWalletButton';
-// @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them
 import { usePrivy } from '@privy-io/react-auth';
 
 function DashboardContent() {

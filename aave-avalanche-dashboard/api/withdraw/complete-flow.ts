@@ -351,7 +351,7 @@ async function handleWithdrawal(req: VercelRequest, res: VercelResponse) {
       }
 
       // Decrypt with user authentication (requires email and paymentId for key derivation)
-      const walletData = decryptWalletKeyWithAuth(encryptedData, userEmail!, paymentId!);
+      const walletData = await decryptWalletKeyWithAuth(encryptedData, userEmail!, paymentId!);
       const { privateKey } = walletData;
 
       if (!privateKey) {
@@ -393,7 +393,7 @@ async function handleWithdrawal(req: VercelRequest, res: VercelResponse) {
       } else if (source === 'gmx') {
         console.log(`[GMX] Closing position worth ${amountUsd} USDC`);
         // Import GMX close function from webhook
-        const { closeGmxPosition } = await import('../square/webhook.js');
+        const { closeGmxPosition } = await import('../square/close-position.js');
         const gmxResult = await closeGmxPosition(privateKey);
         if (!gmxResult.success) {
           return res.status(500).json({

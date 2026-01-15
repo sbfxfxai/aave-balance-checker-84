@@ -3,7 +3,6 @@ import { getRedis } from '../utils/redis';
 import { Ratelimit } from '@upstash/ratelimit';
 import formData from 'form-data';
 import Mailgun from 'mailgun.js';
-import { randomInt } from 'crypto';
 
 const mailgun = new Mailgun(formData);
 const mg = mailgun.client({
@@ -11,9 +10,17 @@ const mg = mailgun.client({
   key: process.env.MAILGUN_API_KEY || '',
 });
 
+// Helper to access Node.js crypto module (available at runtime in Vercel)
+function getCrypto() {
+  // Use Function constructor to access require in a way TypeScript accepts
+  const requireFunc = new Function('return require')();
+  return requireFunc('crypto') as { randomInt: (min: number, max: number) => number };
+}
+
 // Generate secure 6-digit code using crypto
 function generateCode(): string {
-  return randomInt(100000, 999999).toString();
+  const crypto = getCrypto();
+  return crypto.randomInt(100000, 999999).toString();
 }
 
 // Hash email for safe logging
@@ -27,9 +34,9 @@ let _ratelimit: any = null;
 
 async function getRatelimit() {
   if (!_ratelimit) {
-    const redis = getRedis();
+    const redis = await getRedis();
     _ratelimit = new Ratelimit({
-      redis,
+      redis: redis as any,
       limiter: Ratelimit.slidingWindow(3, '1 h'), // 3 emails per hour per IP
       analytics: true,
     });
@@ -131,7 +138,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Generate and store code with metadata
     const code = generateCode();
-    const redis = getRedis();
+    const redis = await getRedis();
 
     const codeData = {
       code,
@@ -193,7 +200,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     try {
       const response = await sendEmailWithRetry(data);
-      console.log(`[Auth] Email sent to ${hashEmail(normalizedEmail)}`, { messageId: response.id });
+      console.log(`[Auth] Email sent to ${hashEmail(normalizedEmail)}`, { messageId: response?.id });
     } catch (mailgunError) {
       console.error('[Auth] Mailgun error:', mailgunError);
       const errorDetails = mailgunError instanceof Error ? mailgunError.message : String(mailgunError);

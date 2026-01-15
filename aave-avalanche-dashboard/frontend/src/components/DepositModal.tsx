@@ -158,7 +158,7 @@ export function DepositModal() {
       console.error('Error fetching allowance:', error);
       setError('Failed to fetch token allowance');
     }
-  }, [address]);
+  }, [address, publicClient]);
 
   // Set up polling for data
   useEffect(() => {
@@ -202,7 +202,7 @@ export function DepositModal() {
     }
     
     return false;
-  }, [address, step, isLoading]);
+  }, [address, step, isLoading, publicClient]);
 
   // Auto-detect and prompt for incomplete deposits
   useEffect(() => {

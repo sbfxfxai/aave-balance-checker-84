@@ -1,7 +1,7 @@
 import React from 'react';
 import { Zap, ExternalLink, KeyRound } from 'lucide-react';
 import { FAQ } from './FAQ';
-import { useErgcPurchaseModal } from '@/contexts/ErgcPurchaseModalContext';
+import { useErgcPurchaseModal } from '@/contexts';
 
 export function Footer() {
   const { openModal } = useErgcPurchaseModal();

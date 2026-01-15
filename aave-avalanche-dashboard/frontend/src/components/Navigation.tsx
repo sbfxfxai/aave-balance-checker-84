@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Bitcoin, Zap, Home, ExternalLink } from 'lucide-react';
 import { OptimizedLogo } from '@/components/OptimizedLogo';
 import { ConnectWalletButton } from '@/components/ConnectWalletButton';
-import { useErgcPurchaseModal } from '@/contexts/ErgcPurchaseModalContext';
+import { useErgcPurchaseModal } from '@/contexts';
 
 export function Navigation() {
   const { openModal } = useErgcPurchaseModal();

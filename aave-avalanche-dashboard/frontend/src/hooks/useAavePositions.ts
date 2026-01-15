@@ -1,9 +1,14 @@
 import { useAccount, useReadContract } from 'wagmi';
-// @ts-expect-error - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useMemo } from 'react';
 import { formatUnits } from 'viem';
 import { CONTRACTS, AAVE_POOL_ADDRESSES_PROVIDER_ABI, AAVE_POOL_ABI, AAVE_DATA_PROVIDER_ABI } from '@/config/contracts';
+
+type PrivyWallet = {
+  address?: `0x${string}` | string | null;
+  walletClientType?: string;
+  chainId?: number;
+};
 
 export interface AavePosition {
   totalCollateral: string;
@@ -28,12 +33,12 @@ export interface AavePosition {
 export function useAavePositions() {
   const { address: wagmiAddress, isConnected: isWagmiConnected } = useAccount();
   const { authenticated } = usePrivy();
-  const { wallets } = useWallets();
+  const { wallets } = useWallets() as unknown as { wallets: PrivyWallet[] };
 
   // Get the active wallet address
   const address = useMemo(() => {
     if (wagmiAddress) return wagmiAddress;
-    const privyWallet = wallets.find((w: any) => w.walletClientType === 'privy');
+    const privyWallet = wallets.find((w: PrivyWallet) => w.walletClientType === 'privy');
     return privyWallet?.address || null;
   }, [wagmiAddress, wallets]);
 

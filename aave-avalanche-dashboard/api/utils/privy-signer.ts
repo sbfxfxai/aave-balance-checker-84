@@ -110,7 +110,7 @@ export class PrivySigner extends AbstractSigner {
     if (!this.privy) {
       try {
         // Try to use the shared privy client from privy-client.ts
-        const { getPrivyClient } = await import('./privy-client');
+        const { getPrivyClient } = await import('./privy-client.js');
         this.privy = await getPrivyClient();
         
         if (this.options.enableLogging) {
@@ -429,7 +429,7 @@ export class PrivySigner extends AbstractSigner {
       initialized: this.privy !== null,
       walletId: this.walletId,
       address: this.address,
-      chainId: this.options.chainId,
+      chainId: this.options.chainId ?? 43114, // Default to Avalanche C-Chain
       hasProvider: !!this.provider
     };
   }

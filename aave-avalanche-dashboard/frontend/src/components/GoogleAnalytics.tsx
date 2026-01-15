@@ -4,8 +4,8 @@ import { useLocation } from 'react-router-dom';
 // Declare gtag function for TypeScript
 declare global {
   interface Window {
-    dataLayer: any[];
-    gtag: (...args: any[]) => void;
+    dataLayer: unknown[];
+    gtag: (command: 'config' | 'event' | 'js', targetId: string, config?: Record<string, unknown>) => void;
   }
 }
 

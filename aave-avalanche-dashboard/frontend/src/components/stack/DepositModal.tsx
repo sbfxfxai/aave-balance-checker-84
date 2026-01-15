@@ -52,13 +52,18 @@ interface DepositModalProps {
   };
 }
 
+interface Wallet {
+  address: string;
+  walletClientType: string;
+}
+
 export const DepositModal: React.FC<DepositModalProps> = ({
   isOpen,
   onClose,
   riskProfile,
 }) => {
   // Create component-specific logger
-  const log = createComponentLogger('DepositModal');
+  const log = useMemo(() => createComponentLogger('DepositModal'), []);
   
   const { address: wagmiAddress, isConnected: isWagmiConnected } = useAccount();
   const { authenticated, user, ready } = usePrivy();
@@ -84,7 +89,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   const connectedAddress = React.useMemo(() => {
     // If user is authenticated with Privy, use Privy wallet
     if (authenticated && ready) {
-      const privyWallet = wallets.find((w: any) => w.walletClientType === 'privy');
+      const privyWallet = wallets.find((w: Wallet) => w.walletClientType === 'privy');
       if (privyWallet) return privyWallet.address;
       return user?.wallet?.address;
     }
@@ -130,7 +135,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       totalAmount,
       isFree,
     };
-  }, [depositAmount, hasErgcForFreeDeposit, userErgcBalance]);
+  }, [depositAmount, hasErgcForFreeDeposit, userErgcBalance, log]);
 
   // Destructure fee details for easier access
   const {
@@ -202,14 +207,22 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   useEffect(() => {
     // Check Square configuration when modal opens
     if (isOpen) {
+      // Gate: only fetch once per modal open
+      if (priceFetchedRef.current) {
+        return;
+      }
+      priceFetchedRef.current = true;
+
       let cancelled = false;
+      const controller = new AbortController();
+      
       const checkConfig = async () => {
         try {
           // Try to get config from API first (production), then fall back to env
           await ensureSquareConfigAvailable();
           const resolvedConfig = getSquareConfig();
 
-          if (cancelled) return;
+          if (cancelled || controller.signal.aborted) return;
 
           setSquareConfig(resolvedConfig);
 
@@ -231,7 +244,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
           }
         } catch (error) {
           log.error('Error loading Square config', error);
-          if (cancelled) return;
+          if (cancelled || controller.signal.aborted) return;
           
           // Fallback to env vars if API fails
           const hasAppId = !!import.meta.env.VITE_SQUARE_APPLICATION_ID;
@@ -239,11 +252,26 @@ export const DepositModal: React.FC<DepositModalProps> = ({
           setIsConfigured(hasAppId && hasLocationId);
         }
 
-        // Fetch AVAX price for fee calculation
+        // Fetch AVAX price for fee calculation using our API endpoint with fallbacks
         try {
-          const priceResponse = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=avalanche-2&vs_currencies=usd', {
-            signal: AbortSignal.timeout(API_TIMEOUTS.SHORT),
+          const apiBaseUrl = getApiBaseUrl();
+          const priceController = new AbortController();
+          const timeoutId = setTimeout(() => priceController.abort(), API_TIMEOUTS.SHORT);
+          
+          // If main controller aborts, also abort price fetch
+          if (controller.signal.aborted) {
+            priceController.abort();
+            clearTimeout(timeoutId);
+            return;
+          }
+          
+          const priceResponse = await fetch(`${apiBaseUrl}/api/price/avax`, {
+            signal: priceController.signal,
           });
+          
+          clearTimeout(timeoutId);
+          
+          if (cancelled || controller.signal.aborted || priceController.signal.aborted) return;
           
           if (!priceResponse.ok) {
             throw new Error(`AVAX price API returned ${priceResponse.status}: ${priceResponse.statusText}`);
@@ -251,17 +279,26 @@ export const DepositModal: React.FC<DepositModalProps> = ({
           
           const priceData = await priceResponse.json();
           
-          if (cancelled) return;
+          if (cancelled || controller.signal.aborted) return;
           
-          if (priceData && priceData['avalanche-2']?.usd && typeof priceData['avalanche-2'].usd === 'number') {
-            setAvaxPrice(priceData['avalanche-2'].usd);
-            log.info('AVAX price fetched', { price: priceData['avalanche-2'].usd });
+          if (priceData && priceData.success && typeof priceData.price === 'number' && priceData.price > 0) {
+            setAvaxPrice(priceData.price);
+            log.info('AVAX price fetched from API', { 
+              price: priceData.price, 
+              source: priceData.source,
+              cached: priceData.cached 
+            });
           } else {
-            throw new Error('Invalid AVAX price data format');
+            throw new Error('Invalid AVAX price data format from API');
           }
         } catch (error) {
-          log.error('Failed to fetch AVAX price', error);
-          if (!cancelled) {
+          // Silently handle aborts - don't log as error
+          if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('aborted') || error.message.includes('timeout'))) {
+            return; // Don't update state if aborted
+          }
+          
+          log.error('Failed to fetch AVAX price from API, using fallback', error);
+          if (!cancelled && !controller.signal.aborted) {
             setAvaxPrice(PRICE_CONSTANTS.AVAX_FALLBACK_PRICE_USD);
           }
         }
@@ -271,14 +308,21 @@ export const DepositModal: React.FC<DepositModalProps> = ({
 
       return () => {
         cancelled = true;
+        controller.abort();
       };
+    } else {
+      // Reset gate when modal closes
+      priceFetchedRef.current = false;
     }
-  }, [isOpen, toast]);
+  }, [isOpen, log]); // Removed toast and log from dependencies
 
-  // Reset paymentId ref when modal closes to prevent stale data
+  // Reset paymentId ref and fetch gates when modal closes to prevent stale data
   useEffect(() => {
     if (!isOpen) {
       paymentIdRef.current = null;
+      ergcFetchedRef.current = false;
+      hubBalanceFetchedRef.current = false;
+      priceFetchedRef.current = false;
       // Batch state updates to prevent unnecessary re-renders
       startTransition(() => {
         setStoredPaymentId(null);
@@ -290,25 +334,36 @@ export const DepositModal: React.FC<DepositModalProps> = ({
     }
   }, [isOpen]);
 
+  // Refs to prevent duplicate fetches
+  const ergcFetchedRef = useRef<boolean>(false);
+  const hubBalanceFetchedRef = React.useRef<string | false>(false);
+  const priceFetchedRef = useRef<boolean>(false);
+
   // Check user's ERGC balance (free deposits if 100+)
-  const checkUserErgcBalance = useCallback(async (walletAddress: string) => {
-    if (!walletAddress) {
-      log.warn('Cannot check ERGC balance: no wallet address');
+  const checkUserErgcBalance = useCallback(async (walletAddress: string, signal: AbortSignal) => {
+    if (!walletAddress || signal.aborted) {
       return;
     }
     
     setIsCheckingErgc(true);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUTS.STANDARD);
+    const timeoutId = setTimeout(() => {
+      if (!signal.aborted) {
+        // Timeout handled by AbortController in effect
+      }
+    }, API_TIMEOUTS.STANDARD);
     
     try {
       log.debug('Checking ERGC balance', { walletAddress });
       
       const response = await fetch(`/api/ergc/balance?address=${walletAddress}`, {
-        signal: controller.signal,
+        signal,
       });
       
       clearTimeout(timeoutId);
+      
+      if (signal.aborted) {
+        return;
+      }
       
       if (!response.ok) {
         throw new Error(`ERGC balance API returned ${response.status}: ${response.statusText}`);
@@ -317,7 +372,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       const data = await response.json();
       
       // Check if request was aborted after JSON parse
-      if (controller.signal.aborted) {
+      if (signal.aborted) {
         return;
       }
       
@@ -344,9 +399,8 @@ export const DepositModal: React.FC<DepositModalProps> = ({
         });
       }
     } catch (error) {
-      // Check if request was aborted
-      if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
-        log.warn('ERGC balance check aborted');
+      // Check if request was aborted - silently return, don't log as error
+      if (signal.aborted || (error instanceof Error && (error.name === 'AbortError' || error.message.includes('aborted')))) {
         return; // Don't update state if aborted
       }
       
@@ -359,28 +413,49 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       });
     } finally {
       clearTimeout(timeoutId);
-      startTransition(() => {
-        setIsCheckingErgc(false);
-      });
+      if (!signal.aborted) {
+        startTransition(() => {
+          setIsCheckingErgc(false);
+        });
+      }
     }
-  }, [toast]);
+  }, [log, toast]);
 
-  // Auto-check ERGC balance when wallet is connected
+  // Auto-check ERGC balance when wallet is connected (only once per modal open)
   useEffect(() => {
-    if (!isOpen || !isConnected || !connectedAddress) return;
+    if (!isOpen || !isConnected || !connectedAddress) {
+      ergcFetchedRef.current = false;
+      return;
+    }
 
-    // checkUserErgcBalance already has AbortController internally
-    // We can't cancel it from here, but it will abort on timeout or error
-    // The function itself handles cleanup properly
-    checkUserErgcBalance(connectedAddress);
+    // Gate: only fetch once per modal open
+    if (ergcFetchedRef.current) {
+      return;
+    }
+    ergcFetchedRef.current = true;
+
+    const controller = new AbortController();
+    checkUserErgcBalance(connectedAddress, controller.signal);
     
-    // No cleanup needed - checkUserErgcBalance handles its own cleanup
+    return () => {
+      controller.abort();
+    };
   }, [isOpen, isConnected, connectedAddress, checkUserErgcBalance]);
 
   // Fetch hub wallet USDC balance when modal opens
   // For Morpho profile, check Arbitrum USDC balance; for others, check Avalanche
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      hubBalanceFetchedRef.current = false;
+      return;
+    }
+
+    // Gate: only fetch once per modal open (or when risk profile changes)
+    const fetchKey = `${isOpen}-${riskProfile.id}`;
+    if (hubBalanceFetchedRef.current === fetchKey) {
+      return;
+    }
+    hubBalanceFetchedRef.current = fetchKey;
 
     let cancelled = false;
     let controller: AbortController | null = null;
@@ -393,21 +468,17 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       if (cancelled) return;
       
       setIsLoadingHubBalance(true);
-      controller = new AbortController();
-      timeoutId = setTimeout(() => controller!.abort(), API_TIMEOUTS.STANDARD);
+      const currentController = new AbortController();
+      controller = currentController;
+      timeoutId = setTimeout(() => currentController.abort(), API_TIMEOUTS.STANDARD);
       
       try {
         const apiBaseUrl = getApiBaseUrl();
         const response = await fetch(`${apiBaseUrl}/api/hub/balance?chain=${chain}`, {
-          signal: controller.signal,
+          signal: currentController.signal,
         });
         
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-        
-        if (cancelled) return;
+        if (cancelled || currentController.signal.aborted) return;
         
         if (!response.ok) {
           throw new Error(`Hub balance API returned ${response.status}: ${response.statusText}`);
@@ -415,7 +486,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
         
         const data = await response.json();
         
-        if (cancelled) return;
+        if (cancelled || currentController.signal.aborted) return;
         
         // Validate response structure
         if (data && typeof data === 'object' && data.success && typeof data.balance === 'number') {
@@ -433,23 +504,12 @@ export const DepositModal: React.FC<DepositModalProps> = ({
           }
         }
       } catch (error) {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
+        // Silently handle aborts - don't log as error
+        if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('aborted'))) {
+          return; // Don't update state if aborted
         }
         
-        if (cancelled) return;
-        
-        if (error instanceof Error) {
-          if (error.name === 'AbortError') {
-            log.warn('Hub balance fetch aborted', { chain });
-            return; // Don't update state if aborted
-          } else {
-            log.error('Failed to fetch hub balance', error, { chain });
-          }
-        } else {
-          log.error('Failed to fetch hub balance', error, { chain });
-        }
+        log.error('Failed to fetch hub balance', error, { chain });
         
         // Fallback to default if fetch fails
         if (!cancelled) {
@@ -458,6 +518,13 @@ export const DepositModal: React.FC<DepositModalProps> = ({
           });
         }
       } finally {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        if (controller === currentController) {
+          controller = null;
+        }
         if (!cancelled) {
           startTransition(() => {
             setIsLoadingHubBalance(false);
@@ -473,12 +540,13 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       // Abort the fetch request if it's still in progress
       if (controller) {
         controller.abort();
+        controller = null;
       }
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
     };
-  }, [isOpen, riskProfile.id]); // Re-fetch when risk profile changes
+  }, [isOpen, riskProfile.id, log]);
 
   // Calculate max deposit amount: min(hub balance, MAX_DEPOSIT)
   // If hub balance is less than MAX_DEPOSIT, use hub balance; otherwise cap at MAX_DEPOSIT
@@ -780,7 +848,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
     }
   };
 
-  const handlePaymentError = (error: Error) => {
+  const handlePaymentError = useCallback((error: Error) => {
     log.error('Payment form error', error);
     toast({
       title: 'Payment failed',
@@ -792,7 +860,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       setIsProcessing(false);
       setShowPaymentForm(false);
     });
-  };
+  }, [log, toast]);
 
 
   return (

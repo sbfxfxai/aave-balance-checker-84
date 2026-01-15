@@ -41,4 +41,8 @@ declare global {
   interface WindowEventMap {
     "eip6963:announceProvider": CustomEvent<EIP6963ProviderDetail>
   }
+
+  interface Window {
+    __TILTVAULT_MAIN_LOADED__?: boolean;
+  }
 }

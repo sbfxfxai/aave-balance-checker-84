@@ -26,6 +26,7 @@ Created utilities to break up long-running tasks:
 **Before**: Synchronous `.map()` processing all positions at once
 
 **After**:
+
 - Small arrays (≤10 items): Process synchronously
 - Large arrays: Process in batches of 5, yielding to main thread between batches
 - Deferred console.log statements (only in development)
@@ -35,16 +36,19 @@ Created utilities to break up long-running tasks:
 ### 3. **SimpleDashboard Optimizations** (`components/SimpleDashboard.tsx`)
 
 **Wallet Address Calculation**:
+
 - Optimized `useMemo` with early returns
 - Reduced array iterations
 - Memoized helper function (`isEthereumAddress`)
 
 **Refresh Handler**:
+
 - Uses `startTransition` for non-urgent query invalidations
 - Deferred error logging
 - Memoized with `useCallback`
 
 **Console Logging**:
+
 - Deferred to avoid blocking (development only)
 
 **Impact**: Faster wallet address resolution, non-blocking refreshes
@@ -54,6 +58,7 @@ Created utilities to break up long-running tasks:
 **Before**: Console interception setup ran immediately on mount
 
 **After**:
+
 - Setup deferred using `setTimeout(..., 0)`
 - Non-blocking initialization
 - Proper cleanup on unmount
@@ -65,6 +70,7 @@ Created utilities to break up long-running tasks:
 **Before**: All interceptors set up synchronously
 
 **After**:
+
 - Interceptor setup deferred using `requestIdleCallback` or `setTimeout`
 - Non-blocking initialization
 - Critical interceptors still work (fetch/XHR blocking happens early)
@@ -82,9 +88,10 @@ Created utilities for React-specific optimizations:
 
 ## Best Practices
 
-### ✅ Do:
+### ✅ Do
 
 1. **Break up long tasks**:
+
    ```typescript
    // Process in batches
    for (let i = 0; i < items.length; i += batchSize) {
@@ -94,6 +101,7 @@ Created utilities for React-specific optimizations:
    ```
 
 2. **Use startTransition for non-urgent updates**:
+
    ```typescript
    startTransition(() => {
      setNonUrgentState(newValue);
@@ -101,6 +109,7 @@ Created utilities for React-specific optimizations:
    ```
 
 3. **Defer console.log in production**:
+
    ```typescript
    if (process.env.NODE_ENV === 'development') {
      setTimeout(() => console.log(...), 0);
@@ -108,20 +117,23 @@ Created utilities for React-specific optimizations:
    ```
 
 4. **Memoize expensive computations**:
+
    ```typescript
    const expensiveValue = useMemo(() => computeExpensive(), [deps]);
    ```
 
 5. **Use requestIdleCallback for non-critical work**:
+
    ```typescript
    if ('requestIdleCallback' in window) {
      window.requestIdleCallback(() => doNonCriticalWork(), { timeout: 1000 });
    }
    ```
 
-### ❌ Don't:
+### ❌ Don't
 
 1. **Don't process large arrays synchronously**:
+
    ```typescript
    // ❌ Bad: Blocks main thread
    const results = largeArray.map(expensiveOperation);
@@ -131,6 +143,7 @@ Created utilities for React-specific optimizations:
    ```
 
 2. **Don't do heavy work in useEffect without deferring**:
+
    ```typescript
    // ❌ Bad: Blocks render
    useEffect(() => {
@@ -144,6 +157,7 @@ Created utilities for React-specific optimizations:
    ```
 
 3. **Don't log synchronously in production**:
+
    ```typescript
    // ❌ Bad: Can block
    console.log(expensiveObject);
@@ -154,12 +168,14 @@ Created utilities for React-specific optimizations:
 
 ## Performance Targets
 
-### Before Optimization:
+### Before Optimization
+
 - **Total Blocking Time**: 460ms
 - **Long Tasks**: 8 tasks >50ms
 - **Interactivity**: Delayed
 
-### After Optimization:
+### After Optimization
+
 - **Total Blocking Time**: <200ms (target)
 - **Long Tasks**: <3 tasks >50ms (target)
 - **Interactivity**: Improved responsiveness
@@ -204,4 +220,3 @@ To monitor main thread blocking:
 5. **Service Workers**:
    - Cache heavy computations
    - Pre-compute values in background
-

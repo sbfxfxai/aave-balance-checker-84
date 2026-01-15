@@ -2,5 +2,5 @@ fastapi
 uvicorn
 python-dotenv
 web3
-eth-defi[aave,uniswap]
+# eth-defi[aave,uniswap]  # Commented out - package not available, not needed for frontend build
 requests

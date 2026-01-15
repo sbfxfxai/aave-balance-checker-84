@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { DollarSign, ArrowRight, Shield, TrendingUp, Zap, Home, Bitcoin, Landmark, Sparkles, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,9 +9,10 @@ import { DepositModal } from '@/components/stack/DepositModal';
 import { ValueDiagram } from '@/components/stack/ValueDiagram';
 import { Footer } from '@/components/Footer';
 import { Link } from 'react-router-dom';
-import { useErgcPurchaseModal } from '@/contexts/ErgcPurchaseModalContext';
+import { useErgcPurchaseModal } from '@/contexts';
 import { OptimizedLogo } from '@/components/OptimizedLogo';
 import { ConnectWalletButton } from '@/components/ConnectWalletButton';
+import { useAaveRates } from '@/hooks/useAaveRates';
 
 // Helper to calculate blended APY based on USDC allocation percentage
 const calculateBlendedAPY = (usdcPercent: number, aaveAPY: number, btcLevReturn: number = 15) => {
@@ -59,28 +60,8 @@ const StackApp = () => {
   const [selectedDepositType, setSelectedDepositType] = useState<DepositType>(null);
   const [selectedRiskProfile, setSelectedRiskProfile] = useState<RiskProfileId>(null);
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
-  const [aaveAPY, setAaveAPY] = useState<number>(3.5); // Default fallback
+  const { supplyAPY: aaveAPY } = useAaveRates();
   const { toast } = useToast();
-
-  // Fetch real Aave USDC rates on mount
-  useEffect(() => {
-    const fetchAaveRates = async () => {
-      try {
-        const runtimeApiBaseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-        const response = await fetch(`${runtimeApiBaseUrl}/api/aave/rates`);
-        const data = await response.json();
-        if (data.success && data.supplyAPY) {
-          setAaveAPY(data.supplyAPY);
-        }
-      } catch (error) {
-        console.error('Failed to fetch Aave rates:', error);
-      }
-    };
-    fetchAaveRates();
-    // Refresh every 5 minutes
-    const interval = setInterval(fetchAaveRates, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Generate risk profiles with current Aave APY
   const riskProfiles = getRiskProfiles(aaveAPY);

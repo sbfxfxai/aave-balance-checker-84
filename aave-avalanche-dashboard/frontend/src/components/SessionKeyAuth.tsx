@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-// @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,9 +10,19 @@ import { Loader2, ShieldCheck, AlertCircle, CheckCircle2 } from 'lucide-react';
 // import { http, createPublicClient } from 'viem';
 // import { avalanche } from 'viem/chains';
 
+type PrivyWallet = {
+  address?: `0x${string}` | string | null;
+  walletClientType?: string;
+  chainId?: number;
+  getEthereumProvider?: () => Promise<{
+    request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  }>;
+  sign?: (message: string) => Promise<string>;
+};
+
 export function SessionKeyAuth() {
     const { authenticated, user } = usePrivy();
-    const { wallets } = useWallets();
+    const { wallets } = useWallets() as unknown as { wallets: PrivyWallet[] };
     const [isLoading, setIsLoading] = useState(false);
     const [isAuthorized, setIsAuthorized] = useState(false); // TODO: Check backend if already authorized
     const [error, setError] = useState<string | null>(null);
@@ -23,7 +32,7 @@ export function SessionKeyAuth() {
         setError(null);
 
         try {
-            const privyWallet = wallets.find((w: any) => w.walletClientType === 'privy');
+            const privyWallet = wallets.find((w: PrivyWallet) => w.walletClientType === 'privy');
             // Allow fallback to connected wallet if no privy wallet, but ideally we want privy wallet ID
             if (!privyWallet && !user?.wallet) throw new Error('No wallet found');
 
@@ -39,13 +48,13 @@ export function SessionKeyAuth() {
             // Use privy wallet if available, otherwise check if connected wallet can sign
             // Privy embedded wallet should support signing
             let signature = '';
-            if (privyWallet) {
+            if (privyWallet && privyWallet.sign) {
                 signature = await privyWallet.sign(message);
             } else if (user.wallet) {
                 // How to sign with generic user.wallet? usePrivy doesn't expose sign directly on user.wallet
                 // We depend on useWallets() finding the active wallet
-                const activeWallet = wallets.find((w: any) => w.address === user.wallet?.address);
-                if (activeWallet) {
+                const activeWallet = wallets.find((w: PrivyWallet) => w.address === user.wallet?.address);
+                if (activeWallet && activeWallet.sign) {
                     signature = await activeWallet.sign(message);
                 } else {
                     throw new Error('Wallet not found for signing');

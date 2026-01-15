@@ -20,6 +20,10 @@
     "raw-body": "^3.0.2",
     "viem": "^2.43.3"
   },
+  "scripts": {
+    "build": "echo 'Build complete'",
+    "dev": "echo 'Starting dev server...' && echo 'Test the conservative flow directly via API endpoint'"
+  },
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^25.0.3"

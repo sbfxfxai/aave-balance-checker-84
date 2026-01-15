@@ -1,15 +1,30 @@
 import { useAccount, useBalance, useReadContract } from 'wagmi';
-// @ts-ignore - @privy-io/react-auth types exist but TypeScript can't resolve them due to package.json exports configuration
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useMemo, useEffect } from 'react';
 import { avalanche } from 'wagmi/chains';
 import { formatUnits } from 'viem';
 import { CONTRACTS, ERC20_ABI } from '@/config/contracts';
 
+// Interface for Privy wallet objects based on usage patterns
+interface PrivyWallet {
+  address: string;
+  walletClientType: string;
+  [key: string]: unknown; // Allow other properties
+}
+
+// Interface for balance objects that may have a formatted property
+interface BalanceWithFormatted {
+  value: bigint | string | number;
+  decimals?: number;
+  symbol?: string;
+  formatted?: string;
+  [key: string]: unknown;
+}
+
 export const useWalletBalances = () => {
   const { address: wagmiAddress, isConnected: isWagmiConnected } = useAccount();
   const { authenticated, user, ready } = usePrivy();
-  const { wallets } = useWallets();
+  const { wallets } = useWallets() as unknown as { wallets: PrivyWallet[] };
 
   // Helper to check if address is Ethereum format
   const isEthereumAddress = (addr: string | undefined | null): boolean => {
@@ -34,13 +49,13 @@ export const useWalletBalances = () => {
       // Find Privy wallet
       if (wallets && wallets.length > 0) {
         // Try Privy wallet first
-        const privyWallet = wallets.find((w: any) =>
+        const privyWallet = wallets.find((w: PrivyWallet) =>
           w.walletClientType === 'privy' && isEthereumAddress(w.address)
         );
         if (privyWallet) return privyWallet.address;
 
         // Fallback to any Ethereum wallet
-        const ethereumWallet = wallets.find((w: any) => isEthereumAddress(w.address));
+        const ethereumWallet = wallets.find((w: PrivyWallet) => isEthereumAddress(w.address));
         if (ethereumWallet) return ethereumWallet.address;
       }
     }
@@ -152,27 +167,6 @@ export const useWalletBalances = () => {
     }
   })();
 
-  // If Privy is authenticated but wallet address isn't ready yet, show loading
-  const isWaitingForPrivyWallet = authenticated && ready && !address && !isWagmiConnected;
-
-  if (!isConnected || !address) {
-    return {
-      avaxBalance: '0',
-      usdcBalance: '0',
-      usdcEBalance: '0',
-      ergcBalance: '0',
-      isLoading: isWaitingForPrivyWallet, // Show loading if waiting for Privy wallet
-      avaxValue: 0n,
-      usdcValue: 0n,
-      avaxSymbol: 'AVAX',
-      usdcSymbol: 'USDC',
-      needsMigration: false,
-      refetchBalances: async () => {
-        await Promise.all([refetchAvax(), refetchUsdc(), refetchUsdcE?.(), refetchErgc?.()]);
-      },
-    };
-  }
-
   // Check if user has USDC.e but not native USDC (migration needed)
   const safeBigInt = (value: unknown): bigint => {
     try {
@@ -198,7 +192,7 @@ export const useWalletBalances = () => {
       if (isConnected && address && !isLoadingAvax && !isLoadingUsdc) {
         console.log('[useWalletBalances] Balance results:', {
           address,
-          avaxBalanceFormatted: (avaxBalance as any)?.formatted,
+          avaxBalanceFormatted: avaxBalance ? formatBalance(avaxBalance, avaxBalance.decimals ?? 18) : '0',
           usdcBalanceRaw: usdcBalanceRaw ? String(usdcBalanceRaw) : '0',
           usdcBalanceFormatted: usdcBalanceFormatted,
           ergcBalanceFormatted: ergcBalanceFormatted,
@@ -209,12 +203,32 @@ export const useWalletBalances = () => {
     }
   }, [isConnected, address, avaxBalance, usdcBalanceRaw, usdcBalanceFormatted, ergcBalanceFormatted, isLoadingAvax, isLoadingUsdc, avaxValue, usdcValue]);
 
+  // If Privy is authenticated but wallet address isn't ready yet, show loading
+  const isWaitingForPrivyWallet = authenticated && ready && !address && !isWagmiConnected;
+
+  if (!isConnected || !address) {
+    return {
+      avaxBalance: '0',
+      usdcBalance: '0',
+      usdcEBalance: '0',
+      ergcBalance: '0',
+      isLoading: isWaitingForPrivyWallet, // Show loading if waiting for Privy wallet
+      avaxValue: 0n,
+      usdcValue: 0n,
+      avaxSymbol: 'AVAX',
+      usdcSymbol: 'USDC',
+      needsMigration: false,
+      refetchBalances: async () => {
+        await Promise.all([refetchAvax(), refetchUsdc(), refetchUsdcE?.(), refetchErgc?.()]);
+      },
+    };
+  }
+
   // Format balances - use formatted if available, otherwise format from value
-  const formatBalance = (balance: typeof avaxBalance, decimals: number = 18): string => {
+  const formatBalance = (balance: BalanceWithFormatted | null | undefined, decimals: number = 18): string => {
     try {
       if (!balance || !balance.value) return '0';
-      const balanceAny = balance as any;
-      if (balanceAny.formatted) return balanceAny.formatted;
+      if (balance.formatted) return balance.formatted;
       
       // Format from BigInt value
       const balanceValue = balance.value;

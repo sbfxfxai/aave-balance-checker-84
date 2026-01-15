@@ -1,0 +1,27 @@
+feat: Fix payment amount transfer to use exact user input
+
+## Critical Fix - Payment Amount Accuracy
+Fixed the issue where payments were transferring inflated amounts (e.g., 1.106221 USDC) 
+instead of the exact user input amount (e.g., 1.00 USDC).
+
+### Root Cause
+- Frontend stores payment_info with correct deposit amount (1.00) ✅
+- Frontend sends total amount with fees (1.05+) to process-payment.ts ❌
+- process-payment.ts was using body.amount (total with fees) instead of payment_info amount ❌
+
+### Changes
+- process-payment.ts: Added Redis lookup to get original deposit amount from payment_info
+- webhook.ts: Removed fallback calculations from Square total, enforced payment_info usage
+- Maintained immediate funding while fixing amount source
+
+### Impact
+- Users now see exactly the amount they input transferred to Aave
+- No more confusion from fee-inflated transfer amounts
+- Preserves instant funding experience
+
+## Files Modified
+- api/square/process-payment.ts
+- api/square/webhook.ts
+
+## Version
+beta1.0 v15
