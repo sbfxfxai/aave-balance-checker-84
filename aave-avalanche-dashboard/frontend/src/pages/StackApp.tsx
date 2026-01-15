@@ -13,42 +13,47 @@ import { useErgcPurchaseModal } from '@/contexts';
 import { OptimizedLogo } from '@/components/OptimizedLogo';
 import { ConnectWalletButton } from '@/components/ConnectWalletButton';
 import { useAaveRates } from '@/hooks/useAaveRates';
+import { useMorphoRates } from '@/hooks/useMorphoRates';
+import { STACK_CONFIG } from '@/config/stackConfig';
 
 // Helper to calculate blended APY based on USDC allocation percentage
-const calculateBlendedAPY = (usdcPercent: number, aaveAPY: number, btcLevReturn: number = 15) => {
+const calculateBlendedAPY = (usdcPercent: number, aaveAPY: number, btcLevReturn: number) => {
   const usdcComponent = (usdcPercent / 100) * aaveAPY;
   const btcComponent = ((100 - usdcPercent) / 100) * btcLevReturn;
   return usdcComponent + btcComponent;
 };
 
-// Generate risk profiles with real Aave APY
-const getRiskProfiles = (aaveAPY: number) => [
+// Generate risk profiles with real live APY rates
+const getRiskProfiles = (aaveAPY: number, aaveLoading: boolean, morphoAPY: number, morphoLoading: boolean) => [
   {
     id: 'conservative',
     name: 'Conservative',
-    description: '100% Savings',
-    allocation: '100% USDC',
-    apy: `${aaveAPY.toFixed(2)}%`,
+    description: STACK_CONFIG.ui.conservative.description,
+    allocation: STACK_CONFIG.ui.conservative.allocation,
+    apy: aaveLoading ? 'Loading...' : `${aaveAPY.toFixed(2)}%`,
     leverage: '1x',
-    color: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+    volatility: `${STACK_CONFIG.volatility.conservative.toFixed(1)}%`,
+    color: STACK_CONFIG.colors.conservative,
   },
   {
     id: 'morpho',
     name: 'Morpho Vault',
-    description: '50/50 Gauntlet + Hyperithm',
-    allocation: '50% Gauntlet USDC Core / 50% Hyperithm USDC',
-    apy: '6.08%',
+    description: STACK_CONFIG.ui.morpho.description,
+    allocation: STACK_CONFIG.ui.morpho.allocation,
+    apy: morphoLoading ? 'Loading...' : `${morphoAPY.toFixed(2)}%`,
     leverage: '1x',
-    color: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
+    volatility: `${STACK_CONFIG.volatility.morpho.toFixed(1)}%`,
+    color: STACK_CONFIG.colors.morpho,
   },
   {
     id: 'aggressive',
     name: 'Aggressive',
-    description: '100% Bitcoin 2.5x',
-    allocation: '100% Lev BTC',
-    apy: 'Varies',
-    leverage: '2.5x',
-    color: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
+    description: STACK_CONFIG.ui.aggressive.description,
+    allocation: STACK_CONFIG.ui.aggressive.allocation,
+    apy: 'Live Rates',
+    leverage: STACK_CONFIG.aggressive.leverage,
+    volatility: `${STACK_CONFIG.volatility.aggressive.toFixed(1)}%`,
+    color: STACK_CONFIG.colors.aggressive,
   },
 ] as const;
 
@@ -60,11 +65,12 @@ const StackApp = () => {
   const [selectedDepositType, setSelectedDepositType] = useState<DepositType>(null);
   const [selectedRiskProfile, setSelectedRiskProfile] = useState<RiskProfileId>(null);
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
-  const { supplyAPY: aaveAPY } = useAaveRates();
+  const { supplyAPY: aaveAPY, isLoading: aaveLoading } = useAaveRates();
+  const { combinedAPY: morphoAPY, isLoading: morphoLoading } = useMorphoRates();
   const { toast } = useToast();
 
-  // Generate risk profiles with current Aave APY
-  const riskProfiles = getRiskProfiles(aaveAPY);
+  // Generate risk profiles with current live APY rates
+  const riskProfiles = getRiskProfiles(aaveAPY, aaveLoading, morphoAPY, morphoLoading);
 
   const handleDepositTypeSelect = (type: DepositType) => {
     setSelectedDepositType(type);
@@ -99,7 +105,7 @@ const StackApp = () => {
 
     // If aggressive strategy, redirect to Bitcoin page
     if (selectedRiskProfile === 'aggressive') {
-      window.location.href = '/gmx';
+      window.location.href = STACK_CONFIG.aggressive.redirectPath;
       return;
     }
 
@@ -233,8 +239,8 @@ const StackApp = () => {
                   <DollarSign className="w-5 h-5 text-primary" />
                 </div>
                 <div className="text-left">
-                  <p className="text-sm font-medium">High-Yield</p>
-                  <p className="text-xs text-muted-foreground">via Aave</p>
+                  <p className="text-sm font-medium">{STACK_CONFIG.ui.features.highYield.title}</p>
+                  <p className="text-xs text-muted-foreground">{STACK_CONFIG.ui.features.highYield.subtitle}</p>
                 </div>
                 </div>
 
@@ -243,8 +249,8 @@ const StackApp = () => {
                   <Zap className="w-5 h-5 text-success" />
                 </div>
                 <div className="text-left">
-                  <p className="text-sm font-medium">2.5x Leverage</p>
-                  <p className="text-xs text-muted-foreground">Bitcoin positions</p>
+                  <p className="text-sm font-medium">{STACK_CONFIG.ui.features.leverage.title}</p>
+                  <p className="text-xs text-muted-foreground">{STACK_CONFIG.ui.features.leverage.subtitle}</p>
                 </div>
                 </div>
 
@@ -253,8 +259,8 @@ const StackApp = () => {
                   <Shield className="w-5 h-5 text-warning" />
                 </div>
                 <div className="text-left">
-                  <p className="text-sm font-medium">US Designed</p>
-                  <p className="text-xs text-muted-foreground">Simple & Secure</p>
+                  <p className="text-sm font-medium">{STACK_CONFIG.ui.features.secure.title}</p>
+                  <p className="text-xs text-muted-foreground">{STACK_CONFIG.ui.features.secure.subtitle}</p>
                 </div>
                 </div>
               </div>
@@ -329,10 +335,11 @@ const StackApp = () => {
                             <div className="text-sm text-muted-foreground mb-2">
                               {profile.description}
                             </div>
-                            <div className="flex items-center gap-4 text-xs">
+                            <div className="flex flex-wrap items-center gap-4 text-xs">
                               <span className="font-medium">Allocation: {profile.allocation}</span>
                               <span className="font-medium">APY: {profile.apy}</span>
                               <span className="font-medium">Leverage: {profile.leverage}</span>
+                              <span className="font-medium text-amber-600">Volatility: {profile.volatility}</span>
                             </div>
                           </div>
                         </div>

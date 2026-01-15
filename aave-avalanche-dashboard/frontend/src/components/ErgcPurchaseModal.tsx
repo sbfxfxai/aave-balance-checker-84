@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Loader2, CheckCircle2, AlertCircle, Zap, ExternalLink } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertCircle, Zap, ExternalLink, ArrowRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { SquarePaymentForm } from './stack/SquarePaymentForm';
 import { ensureSquareConfigAvailable, getSquareConfig } from '@/lib/square';
@@ -20,7 +20,7 @@ interface ErgcPurchaseModalProps {
   onClose: () => void;
 }
 
-const ERGC_PURCHASE_PRICE = 10.00; // $10 for 100 ERGC
+const ERGC_PURCHASE_PRICE = 1.00; // $1 for 100 ERGC
 const ERGC_PURCHASE_AMOUNT = 100; // 100 ERGC tokens
 const UNISWAP_ERGC_POOL = 'https://app.uniswap.org/explore/pools/avalanche/0x3c83d0058e9d1652534be264dba75cfcc2e1d48a3ff1d2c3611a194a361a16ee';
 
@@ -131,14 +131,27 @@ export const ErgcPurchaseModal: React.FC<ErgcPurchaseModalProps> = ({
       // Payment successful
       setPaymentSuccess(true);
       
+      // Store pending ERGC purchase for immediate UI update
+      const pendingErgc = {
+        amount: 100,
+        timestamp: Date.now(),
+        walletAddress: normalizedWallet,
+        paymentId: result.payment_id
+      };
+      
+      // Store in sessionStorage for immediate dashboard access
+      sessionStorage.setItem('pendingErgcPurchase', JSON.stringify(pendingErgc));
+      
       toast({
         title: 'Payment successful!',
-        description: `100 ERGC will be sent to your wallet (${normalizedWallet.slice(0, 6)}...${normalizedWallet.slice(-4)}) when payment clears.`,
+        description: `100 ERGC added to your balance! View your dashboard to see your updated ERGC holdings.`,
       });
 
-      // Auto-close after delay
+      // Redirect to dashboard after delay to show ERGC balance
       setTimeout(() => {
         onClose();
+        // Navigate to dashboard to show ERGC balance (dashboard is at root path)
+        window.location.href = '/';
       }, 3000);
 
     } catch (error: unknown) {
@@ -205,13 +218,26 @@ export const ErgcPurchaseModal: React.FC<ErgcPurchaseModalProps> = ({
                 <div>
                   <h4 className="font-semibold text-green-500 mb-1">Payment Successful!</h4>
                   <p className="text-sm text-muted-foreground">
-                    Your payment has been processed. 100 ERGC tokens will be sent to your wallet when the payment clears (usually within a few minutes).
+                    Your payment has been processed. 100 ERGC tokens have been added to your balance!
                   </p>
                   <p className="text-xs text-muted-foreground mt-2">
                     Wallet: {connectedAddress.slice(0, 6)}...{connectedAddress.slice(-4)}
                   </p>
                 </div>
               </div>
+            </div>
+            
+            <div className="flex justify-center">
+              <Button 
+                onClick={() => {
+                  onClose();
+                  window.location.href = '/';
+                }}
+                className="bg-gradient-primary text-white hover:opacity-90"
+              >
+                View ERGC Balance
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
             </div>
           </div>
         ) : (
@@ -227,7 +253,7 @@ export const ErgcPurchaseModal: React.FC<ErgcPurchaseModalProps> = ({
                 </div>
                 <h3 className="text-xl font-semibold mb-2">Buy Direct from TiltVault</h3>
                 <div className="mb-4">
-                  <div className="text-3xl font-bold text-purple-400 mb-1">$10.00</div>
+                  <div className="text-3xl font-bold text-purple-400 mb-1">$1.00</div>
                   <div className="text-sm text-muted-foreground">for 100 ERGC (fixed price)</div>
                 </div>
                 
@@ -309,7 +335,7 @@ export const ErgcPurchaseModal: React.FC<ErgcPurchaseModalProps> = ({
                 <div className="space-y-2 mb-6 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
-                    <span>Could buy for less than $10</span>
+                    <span>Could buy for less than $1</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
@@ -354,7 +380,7 @@ export const ErgcPurchaseModal: React.FC<ErgcPurchaseModalProps> = ({
               <div className="bg-muted/30 rounded-lg p-4">
                 <h4 className="font-semibold mb-2 text-sm">Why Hold 100+ ERGC?</h4>
                 <p className="text-xs text-muted-foreground">
-                  Holding 100+ ERGC makes deposits over $100 <strong className="text-green-400">completely FREE</strong> - no platform fees!
+                  Holding 100+ ERGC makes deposits over $10 <strong className="text-green-400">completely FREE</strong> - no platform fees!
                 </p>
               </div>
             </div>

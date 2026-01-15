@@ -30,24 +30,25 @@ export const TRADER_JOE_ROUTER_ABI = [
  */
 
 // Platform Fee Tiers (based on deposit amount)
+// TODO: These should be fetched from API/config service
 export const DEPOSIT_FEE_TIERS = {
   TIER_1000: {
     threshold: 1000,
-    rate: 0.033, // 3.3%
+    rate: 0, // Will be set by API
   },
   TIER_100: {
     threshold: 100,
-    rate: 0.042, // 4.2%
+    rate: 0, // Will be set by API
   },
   TIER_50: {
     threshold: 50,
-    rate: 0.055, // 5.5%
+    rate: 0, // Will be set by API
   },
   TIER_20: {
     threshold: 20,
-    rate: 0.074, // 7.4%
+    rate: 0, // Will be set by API
   },
-  DEFAULT_RATE: 0.074, // 7.4% for amounts < $20
+  DEFAULT_RATE: 0, // Will be set by API
 } as const;
 
 // ERGC Token Constants

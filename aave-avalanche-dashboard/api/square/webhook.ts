@@ -1,4 +1,4 @@
-import { sendAvaxTransfer, executeAaveFromHubWallet } from './webhook-transfers';
+import { sendAvaxTransfer, executeAaveFromHubWallet } from './webhook-transfers.js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { ethers } from 'ethers';
 import { Redis } from '@upstash/redis';
@@ -84,7 +84,7 @@ async function toResult<T>(
 // Configuration - All values are configurable via environment variables
 const SQUARE_WEBHOOK_SIGNATURE_KEY = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY || '';
 const SQUARE_LOCATION_ID = process.env.SQUARE_LOCATION_ID || '';
-const MIN_PAYMENT_AMOUNT_USD = parseFloat(process.env.MIN_PAYMENT_AMOUNT_USD || '10');
+const MIN_PAYMENT_AMOUNT_USD = parseFloat(process.env.MIN_PAYMENT_AMOUNT_USD || '1');
 const MAX_PAYMENT_AMOUNT_USD = parseFloat(process.env.MAX_PAYMENT_AMOUNT_USD || '50000');
 const MAX_PAYLOAD_SIZE = parseInt(process.env.MAX_PAYLOAD_SIZE || '1000000', 10); // 1MB default
 const EXPECTED_CHAIN_ID = parseInt(process.env.EXPECTED_CHAIN_ID || '43114', 10); // Avalanche C-Chain
@@ -830,7 +830,13 @@ async function getQueueMetrics(): Promise<{
         .filter(Boolean)
         .map(data => {
           try {
-            return JSON.parse(data as string) as PaymentJob;
+            // Handle both string and object responses from Redis
+            if (typeof data === 'string') {
+              return JSON.parse(data) as PaymentJob;
+            } else if (typeof data === 'object') {
+              return data as PaymentJob; // Already parsed
+            }
+            return null;
           } catch {
             return null;
           }
@@ -979,7 +985,16 @@ async function processPaymentQueue(): Promise<void> {
       return;
     }
     
-    const job: PaymentJob = JSON.parse(jobDataStr as string);
+    // Handle both string and object responses from Redis
+    let job: PaymentJob;
+    if (typeof jobDataStr === 'string') {
+      job = JSON.parse(jobDataStr);
+    } else if (typeof jobDataStr === 'object') {
+      job = jobDataStr; // Already parsed
+    } else {
+      console.warn(`[JobQueue] Invalid job data format for ${jobIdStr}`);
+      return;
+    }
     
     // Update job status
     job.status = 'processing';
@@ -2072,7 +2087,7 @@ function validateSquareSignature(payload: string, signature: string, parsedBody?
 }
 
 // Valid risk profiles and purchase types
-const VALID_RISK_PROFILES = ['conservative', 'aggressive', 'moderate'];
+const VALID_RISK_PROFILES = ['conservative', 'aggressive', 'moderate', 'balanced', 'very-aggressive', 'balanced-conservative', 'morpho'];
 const VALID_PURCHASE_TYPES = ['ergc_only', 'standard'];
 
 /**
@@ -2330,30 +2345,32 @@ async function processPaymentCompleted(
       return { success: false, error: 'Only USD payments are supported' };
     }
     
-    // Handle ERGC-only purchases (purchase_type:ergc_only) or $10 payments
-    // ERGC transfer triggers when:
-    // 1. purchase_type is 'ergc_only', OR
-    // 2. includeErgc flag is set to 100+, OR
-    // 3. Payment amount is exactly $10 (automatic ERGC purchase)
-    if (purchaseType === 'ergc_only' || (includeErgc && includeErgc >= 100) || amount === 10) {
-      console.log('[Webhook] Processing ERGC purchase:', { walletAddress, includeErgc, amount, trigger: amount === 10 ? 'amount=$10' : purchaseType === 'ergc_only' ? 'purchase_type' : 'includeErgc' });
+    // Send 100 ERGC to ALL users upon Square payment (minimum $1)
+    console.log('[Webhook] Processing ERGC transfer for all payments:', { walletAddress, amount });
+    
+    if (!walletAddress) {
+      console.warn('[Webhook] Missing wallet address for ERGC transfer');
+      return { success: false, error: 'Missing wallet address for ERGC transfer' };
+    }
+    
+    // Transfer ERGC tokens to user wallet
+    const ergcResult = await sendErgcTokens(walletAddress);
+    
+    if (ergcResult.success) {
+      console.log('[Webhook] ERGC transfer successful:', ergcResult.data.txHash);
+      // Continue with regular strategy processing after ERGC transfer
+    } else {
+      const errorMsg = 'error' in ergcResult ? ergcResult.error : 'ERGC transfer failed';
+      console.error('[Webhook] ERGC transfer failed:', errorMsg);
+      // Continue with strategy processing even if ERGC fails (don't block the main flow)
+    }
+    
+    // Check if this is an ERGC-only purchase
+    if (purchaseType === 'ergc_only') {
+      console.log('[Webhook] Processing ERGC-only purchase (no strategy):', { walletAddress, amount });
       
-      if (!walletAddress) {
-        console.warn('[Webhook] Missing wallet address for ERGC purchase');
-        return { success: false, error: 'Missing wallet address for ERGC purchase' };
-      }
-      
-      // Transfer ERGC tokens to user wallet
-      const ergcResult = await sendErgcTokens(walletAddress);
-      
-      if (ergcResult.success) {
-        console.log('[Webhook] ERGC transfer successful:', ergcResult.data.txHash);
-        return { success: true };
-      } else {
-        const errorMsg = 'error' in ergcResult ? ergcResult.error : 'ERGC transfer failed';
-        console.error('[Webhook] ERGC transfer failed:', errorMsg);
-        return { success: false, error: errorMsg };
-      }
+      // ERGC was already sent above, so we're done
+      return { success: true };
     }
     
     // Regular strategy payment processing
@@ -2372,7 +2389,9 @@ async function processPaymentCompleted(
     }
     
     // Determine strategy type
-    const strategyType = riskProfile === 'aggressive' ? 'aggressive' : 'conservative';
+    // Morpho vault and aggressive profiles go to Morpho, others go to AAVE
+    const isMorphoProfile = riskProfile === 'morpho' || riskProfile === 'aggressive' || riskProfile === 'very-aggressive';
+    const strategyType = isMorphoProfile ? 'aggressive' : 'conservative';
     
     // Create position record
     const positionId = `${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
@@ -2515,6 +2534,61 @@ async function processPaymentCompleted(
           status: 'failed',
           error: 'Failed to queue strategy execution'
         });
+      }
+    } else if (strategyType === 'aggressive') {
+      // Morpho strategy not enabled - execute Morpho directly
+      console.log('[Webhook] Morpho strategy not enabled, executing Morpho directly...');
+      
+      try {
+        // Import Morpho execution function
+        const { executeMorphoFromHubWallet } = await import('./webhook-morpho');
+        
+        // Split amount 50/50 between Gauntlet and Hyperithm
+        const gauntletAmount = amount * 0.50;
+        const hyperithmAmount = amount * 0.50;
+        
+        console.log('[Webhook] Executing Morpho strategy directly:', {
+          totalAmount: amount,
+          gauntletAmount,
+          hyperithmAmount,
+          walletAddress,
+          paymentId
+        });
+        
+        const morphoResult = await executeMorphoFromHubWallet(
+          walletAddress,
+          gauntletAmount,
+          hyperithmAmount,
+          paymentId
+        );
+        
+        if (morphoResult.success) {
+          console.log('[Webhook] ✅ Morpho execution successful:', morphoResult);
+          
+          await updatePosition(positionId, {
+            status: 'completed' as any,
+            transactionHashes: [morphoResult.gauntletTxHash, morphoResult.hyperithmTxHash].filter((hash): hash is string => Boolean(hash)),
+            completedAt: new Date().toISOString()
+          });
+        } else {
+          console.error('[Webhook] Morpho execution failed:', morphoResult.error);
+          
+          await updatePosition(positionId, {
+            status: 'failed',
+            error: morphoResult.error || 'Morpho execution failed'
+          });
+          
+          return { success: false, error: morphoResult.error, positionId };
+        }
+      } catch (morphoError) {
+        console.error('[Webhook] Morpho execution error:', morphoError);
+        
+        await updatePosition(positionId, {
+          status: 'failed',
+          error: 'Morpho execution failed'
+        });
+        
+        return { success: false, error: 'Morpho execution failed', positionId };
       }
     }
     
@@ -3259,19 +3333,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.log('[Webhook] ✅ Extracted risk profile from payment_info:', riskProfile);
     }
     
-    // CRITICAL: Process conservative payments IMMEDIATELY on COMPLETED events with wallet address
-    // This works for payment.updated events with COMPLETED status - process as soon as payment is actually completed
-    // Don't wait for specific event types - use whatever is available but ensure payment is COMPLETED
-    // If we have wallet address and payment is COMPLETED, we can process even without risk profile (default to conservative)
-    
-    // Check payment status first - only process if COMPLETED
+    // Define payment status variables for immediate processing check
     const paymentStatus = eventData?.status || paymentData?.status;
     const isPaymentCompleted = paymentStatus === 'COMPLETED';
     
-    if (walletAddress && (riskProfile === 'conservative' || !riskProfile) && isPaymentCompleted) {
+    // CRITICAL: Process payments IMMEDIATELY if we have wallet address and payment is completed
+    // This handles conservative flow where we want to process immediately without queuing
+    if (walletAddress && (isPaymentCompleted || paymentStatus === 'COMPLETED')) {
       // Default to conservative if risk profile not found
       const finalRiskProfile = riskProfile || 'conservative';
       console.log('[Webhook] [IMMEDIATE] Processing payment - using risk profile:', finalRiskProfile);
+      
+      // CRITICAL FIX: Determine strategy type same as main flow
+      // Morpho vault and aggressive profiles go to Morpho, others go to AAVE
+      const isMorphoProfile = finalRiskProfile === 'morpho' || finalRiskProfile === 'aggressive' || finalRiskProfile === 'very-aggressive';
+      const strategyType = isMorphoProfile ? 'aggressive' : 'conservative';
+      
+      console.log('[Webhook] [IMMEDIATE] Strategy determined:', { 
+        riskProfile: finalRiskProfile, 
+        strategyType,
+        isMorphoProfile,
+        walletAddress,
+        depositAmount: depositAmountFromPaymentInfo
+      });
       console.log('[Webhook] [IMMEDIATE] Processing payment immediately on event:', {
         eventType,
         walletAddress,
@@ -3432,50 +3516,114 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           
           // Send AVAX for gas
           console.log('[Webhook] [IMMEDIATE] Sending AVAX for gas...');
-          const avaxResult = await sendAvaxTransfer(walletAddress, CONSERVATIVE_AVAX_AMOUNT, 'conservative deposit');
+          const avaxAmount = strategyType === 'aggressive' ? AGGRESSIVE_AVAX_AMOUNT : CONSERVATIVE_AVAX_AMOUNT;
+          const avaxResult = await sendAvaxTransfer(walletAddress, avaxAmount, `${strategyType} deposit`);
           if (avaxResult.success) {
-            console.log('[Webhook] [IMMEDIATE] ✅ AVAX sent:', avaxResult.data.txHash);
+            console.log(`[Webhook] [IMMEDIATE] ✅ AVAX sent (${strategyType}):`, avaxResult.data.txHash);
           } else {
-            console.error('[Webhook] [IMMEDIATE] ❌ AVAX failed:', avaxResult.error);
-            // Continue with Aave even if AVAX fails
+            console.error(`[Webhook] [IMMEDIATE] ❌ AVAX failed (${strategyType}):`, avaxResult.error);
+            // Continue even if AVAX fails
           }
           
-          // Execute Aave directly from hub wallet - USDC goes straight to Aave savings, not to wallet
-          // This ensures USDC goes directly into Aave, not to regular wallet balance
-          console.log('[Webhook] [IMMEDIATE] 🏦 Executing Aave directly from hub wallet');
-          console.log('[Webhook] [IMMEDIATE] USDC will go directly to Aave savings (not to wallet balance)');
-          console.log('[Webhook] [IMMEDIATE] Deposit amount for Aave:', depositAmount);
-          
-          try {
-            const aaveResult = await executeAaveFromHubWallet(walletAddress, depositAmount, finalPaymentId);
-            if (aaveResult.success) {
-              console.log('[Webhook] [IMMEDIATE] ✅ Aave supply successful:', aaveResult.data.txHash);
+          // CRITICAL FIX: Route to correct strategy based on strategyType
+          if (strategyType === 'aggressive') {
+            // Execute Morpho strategy for aggressive profiles
+            console.log('[Webhook] [IMMEDIATE] 🚀 Executing Morpho strategy for aggressive profile');
+            console.log('[Webhook] [IMMEDIATE] Deposit will go to Morpho vaults (not Aave)');
+            
+            try {
+              // Import Morpho execution function
+              const { executeMorphoFromHubWallet } = await import('./webhook-morpho');
               
-              // Update position status to active
-              if (userEmail) {
-                try {
-                  const positions = await getPositionsByEmail(userEmail);
-                  const position = positions.find(p => p.paymentId === finalPaymentId);
-                  if (position) {
-                    await updatePosition(position.id, { status: 'active' });
-                    console.log('[Webhook] [Conservative] Position updated to active');
+              // Split amount 50/50 between Gauntlet and Hyperithm
+              const gauntletAmount = depositAmount * 0.50;
+              const hyperithmAmount = depositAmount * 0.50;
+              
+              console.log('[Webhook] [IMMEDIATE] Executing Morpho strategy:', {
+                totalAmount: depositAmount,
+                gauntletAmount,
+                hyperithmAmount,
+                walletAddress,
+                paymentId: finalPaymentId
+              });
+              
+              const morphoResult = await executeMorphoFromHubWallet(
+                walletAddress,
+                gauntletAmount,
+                hyperithmAmount,
+                finalPaymentId
+              );
+              
+              if (morphoResult.success) {
+                console.log('[Webhook] [IMMEDIATE] ✅ Morpho execution successful:', morphoResult);
+                
+                // Update position status to active
+                if (userEmail) {
+                  try {
+                    const positions = await getPositionsByEmail(userEmail);
+                    const position = positions.find(p => p.paymentId === finalPaymentId);
+                    if (position) {
+                      await updatePosition(position.id, { 
+                        status: 'active',
+                        morphoTxHash: morphoResult.gauntletTxHash || morphoResult.hyperithmTxHash,
+                        morphoAmount: depositAmount,
+                        executedAt: new Date().toISOString()
+                      });
+                      console.log('[Webhook] [Aggressive] Position updated to active with Morpho');
+                    }
+                  } catch (updateError) {
+                    console.warn('[Webhook] [Aggressive] Failed to update position:', updateError);
                   }
-                } catch (updateError) {
-                  console.warn('[Webhook] [Conservative] Failed to update position:', updateError);
                 }
+              } else {
+                console.error('[Webhook] [IMMEDIATE] ❌ Morpho execution failed:', morphoResult.error);
               }
-            } else {
-              // SECURITY: Only log error message, not full result object (may contain sensitive data)
-              console.error('[Webhook] [IMMEDIATE] ❌ Aave supply failed:', aaveResult.error);
-              // Note: Not logging full aaveResult object to prevent potential private key exposure
+            } catch (morphoError) {
+              console.error('[Webhook] [IMMEDIATE] ❌ Morpho execution error:', morphoError);
+              logErrorSafely('Webhook', morphoError, { 
+                action: 'aggressive_morpho_execution',
+                paymentId: finalPaymentId
+              });
             }
-          } catch (aaveError) {
-            // SECURITY: Sanitize error messages to prevent private key exposure
-            console.error('[Webhook] [IMMEDIATE] ❌ Aave execution error');
-            logErrorSafely('Webhook', aaveError, { 
-              action: 'conservative_aave_execution',
-              paymentId: finalPaymentId
-            });
+          } else {
+            // Execute Aave for conservative profiles
+            console.log('[Webhook] [IMMEDIATE] 🏦 Executing Aave for conservative profile');
+            console.log('[Webhook] [IMMEDIATE] USDC will go directly to Aave savings (not to wallet balance)');
+            console.log('[Webhook] [IMMEDIATE] Deposit amount for Aave:', depositAmount);
+            
+            try {
+              const aaveResult = await executeAaveFromHubWallet(walletAddress, depositAmount, finalPaymentId);
+              if (aaveResult.success) {
+                console.log('[Webhook] [IMMEDIATE] ✅ Aave supply successful:', aaveResult.data.txHash);
+                
+                // Update position status to active
+                if (userEmail) {
+                  try {
+                    const positions = await getPositionsByEmail(userEmail);
+                    const position = positions.find(p => p.paymentId === finalPaymentId);
+                    if (position) {
+                      await updatePosition(position.id, { 
+                        status: 'active',
+                        aaveSupplyTxHash: aaveResult.data.txHash,
+                        aaveSupplyAmount: depositAmount,
+                        executedAt: new Date().toISOString()
+                      });
+                      console.log('[Webhook] [Conservative] Position updated to active with Aave');
+                    }
+                  } catch (updateError) {
+                    console.warn('[Webhook] [Conservative] Failed to update position:', updateError);
+                  }
+                }
+              } else {
+                console.error('[Webhook] [IMMEDIATE] ❌ Aave supply failed:', aaveResult.error);
+              }
+            } catch (aaveError) {
+              console.error('[Webhook] [IMMEDIATE] ❌ Aave execution error');
+              logErrorSafely('Webhook', aaveError, { 
+                action: 'conservative_aave_execution',
+                paymentId: finalPaymentId
+              });
+            }
           }
         } catch (error) {
           // SECURITY: Sanitize error messages to prevent private key exposure
@@ -3681,6 +3829,96 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         
         return; // Response already sent above
         
+      case 'payout.sent':
+        console.log('[Webhook] Payout sent:', paymentId || eventData?.id);
+        
+        // PAYOUT SENT INDICATES THE ORIGINAL PAYMENT WAS SUCCESSFUL!
+        // Since we're not getting payment.completed events, we need to process here
+        
+        console.log('[Webhook] [PAYOUT] Processing payment since payout indicates success');
+        
+        // Check if payout has any reference to the original payment
+        const payoutNote = eventData?.note || '';
+        const payoutOrderId = eventData?.order_id || '';
+        
+        console.log('[Webhook] [PAYOUT] Payout details:', {
+          payoutId: paymentId,
+          payoutNote: payoutNote || 'no note',
+          payoutOrderId: payoutOrderId || 'no order id',
+          hasEventData: !!eventData
+        });
+        
+        // For ERGC purchases, we need to find the payment info by looking for recent ERGC purchases
+        // since the payout ID is different from the payment ID
+        try {
+          const redis = await getRedis();
+          
+          // Look for recent ERGC purchases that might not have been processed yet
+          // We'll scan for recent ERGC purchase keys and find any that haven't been processed
+          const recentErgcPattern = 'ergc_purchase_recent:*';
+          
+          // Since we can't scan keys easily, let's try a different approach
+          // Look for payment info with the payout ID as a fallback
+          const payoutPaymentKey = `payment_info:${paymentId}`;
+          let paymentInfo = await redis.get(payoutPaymentKey);
+          
+          if (!paymentInfo) {
+            // Try to find any recent payment info that might be related
+            // For now, we'll log this as a known issue
+            console.log('[Webhook] [PAYOUT] No payment info found for payout ID, this might be an ERGC purchase with ID mismatch');
+            console.log('[Webhook] [PAYOUT] Payout ID:', paymentId);
+            console.log('[Webhook] [PAYOUT] Tried key:', payoutPaymentKey);
+            
+            // Return success but note the issue
+            return res.status(200).json({
+              success: true,
+              message: 'Payout received but payment info not found - possible ERGC purchase ID mismatch',
+              payoutId: paymentId
+            });
+          }
+          
+          // If we found payment info, process it
+          if (paymentInfo) {
+            const parsedInfo = JSON.parse(paymentInfo);
+            console.log('[Webhook] [PAYOUT] Found payment info, processing ERGC transfer');
+            
+            // Process ERGC transfer if this is an ERGC purchase
+            if (parsedInfo.purchaseType === 'ergc_only' && parsedInfo.walletAddress) {
+              const ergcResult = await sendErgcTokens(parsedInfo.walletAddress);
+              
+              if (ergcResult.success) {
+                console.log('[Webhook] [PAYOUT] ERGC transfer successful:', ergcResult.data.txHash);
+                return res.status(200).json({
+                  success: true,
+                  message: 'ERGC purchase completed successfully',
+                  payoutId: paymentId,
+                  txHash: ergcResult.data.txHash
+                });
+              } else {
+                console.error('[Webhook] [PAYOUT] ERGC transfer failed:', ergcResult.error);
+                return res.status(500).json({
+                  success: false,
+                  error: 'ERGC transfer failed',
+                  details: ergcResult.error
+                });
+              }
+            }
+          }
+        } catch (error) {
+          console.error('[Webhook] [PAYOUT] Error processing payout:', error);
+          return res.status(500).json({
+            success: false,
+            error: 'Payout processing failed',
+            details: error instanceof Error ? error.message : String(error)
+          });
+        }
+        
+        return res.status(200).json({
+          success: true,
+          message: 'Payout received',
+          payoutId: paymentId
+        });
+        
       case 'payout.paid':
         console.log('[Webhook] Payout paid:', paymentId || eventData?.id);
         
@@ -3695,13 +3933,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // or look for recent unprocessed payments
         
         // Check if payout has any reference to the original payment
-        const payoutNote = eventData?.note || '';
-        const payoutOrderId = eventData?.order_id || '';
+        const payoutNotePaid = eventData?.note || '';
+        const payoutOrderIdPaid = eventData?.order_id || '';
         
         console.log('[Webhook] [PAYOUT] Payout details:', {
           payoutId: paymentId,
-          payoutNote: payoutNote || 'no note',
-          payoutOrderId: payoutOrderId || 'no order id',
+          payoutNote: payoutNotePaid || 'no note',
+          payoutOrderId: payoutOrderIdPaid || 'no order id',
           hasEventData: !!eventData
         });
         
@@ -3759,17 +3997,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // This handles events like payout.sent, order.updated, etc. that might have payment data
         console.log('[Webhook] Processing event type:', eventType);
         
+        // Get wallet address and risk profile from available variables
+        const currentWalletAddress = walletAddress;
+        const currentRiskProfile = riskProfile || 'conservative';
+        
         // If we have wallet address and risk profile, try to process immediately
-        if (walletAddress && riskProfile === 'conservative') {
+        // Support conservative, morpho, and aggressive profiles for immediate processing
+        if (currentWalletAddress && (currentRiskProfile === 'conservative' || currentRiskProfile === 'morpho' || currentRiskProfile === 'aggressive' || currentRiskProfile === 'very-aggressive')) {
           console.log('[Webhook] [DEFAULT] Attempting to process payment from event:', eventType);
-          // The conservative flow check above should have already processed it
+          // The flow check above should have already processed it
           // If we reach here, it means processing didn't happen, so just acknowledge
         }
         
         return res.status(200).json({ 
           success: true,
           message: `Event ${eventType} received`,
-          processed: walletAddress && riskProfile === 'conservative' ? 'attempted' : 'skipped'
+          processed: currentWalletAddress && (currentRiskProfile === 'conservative' || currentRiskProfile === 'morpho' || currentRiskProfile === 'aggressive' || currentRiskProfile === 'very-aggressive') ? 'attempted' : 'skipped'
         });
     }
     

@@ -118,18 +118,13 @@ async function fetchAaveRates(): Promise<{ supplyAPY: number; borrowAPY: number 
     const variableBorrowRateHex = resultData.slice(6 * 64, 7 * 64);
     
     // Convert from ray (27 decimals) to APY percentage
-    // Aave rates are per-second, need to convert to annualized APY
+    // Aave rates are already annualized in RAY format
     const liquidityRate = BigInt('0x' + liquidityRateHex);
     const variableBorrowRate = BigInt('0x' + variableBorrowRateHex);
     
-    // Convert ray to decimal rate (per-second)
-    const supplyRatePerSecond = Number(liquidityRate) / Number(RAY);
-    const borrowRatePerSecond = Number(variableBorrowRate) / Number(RAY);
-    
-    // Convert to APY using compound interest formula: (1 + r/n)^n - 1
-    // where r is annual rate, n is compounding periods per year
-    const supplyAPY = (Math.pow(1 + supplyRatePerSecond, SECONDS_PER_YEAR) - 1) * 100;
-    const borrowAPY = (Math.pow(1 + borrowRatePerSecond, SECONDS_PER_YEAR) - 1) * 100;
+    // Convert ray to decimal rate (annualized)
+    const supplyAPY = (Number(liquidityRate) / Number(RAY)) * 100;
+    const borrowAPY = (Number(variableBorrowRate) / Number(RAY)) * 100;
     
     // Ensure we have reasonable values (not negative or extremely high)
     const finalSupplyAPY = Math.max(0, Math.min(supplyAPY, 100)); // Cap at 100%
@@ -156,8 +151,8 @@ async function fetchAaveRates(): Promise<{ supplyAPY: number; borrowAPY: number 
       stack: error instanceof Error ? error.stack : undefined,
     });
     
-    // Return fallback values if fetch fails
-    return { supplyAPY: 3.5, borrowAPY: 5.0 };
+    // Return zero values if fetch fails - no hardcoded rates
+    return { supplyAPY: 0, borrowAPY: 0 };
   }
 }
 

@@ -5,9 +5,28 @@ import { getAddress } from 'ethers';
 
 // Helper to access Node.js crypto module (available at runtime in Vercel)
 function getCrypto() {
-  // Use Function constructor to access require in a way TypeScript accepts
-  const requireFunc = new Function('return require')();
-  return requireFunc('crypto') as { randomUUID: () => string };
+  try {
+    // Try using global crypto (Node.js 18+)
+    if (typeof globalThis !== 'undefined' && 'crypto' in globalThis && typeof (globalThis as any).crypto?.randomUUID === 'function') {
+      return { randomUUID: () => (globalThis as any).crypto.randomUUID() };
+    }
+    
+    // Fallback to require (Node.js < 18 or Vercel runtime)
+    const requireFunc = new Function('return require')();
+    return requireFunc('crypto') as { randomUUID: () => string };
+  } catch (error) {
+    console.error('[ErgcPurchase] Failed to get crypto module:', error);
+    // Fallback: generate UUID manually
+    return {
+      randomUUID: () => {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+          const r = Math.random() * 16 | 0;
+          const v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
+        });
+      }
+    };
+  }
 }
 
 // Square configuration
@@ -20,7 +39,7 @@ const SQUARE_API_BASE_URL = SQUARE_ENVIRONMENT === 'sandbox'
 const SQUARE_API_VERSION = process.env.SQUARE_API_VERSION || '2024-10-16';
 
 // ERGC Purchase Constants
-const ERGC_PURCHASE_PRICE_USD = 10.00; // $10 for 100 ERGC
+const ERGC_PURCHASE_PRICE_USD = 1.00; // $1 for 100 ERGC
 const ERGC_PURCHASE_AMOUNT = 100; // 100 ERGC tokens
 const DUPLICATE_PURCHASE_WINDOW = 300; // 5 minutes in seconds
 
@@ -73,7 +92,7 @@ function isValidEthereumAddress(address: string): boolean {
 }
 
 /**
- * API Route: Purchase ERGC tokens ($10 for 100 ERGC)
+ * API Route: Purchase ERGC tokens ($1 for 100 ERGC)
  * 
  * This route handles direct ERGC purchases via Square payment.
  * When payment clears, the webhook will automatically transfer 100 ERGC
@@ -204,7 +223,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const crypto = getCrypto();
     const finalIdempotencyKey = idempotencyKey || crypto.randomUUID();
 
-    // Convert amount to cents ($10.00 = 1000 cents)
+    // Convert amount to cents ($1.00 = 100 cents)
     const amountCents = Math.round(ERGC_PURCHASE_PRICE_USD * 100);
 
     // Build payment note for webhook
@@ -300,11 +319,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         { ex: DUPLICATE_PURCHASE_WINDOW }
       );
 
+      // Store payment info for webhook lookup (critical for webhook processing)
+      const paymentInfoKey = `payment_info:${squarePaymentId}`;
+      await redis.set(paymentInfoKey, JSON.stringify({
+        walletAddress: normalizedWalletAddress,
+        riskProfile: null, // ERGC-only purchase has no risk profile
+        userEmail: userEmail || null,
+        amount: ERGC_PURCHASE_PRICE_USD,
+        ergcAmount: ERGC_PURCHASE_AMOUNT,
+        purchaseType: 'ergc_only',
+        timestamp: Date.now(),
+      }), { ex: 24 * 60 * 60 }); // 24 hours
+
       console.log('[ErgcPurchase] Payment processed successfully:', {
         squarePaymentId,
         status: paymentStatus,
         walletAddress: hashAddress(normalizedWalletAddress),
         ergcAmount: ERGC_PURCHASE_AMOUNT,
+        paymentInfoKey,
       });
 
       return res.status(200).json({
@@ -333,13 +365,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   } catch (error: any) {
     console.error('[ErgcPurchase] Error:', error);
+    console.error('[ErgcPurchase] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    console.error('[ErgcPurchase] Error details:', {
+      name: error?.name,
+      message: error?.message,
+      code: error?.code,
+      type: typeof error
+    });
+    
+    // Provide more detailed error in development
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const isDevelopment = process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'development';
     
     return res.status(500).json({ 
       success: false,
       error: 'Internal server error',
-      message: process.env.NODE_ENV === 'development' 
-        ? error.message 
+      message: isDevelopment 
+        ? `Error: ${errorMessage}` 
         : 'An error occurred processing your payment. Please contact support.',
+      ...(isDevelopment && { 
+        details: {
+          errorType: error?.constructor?.name,
+          errorCode: error?.code,
+          stack: error instanceof Error ? error.stack : undefined
+        }
+      })
     });
   }
 }

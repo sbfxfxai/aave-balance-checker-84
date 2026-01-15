@@ -82,8 +82,8 @@ export async function executeAggressiveFlow(
     }
 
     // Step 3: Execute Morpho strategy
-    // Split amount between gauntlet and hyperithm (70/30 split for aggressive)
-    const gauntletAmount = Math.floor(amount * 0.7);
+    // Split amount 50/50 between Gauntlet and Hyperithm
+    const gauntletAmount = Math.floor(amount * 0.50);
     const hyperithmAmount = amount - gauntletAmount;
     
     const morphoResult = await executeMorphoFromHubWallet(

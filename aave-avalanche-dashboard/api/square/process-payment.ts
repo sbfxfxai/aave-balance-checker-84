@@ -3,7 +3,8 @@ import { getRedis } from '../utils/redis';
 import { checkRateLimit, RATE_LIMITS } from '../wallet/rateLimit';
 import { withMonitoring } from '../wallet/monitoring';
 import { generatePositionId, savePosition } from '../positions/store';
-import { executeAaveFromHubWallet } from './webhook-transfers';
+import { executeAaveFromHubWallet } from './webhook-transfers.js';
+import { executeMorphoFromHubWallet } from './webhook-morpho.js';
 
 // Force Node.js runtime (required for crypto module)
 export const config = {
@@ -421,9 +422,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
         
         try {
-          // CRITICAL: Get the original deposit amount from payment_info, not from body.amount
+          // CRITICAL: Get the original deposit amount and risk profile from payment_info
           // body.amount is the total amount (deposit + fees), but we need the deposit amount
           let depositAmount: number | null = null;
+          let riskProfile: string | null = null;
           
           try {
             const redis = await getRedis();
@@ -435,7 +437,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 ? JSON.parse(paymentInfoRaw) 
                 : paymentInfoRaw;
               depositAmount = paymentInfo.amount || null;
-              console.log('[ProcessPayment] ✅ Found deposit amount from payment_info:', depositAmount);
+              riskProfile = paymentInfo.riskProfile || null;
+              console.log('[ProcessPayment] ✅ Found payment info:', { depositAmount, riskProfile });
             } else {
               console.warn('[ProcessPayment] ⚠️ Payment info not found in Redis - will use body.amount as fallback');
             }
@@ -443,18 +446,114 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             console.error('[ProcessPayment] Failed to get payment info from Redis:', redisError);
           }
           
-            // Use payment_info amount if available, otherwise fall back to body.amount
+          // Use payment_info amount if available, otherwise fall back to body.amount
           const exactAmount = depositAmount || body.amount || amount;
-          console.log('[ProcessPayment] 🔥 FINAL AMOUNT FOR AAVE:', exactAmount, '(source:', depositAmount ? 'payment_info' : 'body.amount', ')');
           
-          const aaveResult = await executeAaveFromHubWallet(walletAddress!, exactAmount, paymentId);
+          // CRITICAL: Determine strategy type from risk profile
+          // Morpho vault and aggressive profiles go to Morpho, others go to AAVE
+          const finalRiskProfile = riskProfile || strategyType;
+          const isMorphoProfile = finalRiskProfile === 'morpho' || finalRiskProfile === 'aggressive' || finalRiskProfile === 'very-aggressive';
+          const finalStrategyType = isMorphoProfile ? 'aggressive' : 'conservative';
           
-          if (aaveResult.success) {
-            console.log('[ProcessPayment] ✅ Aave supply successful:', aaveResult.data.txHash);
+          console.log('[ProcessPayment] Strategy routing:', {
+            riskProfile: finalRiskProfile,
+            strategyType: finalStrategyType,
+            isMorphoProfile,
+            amount: exactAmount
+          });
+          
+          // Declare execution result variable
+          let executionResult: {
+            success: boolean;
+            txHash?: string;
+            protocol: string;
+            error?: string;
+          };
+          
+          if (isMorphoProfile) {
+            // Execute Morpho strategy for morpho/aggressive profiles
+            console.log('[ProcessPayment] 🚀 Executing Morpho strategy for', finalRiskProfile, 'profile');
+            
+            try {
+              const { executeMorphoFromHubWallet } = await import('./webhook-morpho.js');
+              
+              // Split amount 50/50 between Gauntlet and Hyperithm
+              const gauntletAmount = exactAmount * 0.50;
+              const hyperithmAmount = exactAmount * 0.50;
+              
+              console.log('[ProcessPayment] Executing Morpho strategy:', {
+                totalAmount: exactAmount,
+                gauntletAmount,
+                hyperithmAmount,
+                walletAddress,
+                paymentId
+              });
+              
+              const morphoResult = await executeMorphoFromHubWallet(
+                walletAddress!,
+                gauntletAmount,
+                hyperithmAmount,
+                paymentId
+              );
+              
+              executionResult = {
+                success: morphoResult.success,
+                txHash: morphoResult.gauntletTxHash || morphoResult.hyperithmTxHash,
+                protocol: 'Morpho',
+                error: morphoResult.error
+              };
+              
+              if (morphoResult.success) {
+                console.log('[ProcessPayment] ✅ Morpho execution successful:', morphoResult);
+              } else {
+                console.error('[ProcessPayment] ⚠️ Morpho execution failed:', morphoResult.error);
+                // Don't fail the payment response - webhook will handle it as fallback
+              }
+            } catch (morphoError) {
+              console.error('[ProcessPayment] ❌ Morpho execution error:', morphoError);
+              executionResult = {
+                success: false,
+                error: morphoError instanceof Error ? morphoError.message : 'Morpho execution failed',
+                protocol: 'Morpho'
+              };
+            }
           } else {
-            console.error('[ProcessPayment] ⚠️ Aave supply failed:', aaveResult.error);
-            // Don't fail the payment response - webhook will handle it as fallback
+            // Execute Aave for conservative profiles
+            console.log('[ProcessPayment] 🏦 Executing Aave for conservative profile');
+            console.log('[ProcessPayment] Deposit will go to Aave savings');
+            
+            try {
+              const aaveResult = await executeAaveFromHubWallet(walletAddress!, exactAmount, paymentId);
+              
+              executionResult = {
+                success: aaveResult.success,
+                txHash: aaveResult.data?.txHash,
+                protocol: 'Aave',
+                error: aaveResult.success ? undefined : aaveResult.error
+              };
+              
+              if (aaveResult.success) {
+                console.log('[ProcessPayment] ✅ Aave execution successful:', aaveResult.data.txHash);
+              } else {
+                console.error('[ProcessPayment] ❌ Aave execution failed:', aaveResult.error);
+              }
+            } catch (aaveError) {
+              console.error('[ProcessPayment] ❌ Aave execution error:', aaveError);
+              executionResult = {
+                success: false,
+                error: aaveError instanceof Error ? aaveError.message : 'Aave execution failed',
+                protocol: 'Aave'
+              };
+            }
           }
+          
+          // Log execution result
+          console.log('[ProcessPayment] 📊 Execution Result:', {
+            protocol: executionResult.protocol,
+            success: executionResult.success,
+            txHash: executionResult.txHash,
+            error: executionResult.error
+          });
         } catch (processingError) {
           console.error('[ProcessPayment] ⚠️ Error triggering immediate processing:', processingError);
           console.error('[ProcessPayment] Error stack:', processingError instanceof Error ? processingError.stack : 'No stack');

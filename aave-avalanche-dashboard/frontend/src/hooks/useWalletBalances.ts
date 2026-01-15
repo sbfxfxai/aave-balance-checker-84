@@ -277,12 +277,30 @@ export const useWalletBalances = () => {
   const formattedUsdc = usdcBalanceFormatted;
   const formattedUsdcE = usdcEBalanceFormatted;
   const formattedErgc = ergcBalanceFormatted;
+  
+  // Check for pending ERGC purchases and add them immediately
+  let finalErgcBalance = formattedErgc;
+  try {
+    const pendingErgcStr = sessionStorage.getItem('pendingErgcPurchase');
+    if (pendingErgcStr) {
+      const pendingErgc = JSON.parse(pendingErgcStr);
+      // Check if pending purchase is for this wallet and within last 5 minutes
+      if (pendingErgc.walletAddress?.toLowerCase() === address?.toLowerCase() && 
+          Date.now() - pendingErgc.timestamp < 5 * 60 * 1000) {
+        const currentBalance = parseFloat(formattedErgc || '0');
+        finalErgcBalance = (currentBalance + pendingErgc.amount).toString();
+        console.log('[WalletBalances] Added pending ERGC:', pendingErgc.amount, 'to balance:', currentBalance);
+      }
+    }
+  } catch (error) {
+    console.warn('[WalletBalances] Error checking pending ERGC:', error);
+  }
 
   return {
     avaxBalance: formattedAvax,
     usdcBalance: formattedUsdc,
     usdcEBalance: formattedUsdcE,
-    ergcBalance: formattedErgc,
+    ergcBalance: finalErgcBalance,
     isLoading: isLoadingAvax || isLoadingUsdc || isLoadingUsdcE || isLoadingErgc,
     avaxSymbol: avaxBalance?.symbol || 'AVAX',
     usdcSymbol: 'USDC', // USDC is always USDC when using readContract

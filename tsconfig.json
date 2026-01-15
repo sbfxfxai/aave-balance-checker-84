@@ -15,5 +15,5 @@
     "types": ["node"],
     "typeRoots": ["./node_modules/@types"]
   },
-  "exclude": ["node_modules", "**/node_modules/**"]
+  "exclude": ["node_modules", "**/node_modules/**", "working-project"]
 }

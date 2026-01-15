@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 
-interface AaveRates {
-  supplyAPY: number;
-  borrowAPY: number;
+interface MorphoRates {
+  gauntletAPY: number;
+  hyperithmAPY: number;
+  combinedAPY: number;
   isLoading: boolean;
   error: string | null;
 }
@@ -26,23 +27,24 @@ async function retryWithBackoff<T>(
       }
       
       const delay = baseDelay * Math.pow(2, attempt);
-      console.log(`[Aave Rates] Retry ${attempt + 1}/${maxRetries} after ${delay}ms`);
+      console.log(`[Morpho Rates] Retry ${attempt + 1}/${maxRetries} after ${delay}ms`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
   throw new Error('Max retries exceeded');
 }
 
-export function useAaveRates(): AaveRates {
-  const [supplyAPY, setSupplyAPY] = useState<number>(0); // No hardcoded fallback
-  const [borrowAPY, setBorrowAPY] = useState<number>(0);
+export function useMorphoRates(): MorphoRates {
+  const [gauntletAPY, setGauntletAPY] = useState<number>(6.5); // Default fallback
+  const [hyperithmAPY, setHyperithmAPY] = useState<number>(9.5); // Default fallback
+  const [combinedAPY, setCombinedAPY] = useState<number>(8.0); // Default fallback
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchRates = async () => {
       const runtimeApiBaseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-      const apiUrl = `${runtimeApiBaseUrl}/api/aave/rates`;
+      const apiUrl = `${runtimeApiBaseUrl}/api/morpho/rates`;
       
       try {
         // Retry on network errors to get real values
@@ -65,22 +67,26 @@ export function useAaveRates(): AaveRates {
         const data = await response.json();
         
         // Check if data is successful
-        if (data.success && typeof data.supplyAPY === 'number' && typeof data.borrowAPY === 'number') {
-          setSupplyAPY(data.supplyAPY);
-          setBorrowAPY(data.borrowAPY);
+        if (data.success && 
+            typeof data.gauntletAPY === 'number' && 
+            typeof data.hyperithmAPY === 'number' && 
+            typeof data.combinedAPY === 'number') {
+          setGauntletAPY(data.gauntletAPY);
+          setHyperithmAPY(data.hyperithmAPY);
+          setCombinedAPY(data.combinedAPY);
           setError(null); // Clear any previous errors on success
         } else {
           // API returned an error response
           const errorMsg = data.error || 'Invalid response format';
           setError(errorMsg);
-          console.warn('[Aave Rates] API returned error:', errorMsg);
+          console.warn('[Morpho Rates] API returned error:', errorMsg);
         }
       } catch (err) {
         // Handle network errors and other fetch failures
         const errorMessage = err instanceof Error ? err.message : 'Failed to fetch rates';
         
         // Log the error for debugging
-        console.error('[Aave Rates] Failed to fetch after retries:', errorMessage);
+        console.error('[Morpho Rates] Failed to fetch after retries:', errorMessage);
         
         // Set error state so user knows we're using fallback values
         setError(`Unable to fetch rates: ${errorMessage}`);
@@ -98,5 +104,5 @@ export function useAaveRates(): AaveRates {
     return () => clearInterval(interval);
   }, []);
 
-  return { supplyAPY, borrowAPY, isLoading, error };
+  return { gauntletAPY, hyperithmAPY, combinedAPY, isLoading, error };
 }

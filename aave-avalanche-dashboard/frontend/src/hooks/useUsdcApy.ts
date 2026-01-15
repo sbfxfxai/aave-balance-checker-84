@@ -27,6 +27,6 @@ export function useUsdcApy() {
     apy: usdcSupplyApy,
     isLoading,
     // Format as display string with fallback
-    displayApy: usdcSupplyApy > 0 ? usdcSupplyApy.toFixed(2) : '5.00',
+    displayApy: usdcSupplyApy > 0 ? usdcSupplyApy.toFixed(2) : 'Loading...',
   };
 }

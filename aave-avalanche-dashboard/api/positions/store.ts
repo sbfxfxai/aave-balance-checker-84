@@ -63,6 +63,7 @@ export interface UserPosition {
   
   // Transaction hashes for partial success tracking
   avaxTxHash?: string; // AVAX transfer tx hash (if sent but Aave failed)
+  transactionHashes?: string[]; // Array of transaction hashes for multi-step operations
   
   // Refund tracking
   refundTxHash?: string; // Refund transaction hash
@@ -77,6 +78,7 @@ export interface UserPosition {
   // Timestamps
   createdAt: string;
   executedAt?: string;
+  completedAt?: string;
   closedAt?: string;
   
   // Error tracking
