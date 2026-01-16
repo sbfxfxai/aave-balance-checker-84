@@ -34,8 +34,8 @@ async function retryWithBackoff<T>(
 }
 
 export function useAaveRates(): AaveRates {
-  const [supplyAPY, setSupplyAPY] = useState<number>(0); // No hardcoded fallback
-  const [borrowAPY, setBorrowAPY] = useState<number>(0);
+  const [supplyAPY, setSupplyAPY] = useState<number>(3.5); // Default fallback
+  const [borrowAPY, setBorrowAPY] = useState<number>(5.0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

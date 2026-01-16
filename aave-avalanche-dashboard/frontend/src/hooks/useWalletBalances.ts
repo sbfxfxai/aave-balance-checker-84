@@ -1,7 +1,7 @@
 import { useAccount, useBalance, useReadContract } from 'wagmi';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useMemo, useEffect } from 'react';
-import { avalanche } from 'wagmi/chains';
+import { avalanche, arbitrum } from 'wagmi/chains';
 import { formatUnits } from 'viem';
 import { CONTRACTS, ERC20_ABI } from '@/config/contracts';
 
@@ -128,6 +128,19 @@ export const useWalletBalances = () => {
     },
   });
 
+  // Arbitrum USDC balance for Morpho strategy
+  const { data: arbitrumUsdcBalanceRaw, isLoading: isLoadingArbitrumUsdc, refetch: refetchArbitrumUsdc } = useReadContract({
+    address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as `0x${string}`, // Arbitrum USDC
+    abi: ERC20_ABI || [],
+    functionName: 'balanceOf',
+    args: address ? [address as `0x${string}`] : undefined,
+    chainId: arbitrum.id,
+    query: {
+      enabled: isConnected && !!address && address.startsWith('0x'),
+      refetchInterval: 15_000,
+    },
+  });
+
   // Format token balances from raw BigInt values
   // USDC has 6 decimals, ERGC has 18 decimals
   // Safely handle BigInt values from readContract with error handling
@@ -150,6 +163,20 @@ export const useWalletBalances = () => {
   const usdcBalanceFormatted = safeFormatUnits(usdcBalanceRaw, 6);
   const usdcEBalanceFormatted = safeFormatUnits(usdcEBalanceRaw, 6);
   const ergcBalanceFormatted = safeFormatUnits(ergcBalanceRaw, 18);
+  const arbitrumUsdcBalanceFormatted = safeFormatUnits(arbitrumUsdcBalanceRaw, 6);
+
+  // Debug logging for Arbitrum USDC
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development' || window.location.hostname === 'www.tiltvault.com') {
+      console.log('[useWalletBalances] Arbitrum USDC debug:', {
+        address,
+        isConnected,
+        arbitrumUsdcBalanceRaw: arbitrumUsdcBalanceRaw ? String(arbitrumUsdcBalanceRaw) : '0',
+        arbitrumUsdcBalanceFormatted,
+        isLoadingArbitrumUsdc
+      });
+    }
+  }, [address, isConnected, arbitrumUsdcBalanceRaw, arbitrumUsdcBalanceFormatted, isLoadingArbitrumUsdc]);
 
   const avaxValue = avaxBalance?.value ? BigInt(avaxBalance.value) : 0n;
   const usdcValue = (() => {
@@ -300,20 +327,14 @@ export const useWalletBalances = () => {
     avaxBalance: formattedAvax,
     usdcBalance: formattedUsdc,
     usdcEBalance: formattedUsdcE,
+    arbitrumUsdcBalance: arbitrumUsdcBalanceFormatted,
     ergcBalance: finalErgcBalance,
-    isLoading: isLoadingAvax || isLoadingUsdc || isLoadingUsdcE || isLoadingErgc,
-    avaxSymbol: avaxBalance?.symbol || 'AVAX',
-    usdcSymbol: 'USDC', // USDC is always USDC when using readContract
     avaxValue,
     usdcValue,
+    isLoading: isLoadingAvax || isLoadingUsdc || isLoadingUsdcE || isLoadingErgc || isLoadingArbitrumUsdc,
     needsMigration,
     refetchBalances: async () => {
-      await Promise.all([
-        refetchAvax(),
-        refetchUsdc(),
-        refetchUsdcE?.(),
-        refetchErgc?.(),
-      ]);
+      await Promise.all([refetchAvax(), refetchUsdc(), refetchUsdcE?.(), refetchErgc?.()]);
     },
   };
 };

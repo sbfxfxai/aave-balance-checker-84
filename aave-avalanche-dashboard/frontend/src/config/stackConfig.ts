@@ -35,13 +35,7 @@ export const STACK_CONFIG = {
     },
   },
   
-  // Expected annualized volatility for each profile
-  volatility: {
-    conservative: 2.5, // Low volatility - stablecoin savings
-    morpho: 8.5,      // Medium volatility - diversified DeFi strategies
-    aggressive: 85.0, // High volatility - leveraged Bitcoin position
-  },
-  
+    
   // Color schemes for risk profiles
   colors: {
     conservative: 'bg-blue-500/10 text-blue-600 border-blue-500/20',

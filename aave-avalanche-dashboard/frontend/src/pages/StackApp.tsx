@@ -28,31 +28,28 @@ const getRiskProfiles = (aaveAPY: number, aaveLoading: boolean, morphoAPY: numbe
   {
     id: 'conservative',
     name: 'Conservative',
-    description: STACK_CONFIG.ui.conservative.description,
+    description: 'Low-risk, stable returns through Aave V3',
     allocation: STACK_CONFIG.ui.conservative.allocation,
     apy: aaveLoading ? 'Loading...' : `${aaveAPY.toFixed(2)}%`,
     leverage: '1x',
-    volatility: `${STACK_CONFIG.volatility.conservative.toFixed(1)}%`,
     color: STACK_CONFIG.colors.conservative,
   },
   {
     id: 'morpho',
-    name: 'Morpho Vault',
-    description: STACK_CONFIG.ui.morpho.description,
+    name: 'Optimized',
+    description: 'Enhanced yields through Morpho Blue',
     allocation: STACK_CONFIG.ui.morpho.allocation,
     apy: morphoLoading ? 'Loading...' : `${morphoAPY.toFixed(2)}%`,
     leverage: '1x',
-    volatility: `${STACK_CONFIG.volatility.morpho.toFixed(1)}%`,
     color: STACK_CONFIG.colors.morpho,
   },
   {
     id: 'aggressive',
     name: 'Aggressive',
-    description: STACK_CONFIG.ui.aggressive.description,
+    description: 'High returns with Bitcoin leverage via GMX',
     allocation: STACK_CONFIG.ui.aggressive.allocation,
     apy: 'Live Rates',
     leverage: STACK_CONFIG.aggressive.leverage,
-    volatility: `${STACK_CONFIG.volatility.aggressive.toFixed(1)}%`,
     color: STACK_CONFIG.colors.aggressive,
   },
 ] as const;
@@ -339,7 +336,6 @@ const StackApp = () => {
                               <span className="font-medium">Allocation: {profile.allocation}</span>
                               <span className="font-medium">APY: {profile.apy}</span>
                               <span className="font-medium">Leverage: {profile.leverage}</span>
-                              <span className="font-medium text-amber-600">Volatility: {profile.volatility}</span>
                             </div>
                           </div>
                         </div>

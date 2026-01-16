@@ -38,6 +38,7 @@ import {
   isFreeDeposit,
 } from '@/lib/fees';
 import { createComponentLogger } from '@/lib/logger';
+import { useWalletBalances } from '@/hooks/useWalletBalances';
 
 interface DepositModalProps {
   isOpen: boolean;
@@ -84,6 +85,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   const [hubUsdcBalance, setHubUsdcBalance] = useState<number | null>(null); // Hub wallet USDC balance
   const [isLoadingHubBalance, setIsLoadingHubBalance] = useState(false);
   const { toast } = useToast();
+  const { usdcBalance } = useWalletBalances();
 
   // Get the most relevant wallet address - prioritize Privy for authenticated users
   const connectedAddress = React.useMemo(() => {
@@ -548,11 +550,25 @@ export const DepositModal: React.FC<DepositModalProps> = ({
     };
   }, [isOpen, riskProfile.id, log]);
 
-  // Calculate max deposit amount: min(hub balance, MAX_DEPOSIT)
-  // If hub balance is less than MAX_DEPOSIT, use hub balance; otherwise cap at MAX_DEPOSIT
-  const maxDepositAmount = hubUsdcBalance !== null 
-    ? Math.min(hubUsdcBalance, DEPOSIT_LIMITS.MAX_DEPOSIT)
-    : DEPOSIT_LIMITS.MAX_DEPOSIT;
+  // Calculate max deposit amount based on risk profile
+  // Morpho uses hub balance from Arbitrum, others use hub balance from Avalanche
+  const maxDepositAmount = useMemo(() => {
+    if (riskProfile.id === 'morpho') {
+      // Morpho strategy uses hub balance from Arbitrum (same pattern as Conservative uses Avalanche)
+      const morphoBalance = hubUsdcBalance !== null ? hubUsdcBalance : DEPOSIT_LIMITS.HUB_BALANCE_FALLBACK;
+      console.log('[DepositModal] Morpho max deposit calculation:', {
+        hubUsdcBalance,
+        morphoBalance,
+        riskProfile: riskProfile.id
+      });
+      return Math.min(morphoBalance, DEPOSIT_LIMITS.MAX_DEPOSIT);
+    } else {
+      // Conservative and others use hub balance
+      return hubUsdcBalance !== null 
+        ? Math.min(hubUsdcBalance, DEPOSIT_LIMITS.MAX_DEPOSIT)
+        : DEPOSIT_LIMITS.MAX_DEPOSIT;
+    }
+  }, [riskProfile.id, hubUsdcBalance]);
 
 
   const handleDeposit = async () => {
@@ -932,18 +948,18 @@ export const DepositModal: React.FC<DepositModalProps> = ({
               <Input
                 id="amount"
                 type="number"
-                placeholder="1.00"
+                placeholder={DEPOSIT_LIMITS.MIN_DEPOSIT.toString()}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 disabled={isProcessing || isLoadingHubBalance}
-                min={1}
+                min={DEPOSIT_LIMITS.MIN_DEPOSIT}
                 max={maxDepositAmount}
                 step={0.01}
                 aria-describedby="amount-help amount-cooldown"
                 aria-required="true"
               />
               <p id="amount-help" className="text-xs text-muted-foreground">
-                Min: $1 · Max: ${maxDepositAmount.toLocaleString()}
+                Min: $${DEPOSIT_LIMITS.MIN_DEPOSIT} · Max: ${maxDepositAmount.toLocaleString()}
                 {isLoadingHubBalance && (
                   <span aria-live="polite" aria-atomic="true"> (loading...)</span>
                 )}

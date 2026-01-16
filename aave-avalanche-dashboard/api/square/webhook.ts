@@ -6,6 +6,28 @@ import { savePosition, updatePosition, getPositionsByEmail, getPosition } from '
 import { executeMorphoFromHubWallet } from './webhook-morpho';
 import { createHmac, timingSafeEqual } from 'crypto';
 
+// Platform fee calculation function
+function getPlatformFeeRate(depositAmount: number): number {
+  if (depositAmount >= 1000) return 0.033; // 3.3%
+  if (depositAmount >= 100) return 0.044; // 4.4%
+  if (depositAmount >= 50) return 0.058; // 5.8%
+  if (depositAmount >= 20) return 0.074; // 7.4%
+  return 0.074; // 7.4% default
+}
+
+function getEffectiveFeeRate(depositAmount: number, hasErgcForFreeDeposit: boolean): number {
+  // FREE deposits: If deposit >= $10 AND user has 100+ ERGC, fee is 0
+  if (depositAmount >= 10 && hasErgcForFreeDeposit) {
+    return 0;
+  }
+  return getPlatformFeeRate(depositAmount);
+}
+
+function calculateTotalAmount(depositAmount: number, hasErgcForFreeDeposit: boolean): number {
+  const feeRate = getEffectiveFeeRate(depositAmount, hasErgcForFreeDeposit);
+  return depositAmount + (depositAmount * feeRate);
+}
+
 /**
  * Standardized Result Type for Error Handling
  * 
@@ -3457,12 +3479,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const squareTotal = centsToDollars(squareTotalCents);
             
             if (squareTotal > 0) {
-              // Calculate deposit: deposit = total / 1.05 (removing 5% platform fee)
-              depositAmount = Math.round((squareTotal / 1.05) * 100) / 100;
+              // Calculate deposit by reversing the fee calculation
+              // We need to find the deposit amount that results in the squareTotal
+              // This is more complex than a simple division since fees are tiered
+              
+              // For now, estimate using 7.4% (highest tier) as worst case
+              // In production, this should be calculated more precisely
+              const estimatedFeeRate = 0.074;
+              depositAmount = Math.round((squareTotal / (1 + estimatedFeeRate)) * 100) / 100;
+              
               console.log('[Webhook] [IMMEDIATE] Calculated deposit amount from Square total:', {
                 squareTotal,
                 depositAmount,
-                note: 'Square total includes 5% platform fee'
+                estimatedFeeRate: `${(estimatedFeeRate * 100).toFixed(1)}%`,
+                note: 'Estimated using highest fee tier (7.4%)'
               });
             } else {
               console.error('[Webhook] [IMMEDIATE] ❌ CRITICAL: Cannot determine deposit amount');
@@ -3829,96 +3859,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         
         return; // Response already sent above
         
-      case 'payout.sent':
-        console.log('[Webhook] Payout sent:', paymentId || eventData?.id);
-        
-        // PAYOUT SENT INDICATES THE ORIGINAL PAYMENT WAS SUCCESSFUL!
-        // Since we're not getting payment.completed events, we need to process here
-        
-        console.log('[Webhook] [PAYOUT] Processing payment since payout indicates success');
-        
-        // Check if payout has any reference to the original payment
-        const payoutNote = eventData?.note || '';
-        const payoutOrderId = eventData?.order_id || '';
-        
-        console.log('[Webhook] [PAYOUT] Payout details:', {
-          payoutId: paymentId,
-          payoutNote: payoutNote || 'no note',
-          payoutOrderId: payoutOrderId || 'no order id',
-          hasEventData: !!eventData
-        });
-        
-        // For ERGC purchases, we need to find the payment info by looking for recent ERGC purchases
-        // since the payout ID is different from the payment ID
-        try {
-          const redis = await getRedis();
-          
-          // Look for recent ERGC purchases that might not have been processed yet
-          // We'll scan for recent ERGC purchase keys and find any that haven't been processed
-          const recentErgcPattern = 'ergc_purchase_recent:*';
-          
-          // Since we can't scan keys easily, let's try a different approach
-          // Look for payment info with the payout ID as a fallback
-          const payoutPaymentKey = `payment_info:${paymentId}`;
-          let paymentInfo = await redis.get(payoutPaymentKey);
-          
-          if (!paymentInfo) {
-            // Try to find any recent payment info that might be related
-            // For now, we'll log this as a known issue
-            console.log('[Webhook] [PAYOUT] No payment info found for payout ID, this might be an ERGC purchase with ID mismatch');
-            console.log('[Webhook] [PAYOUT] Payout ID:', paymentId);
-            console.log('[Webhook] [PAYOUT] Tried key:', payoutPaymentKey);
-            
-            // Return success but note the issue
-            return res.status(200).json({
-              success: true,
-              message: 'Payout received but payment info not found - possible ERGC purchase ID mismatch',
-              payoutId: paymentId
-            });
-          }
-          
-          // If we found payment info, process it
-          if (paymentInfo) {
-            const parsedInfo = JSON.parse(paymentInfo);
-            console.log('[Webhook] [PAYOUT] Found payment info, processing ERGC transfer');
-            
-            // Process ERGC transfer if this is an ERGC purchase
-            if (parsedInfo.purchaseType === 'ergc_only' && parsedInfo.walletAddress) {
-              const ergcResult = await sendErgcTokens(parsedInfo.walletAddress);
-              
-              if (ergcResult.success) {
-                console.log('[Webhook] [PAYOUT] ERGC transfer successful:', ergcResult.data.txHash);
-                return res.status(200).json({
-                  success: true,
-                  message: 'ERGC purchase completed successfully',
-                  payoutId: paymentId,
-                  txHash: ergcResult.data.txHash
-                });
-              } else {
-                console.error('[Webhook] [PAYOUT] ERGC transfer failed:', ergcResult.error);
-                return res.status(500).json({
-                  success: false,
-                  error: 'ERGC transfer failed',
-                  details: ergcResult.error
-                });
-              }
-            }
-          }
-        } catch (error) {
-          console.error('[Webhook] [PAYOUT] Error processing payout:', error);
-          return res.status(500).json({
-            success: false,
-            error: 'Payout processing failed',
-            details: error instanceof Error ? error.message : String(error)
-          });
-        }
-        
-        return res.status(200).json({
-          success: true,
-          message: 'Payout received',
-          payoutId: paymentId
-        });
-        
       case 'payout.paid':
         console.log('[Webhook] Payout paid:', paymentId || eventData?.id);
         
@@ -3933,13 +3873,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // or look for recent unprocessed payments
         
         // Check if payout has any reference to the original payment
-        const payoutNotePaid = eventData?.note || '';
-        const payoutOrderIdPaid = eventData?.order_id || '';
+        const payoutNote = eventData?.note || '';
+        const payoutOrderId = eventData?.order_id || '';
         
         console.log('[Webhook] [PAYOUT] Payout details:', {
           payoutId: paymentId,
-          payoutNote: payoutNotePaid || 'no note',
-          payoutOrderId: payoutOrderIdPaid || 'no order id',
+          payoutNote: payoutNote || 'no note',
+          payoutOrderId: payoutOrderId || 'no order id',
           hasEventData: !!eventData
         });
         

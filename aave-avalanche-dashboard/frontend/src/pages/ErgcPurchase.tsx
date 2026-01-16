@@ -41,7 +41,7 @@ export default function ErgcPurchase() {
                 </div>
                 <h3 className="text-xl font-semibold mb-2">Buy Direct from TiltVault</h3>
                 <div className="mb-4">
-                  <div className="text-3xl font-bold text-purple-400 mb-1">$1.00</div>
+                  <div className="text-3xl font-bold text-purple-400 mb-1">$10.00</div>
                   <div className="text-sm text-muted-foreground">for 100 ERGC (fixed price)</div>
                 </div>
                 <ul className="space-y-2 mb-6 text-sm text-muted-foreground">
@@ -67,7 +67,7 @@ export default function ErgcPurchase() {
                   className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
                   size="lg"
                 >
-                  Buy 100 ERGC for $1
+                  Buy 100 ERGC for $10
                 </Button>
               </CardContent>
             </Card>
@@ -89,7 +89,7 @@ export default function ErgcPurchase() {
                 <ul className="space-y-2 mb-6 text-sm text-muted-foreground">
                   <li className="flex items-center gap-2">
                     <span className="text-green-500">✓</span>
-                    <span>Could buy for less than $1</span>
+                    <span>Could buy for less than $10</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <span className="text-green-500">✓</span>

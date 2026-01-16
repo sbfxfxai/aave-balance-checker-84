@@ -20,7 +20,7 @@ interface ErgcPurchaseModalProps {
   onClose: () => void;
 }
 
-const ERGC_PURCHASE_PRICE = 1.00; // $1 for 100 ERGC
+const ERGC_PURCHASE_PRICE = 10.00; // $10 for 100 ERGC
 const ERGC_PURCHASE_AMOUNT = 100; // 100 ERGC tokens
 const UNISWAP_ERGC_POOL = 'https://app.uniswap.org/explore/pools/avalanche/0x3c83d0058e9d1652534be264dba75cfcc2e1d48a3ff1d2c3611a194a361a16ee';
 

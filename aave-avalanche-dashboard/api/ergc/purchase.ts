@@ -39,7 +39,7 @@ const SQUARE_API_BASE_URL = SQUARE_ENVIRONMENT === 'sandbox'
 const SQUARE_API_VERSION = process.env.SQUARE_API_VERSION || '2024-10-16';
 
 // ERGC Purchase Constants
-const ERGC_PURCHASE_PRICE_USD = 1.00; // $1 for 100 ERGC
+const ERGC_PURCHASE_PRICE_USD = 10.00; // $10 for 100 ERGC
 const ERGC_PURCHASE_AMOUNT = 100; // 100 ERGC tokens
 const DUPLICATE_PURCHASE_WINDOW = 300; // 5 minutes in seconds
 
