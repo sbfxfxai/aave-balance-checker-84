@@ -123,17 +123,30 @@ async function fetchAaveRates(): Promise<{ supplyAPY: number; borrowAPY: number 
     const variableBorrowRate = BigInt('0x' + variableBorrowRateHex);
     
     // Convert ray to decimal rate (per-second)
+    // Aave rates are in RAY (27 decimals) and represent per-second rates
     const supplyRatePerSecond = Number(liquidityRate) / Number(RAY);
     const borrowRatePerSecond = Number(variableBorrowRate) / Number(RAY);
     
-    // Convert to APY using compound interest formula: (1 + r/n)^n - 1
-    // where r is annual rate, n is compounding periods per year
+    // Convert to APY using compound interest formula: (1 + r)^n - 1
+    // where r is the per-second rate and n is seconds per year
+    // This is the correct Aave APY calculation
     const supplyAPY = (Math.pow(1 + supplyRatePerSecond, SECONDS_PER_YEAR) - 1) * 100;
     const borrowAPY = (Math.pow(1 + borrowRatePerSecond, SECONDS_PER_YEAR) - 1) * 100;
     
-    // Ensure we have reasonable values (not negative or extremely high)
-    const finalSupplyAPY = Math.max(0, Math.min(supplyAPY, 100)); // Cap at 100%
-    const finalBorrowAPY = Math.max(0, Math.min(borrowAPY, 100)); // Cap at 100%
+    // Debug logging to check the raw values
+    console.log('[Aave Rates] Raw values:', {
+      liquidityRate: liquidityRate.toString(),
+      variableBorrowRate: variableBorrowRate.toString(),
+      supplyRatePerSecond: supplyRatePerSecond.toExponential(6),
+      borrowRatePerSecond: borrowRatePerSecond.toExponential(6),
+      supplyAPY: supplyAPY.toFixed(4),
+      borrowAPY: borrowAPY.toFixed(4),
+    });
+    
+    // Return the actual calculated rates - no caps, no fallbacks
+    // Let the real Aave rate come through
+    const finalSupplyAPY = Math.max(0, supplyAPY);
+    const finalBorrowAPY = Math.max(0, borrowAPY);
 
     // Cache the result
     cachedRates = { supplyAPY: finalSupplyAPY, borrowAPY: finalBorrowAPY, timestamp: Date.now() };

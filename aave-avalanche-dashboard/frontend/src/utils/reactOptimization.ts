@@ -18,15 +18,18 @@ export function useNonUrgentUpdate<T>(value: T): T {
  * Creates a memoized callback that uses startTransition for non-urgent updates
  * Useful for expensive operations that don't need immediate feedback
  */
-export function useNonUrgentCallback<T extends (...args: any[]) => any>(
+export function useNonUrgentCallback<T extends (...args: unknown[]) => unknown>(
   callback: T,
   deps: React.DependencyList
 ): T {
+  // Spread operator is necessary here to combine callback with user-provided dependencies.
+  // This is a higher-order hook pattern where we need to include both the callback function
+  // and any additional dependencies the user wants to track.
   return useCallback((...args: Parameters<T>) => {
     startTransition(() => {
       callback(...args);
     });
-  }, deps) as T;
+  }, [callback, ...deps]) as T;
 }
 
 /**
@@ -37,6 +40,9 @@ export function useYieldingMemo<T>(
   factory: () => T,
   deps: React.DependencyList
 ): T {
+  // Spread operator is necessary here to combine factory with user-provided dependencies.
+  // This is a higher-order hook pattern where we need to include both the factory function
+  // and any additional dependencies the user wants to track.
   return useMemo(() => {
     // For expensive computations, yield to main thread
     const result = factory();
@@ -48,7 +54,7 @@ export function useYieldingMemo<T>(
     }
     
     return result;
-  }, deps);
+  }, [factory, ...deps]);
 }
 
 /**

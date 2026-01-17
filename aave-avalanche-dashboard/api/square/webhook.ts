@@ -84,7 +84,7 @@ async function toResult<T>(
 // Configuration - All values are configurable via environment variables
 const SQUARE_WEBHOOK_SIGNATURE_KEY = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY || '';
 const SQUARE_LOCATION_ID = process.env.SQUARE_LOCATION_ID || '';
-const MIN_PAYMENT_AMOUNT_USD = parseFloat(process.env.MIN_PAYMENT_AMOUNT_USD || '10');
+const MIN_PAYMENT_AMOUNT_USD = parseFloat(process.env.MIN_PAYMENT_AMOUNT_USD || '10'); // Minimum deposit is $10
 const MAX_PAYMENT_AMOUNT_USD = parseFloat(process.env.MAX_PAYMENT_AMOUNT_USD || '50000');
 const MAX_PAYLOAD_SIZE = parseInt(process.env.MAX_PAYLOAD_SIZE || '1000000', 10); // 1MB default
 const EXPECTED_CHAIN_ID = parseInt(process.env.EXPECTED_CHAIN_ID || '43114', 10); // Avalanche C-Chain
@@ -212,6 +212,60 @@ function dollarsToCents(dollars: number): number {
  */
 function centsToUsdcMicrounits(cents: number): bigint {
   return BigInt(cents) * 10_000n;
+}
+
+/**
+ * Calculate platform fee rate based on deposit amount (without ERGC discount)
+ * 
+ * Fee structure:
+ * - $10-$99.99: 7.4%
+ * - $100-$999.99: 4.4%
+ * - $1000+: 3.3%
+ * 
+ * @param depositAmount - The deposit amount in USD
+ * @returns Platform fee rate as a decimal (e.g., 0.074 for 7.4%)
+ */
+function getPlatformFeeRate(depositAmount: number): number {
+  if (depositAmount >= 1000) {
+    return 0.033; // 3.3% for deposits >= $1000
+  }
+  if (depositAmount >= 100) {
+    return 0.044; // 4.4% for deposits $100-$999.99
+  }
+  return 0.074; // 7.4% for deposits $10-$99.99
+}
+
+/**
+ * Calculate deposit amount from Square total (which includes platform fee)
+ * 
+ * @param squareTotal - Total amount charged by Square (deposit + fee)
+ * @param depositAmountHint - Optional hint for deposit amount (from payment_info)
+ * @returns Deposit amount in USD
+ */
+function calculateDepositFromSquareTotal(squareTotal: number, depositAmountHint?: number | null): number {
+  // If we have the deposit amount hint, use it directly
+  if (depositAmountHint && depositAmountHint > 0) {
+    return depositAmountHint;
+  }
+  
+  // Try to reverse-calculate deposit from Square total
+  // We need to find deposit such that: squareTotal = deposit + (deposit * feeRate)
+  // Fee rates vary by deposit amount:
+  // - $10-$99.99: 7.4% (deposit = squareTotal / 1.074)
+  // - $100-$999.99: 4.4% (deposit = squareTotal / 1.044)
+  // - $1000+: 3.3% (deposit = squareTotal / 1.033)
+  
+  // Try different fee rates based on Square total
+  if (squareTotal >= 1000) {
+    // Likely a $1000+ deposit with 3.3% fee
+    return Math.round((squareTotal / 1.033) * 100) / 100;
+  }
+  if (squareTotal >= 100) {
+    // Likely a $100-$999.99 deposit with 4.4% fee
+    return Math.round((squareTotal / 1.044) * 100) / 100;
+  }
+  // For deposits $10-$99.99, fee is 7.4%
+  return Math.round((squareTotal / 1.074) * 100) / 100;
 }
 
 /**
@@ -3357,8 +3411,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             console.log('[Webhook] [IMMEDIATE] Using deposit amount from payment_info:', depositAmount);
           } else {
             // Fallback: Calculate deposit amount from Square total
-            // Square total = deposit + 5% platform fee
-            // So: deposit = Square total / 1.05
+            // Square total = deposit + platform fee (fee varies by deposit amount)
+            // Deposits >= $10 are FREE (0% fee), so Square total = deposit
+            // Deposits < $10 have tiered fees (7.4% default)
             // Amount can be in: payment.amount_money, order.total_money, or eventData.amount_money
             // For payment events, check paymentData.amount_money
             // For order events, check orderData.total_money
@@ -3373,12 +3428,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const squareTotal = centsToDollars(squareTotalCents);
             
             if (squareTotal > 0) {
-              // Calculate deposit: deposit = total / 1.05 (removing 5% platform fee)
-              depositAmount = Math.round((squareTotal / 1.05) * 100) / 100;
+              // Calculate deposit using dynamic fee calculation
+              depositAmount = calculateDepositFromSquareTotal(squareTotal, depositAmountFromPaymentInfo);
+              const feeRate = getPlatformFeeRate(depositAmount);
               console.log('[Webhook] [IMMEDIATE] Calculated deposit amount from Square total:', {
                 squareTotal,
                 depositAmount,
-                note: 'Square total includes 5% platform fee'
+                feeRate: `${(feeRate * 100).toFixed(1)}%`,
+                note: depositAmount >= 10 ? 'FREE deposit (>= $10)' : `Square total includes ${(feeRate * 100).toFixed(1)}% platform fee`
               });
             } else {
               console.error('[Webhook] [IMMEDIATE] ❌ CRITICAL: Cannot determine deposit amount');

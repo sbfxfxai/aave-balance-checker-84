@@ -137,10 +137,8 @@ export async function generateSecureWallet(
     // Encrypt private key immediately (before any potential XSS can access it)
     const encryptedPrivateKey = await encryptPrivateKeySecurely(privateKey, email, paymentId);
     
-    // Clear private key from wallet object (best effort)
-    // Note: The wallet object may still hold references, but we've encrypted it
-    (wallet as any).privateKey = null;
-    (wallet as any).mnemonic = null;
+    // Note: EthersWallet properties are read-only, so we can't clear them directly
+    // The private key is already encrypted above, which provides the necessary security
     
     return {
       walletAddress,
@@ -218,7 +216,7 @@ async function encryptPrivateKeySecurely(
 export function clearWalletData(walletData: {
   privateKey?: string;
   mnemonic?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }): void {
   if (walletData.privateKey) {
     secureClear(walletData.privateKey);

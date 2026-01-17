@@ -15,7 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { NetworkGuard } from '@/components/NetworkGuard';
+import { NetworkGuard, NetworkGuardBanner } from '@/components/NetworkGuard';
 import { Footer } from '@/components/Footer';
 import {
   Accordion,
@@ -1418,7 +1418,7 @@ export default function GmxIntegration() {
         </header>
 
         <main className="container mx-auto px-4 py-8 max-w-xl space-y-6">
-          <NetworkGuard />
+          <NetworkGuardBanner />
 
           <div className="card-elevated rounded-xl border border-subtle p-6 space-y-6">
             {/* Header */}
