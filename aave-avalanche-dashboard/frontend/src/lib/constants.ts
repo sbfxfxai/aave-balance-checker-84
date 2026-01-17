@@ -30,24 +30,22 @@ export const TRADER_JOE_ROUTER_ABI = [
  */
 
 // Platform Fee Tiers (based on deposit amount)
+// Minimum deposit: $10
+// With 100+ ERGC: All deposits are FREE (0% fee)
+// Without ERGC:
+//   - $10-$99.99: 7.4%
+//   - $100-$999.99: 4.4%
+//   - $1000+: 3.3%
 export const DEPOSIT_FEE_TIERS = {
   TIER_1000: {
     threshold: 1000,
-    rate: 0.033, // 3.3%
+    rate: 0.033, // 3.3% for deposits >= $1000
   },
   TIER_100: {
     threshold: 100,
-    rate: 0.042, // 4.2%
+    rate: 0.044, // 4.4% for deposits $100-$999.99
   },
-  TIER_50: {
-    threshold: 50,
-    rate: 0.055, // 5.5%
-  },
-  TIER_20: {
-    threshold: 20,
-    rate: 0.074, // 7.4%
-  },
-  DEFAULT_RATE: 0.074, // 7.4% for amounts < $20
+  DEFAULT_RATE: 0.074, // 7.4% for deposits $10-$99.99
 } as const;
 
 // ERGC Token Constants
@@ -60,8 +58,8 @@ export const ERGC_CONSTANTS = {
 
 // Deposit Limits
 export const DEPOSIT_LIMITS = {
-  /** Minimum deposit amount (temporary: $1 for Morpho testing, will revert to $10) */
-  MIN_DEPOSIT: 1,
+  /** Minimum deposit amount */
+  MIN_DEPOSIT: 10,
   /** Maximum deposit amount cap */
   MAX_DEPOSIT: 9999,
   /** Fallback hub balance when API fails */

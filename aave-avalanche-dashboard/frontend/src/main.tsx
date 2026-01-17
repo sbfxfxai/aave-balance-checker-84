@@ -103,6 +103,11 @@ if (typeof window !== "undefined" && windowWithSES) {
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import { validateEnvironment } from "./config/validateEnv";
+
+// CRITICAL: Validate environment variables before starting the app
+// This prevents silent failures in production
+validateEnvironment();
 
 // Buffer polyfill is manually imported at the top and exposed globally
 // Verify it's available and log status

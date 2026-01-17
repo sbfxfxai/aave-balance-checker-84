@@ -1,5 +1,4 @@
 import { SimpleDashboard } from '@/components/SimpleDashboard';
-import { NetworkGuard } from '@/components/NetworkGuard';
 import { Footer } from '@/components/Footer';
 import { TrendingUp, Zap, Bitcoin, Home } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -57,9 +56,6 @@ function DashboardContent() {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <div className="max-w-6xl mx-auto">
-          {/* Network Guard - Shows warning if on wrong chain */}
-          <NetworkGuard />
-
           {/* Authentication Section */}
           <div className="grid gap-6 md:grid-cols-2 mb-8">
             <div className="md:col-span-2">

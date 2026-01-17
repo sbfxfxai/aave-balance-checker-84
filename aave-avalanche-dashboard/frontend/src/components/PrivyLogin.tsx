@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, Mail, Shield, Zap } from 'lucide-react';
 import { toast } from 'sonner';
+import { storage } from '@/lib/storage';
 
 type PrivyWallet = {
   address?: `0x${string}` | string | null;
@@ -240,7 +241,46 @@ export function PrivyLogin() {
                             </p>
                         </div>
                     )}
-                    <Button onClick={logout} variant="outline" className="w-full">
+                    <Button 
+                        onClick={async () => {
+                            try {
+                                // Clear storage
+                                storage.removeUserEmail();
+                                if (walletAddress) {
+                                    storage.removeLastDepositTime(walletAddress);
+                                }
+                                
+                                // Clear any wallet-related storage
+                                if (typeof window !== 'undefined') {
+                                    sessionStorage.removeItem('tiltvault_wallet');
+                                    localStorage.removeItem('tiltvault_temp_private_key');
+                                }
+                                
+                                // Disconnect wagmi if connected
+                                if (isWagmiConnected) {
+                                    wagmiDisconnect();
+                                }
+                                
+                                // Logout from Privy
+                                await logout();
+                                
+                                toast.info('Signed out successfully');
+                                
+                                // Force a page reload to clear all state
+                                setTimeout(() => {
+                                    window.location.reload();
+                                }, 500);
+                            } catch (error) {
+                                console.error('[PrivyLogin] Error during logout:', error);
+                                toast.error('Error signing out. Please refresh the page.');
+                                setTimeout(() => {
+                                    window.location.reload();
+                                }, 500);
+                            }
+                        }} 
+                        variant="outline" 
+                        className="w-full"
+                    >
                         Sign Out
                     </Button>
                 </CardContent>

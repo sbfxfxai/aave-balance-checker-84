@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { DollarSign, ArrowRight, Shield, TrendingUp, Zap, Home, Bitcoin, Landmark, Sparkles, ExternalLink } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { DollarSign, ArrowRight, Shield, TrendingUp, Zap, Home, Bitcoin, Landmark, Sparkles, ExternalLink, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -30,7 +30,10 @@ const getRiskProfiles = (aaveAPY: number) => [
     allocation: '100% USDC',
     apy: `${aaveAPY.toFixed(2)}%`,
     leverage: '1x',
-    color: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+    icon: Shield,
+    iconColor: 'text-green-500',
+    apyColor: 'text-green-500',
+    isRecommended: false,
   },
   {
     id: 'morpho',
@@ -39,7 +42,10 @@ const getRiskProfiles = (aaveAPY: number) => [
     allocation: '50% Gauntlet USDC Core / 50% Hyperithm USDC',
     apy: '6.08%',
     leverage: '1x',
-    color: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
+    icon: TrendingUp,
+    iconColor: 'text-green-500',
+    apyColor: 'text-green-500',
+    isRecommended: true,
   },
   {
     id: 'aggressive',
@@ -48,7 +54,10 @@ const getRiskProfiles = (aaveAPY: number) => [
     allocation: '100% Lev BTC',
     apy: 'Varies',
     leverage: '2.5x',
-    color: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
+    icon: Zap,
+    iconColor: 'text-yellow-500',
+    apyColor: 'text-orange-500',
+    isRecommended: false,
   },
 ] as const;
 
@@ -62,21 +71,43 @@ const StackApp = () => {
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
   const { supplyAPY: aaveAPY } = useAaveRates();
   const { toast } = useToast();
+  const modalOpeningRef = useRef(false); // Prevent duplicate modal opens
 
-  // Generate risk profiles with current Aave APY
-  const riskProfiles = getRiskProfiles(aaveAPY);
+  // Generate risk profiles with current Aave APY - recalculate when APY changes
+  const riskProfiles = useMemo(() => getRiskProfiles(aaveAPY), [aaveAPY]);
 
   const handleDepositTypeSelect = (type: DepositType) => {
     setSelectedDepositType(type);
-    toast({
-      title: 'USD deposit selected',
-      description: 'Now select your risk profile below',
-    });
+    // Don't show toast, just show the full-screen risk profile selection
   };
 
   const handleRiskProfileSelect = (profileId: RiskProfileId) => {
     setSelectedRiskProfile(profileId);
+    
+    // Auto-proceed to deposit modal for conservative and morpho
+    // Aggressive redirects to GMX page
+    if (profileId === 'aggressive') {
+      window.location.href = '/gmx';
+      return;
+    }
   };
+
+  // Auto-open deposit modal when a profile is selected (conservative or morpho)
+  useEffect(() => {
+    if (selectedDepositType && selectedRiskProfile && 
+        (selectedRiskProfile === 'conservative' || selectedRiskProfile === 'morpho') &&
+        !isDepositModalOpen && !modalOpeningRef.current) {
+      modalOpeningRef.current = true;
+      setIsDepositModalOpen(true);
+    }
+  }, [selectedDepositType, selectedRiskProfile, isDepositModalOpen]);
+
+  // Reset the ref when modal closes
+  useEffect(() => {
+    if (!isDepositModalOpen) {
+      modalOpeningRef.current = false;
+    }
+  }, [isDepositModalOpen]);
 
   const handleContinue = () => {
     if (!selectedDepositType) {
@@ -106,7 +137,11 @@ const StackApp = () => {
     setIsDepositModalOpen(true);
   };
 
-  const selectedProfile = riskProfiles.find((p: { id: string }) => p.id === selectedRiskProfile);
+  // Memoize selectedProfile to ensure it updates when riskProfiles changes (live APY)
+  const selectedProfile = useMemo(() => {
+    if (!selectedRiskProfile) return null;
+    return riskProfiles.find((p: { id: string }) => p.id === selectedRiskProfile) || null;
+  }, [riskProfiles, selectedRiskProfile]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
@@ -170,7 +205,7 @@ const StackApp = () => {
       </header>
 
       {/* Main Content */}
-      <main className="relative min-h-screen">
+      <main className={`relative min-h-screen ${selectedDepositType && !selectedRiskProfile ? 'hidden' : ''}`}>
         {/* Background glow effects */}
         <div className="absolute inset-0 bg-gradient-glow opacity-50" />
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
@@ -288,61 +323,7 @@ const StackApp = () => {
             </CardContent>
           </Card>
 
-          {/* Risk Profile Selection */}
-          {selectedDepositType && (
-            <Card className="mb-8 card-gradient border-border animate-fade-in" style={{ animationDelay: '0.6s' }}>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Shield className="h-5 w-5" />
-                  Select your risk profile
-                </CardTitle>
-                <CardDescription>
-                  Step 2: Choose your preferred risk/return allocation strategy
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <RadioGroup
-                  value={selectedRiskProfile || ''}
-                  onValueChange={(value) => handleRiskProfileSelect(value as RiskProfileId)}
-                  className="space-y-4"
-                >
-                  {riskProfiles.map((profile) => (
-                    <div key={profile.id} className="flex items-start space-x-3">
-                      <RadioGroupItem
-                        value={profile.id}
-                        id={profile.id}
-                        className="mt-1"
-                        data-testid={`risk-profile-${profile.id}`}
-                      />
-                      <Label
-                        htmlFor={profile.id}
-                        className={`flex-1 cursor-pointer p-4 rounded-lg border-2 transition-all ${selectedRiskProfile === profile.id
-                            ? `${profile.color} border-current`
-                            : 'border-border hover:border-primary/50'
-                          }`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="font-semibold text-lg mb-1">
-                              {profile.name}
-                            </div>
-                            <div className="text-sm text-muted-foreground mb-2">
-                              {profile.description}
-                            </div>
-                            <div className="flex items-center gap-4 text-xs">
-                              <span className="font-medium">Allocation: {profile.allocation}</span>
-                              <span className="font-medium">APY: {profile.apy}</span>
-                              <span className="font-medium">Leverage: {profile.leverage}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </Label>
-                    </div>
-                  ))}
-                </RadioGroup>
-              </CardContent>
-            </Card>
-          )}
+          {/* Risk Profile Selection - Hidden when showing full-screen */}
 
           {/* Continue Button */}
           {selectedDepositType && selectedRiskProfile && (
@@ -364,17 +345,123 @@ const StackApp = () => {
         </div>
       </main>
 
+      {/* Full-Screen Risk Profile Selection */}
+      {selectedDepositType && !selectedRiskProfile && (
+        <div className="fixed inset-0 z-50 bg-background flex items-start justify-center p-4 overflow-y-auto pt-20">
+          <div className="w-full max-w-7xl mx-auto py-8">
+            {/* Header */}
+            <div className="text-center mb-12">
+              <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4">
+                Select your risk profile
+              </h2>
+              <p className="text-lg md:text-xl text-muted-foreground">
+                Step 2: Choose your preferred risk/return allocation strategy
+              </p>
+            </div>
+
+            {/* Risk Profile Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+              {riskProfiles.map((profile) => {
+                const IconComponent = profile.icon;
+                const isSelected = selectedRiskProfile === profile.id;
+                
+                return (
+                  <div
+                    key={profile.id}
+                    onClick={() => handleRiskProfileSelect(profile.id as RiskProfileId)}
+                    className={`
+                      relative cursor-pointer rounded-lg border-2 transition-all
+                      bg-muted/30 p-8 min-h-[320px] flex flex-col
+                      ${isSelected 
+                        ? 'border-green-500 shadow-lg shadow-green-500/20 scale-105' 
+                        : 'border-border hover:border-primary/50 hover:scale-102'
+                      }
+                      ${profile.isRecommended ? 'border-green-500' : ''}
+                    `}
+                  >
+                    {/* Recommended Badge */}
+                    {profile.isRecommended && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
+                        <span className="bg-green-500 text-white text-xs font-semibold px-3 py-1 rounded-full">
+                          RECOMMENDED
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Icon - Top Left */}
+                    <div className="mb-6 flex-shrink-0">
+                      <IconComponent 
+                        className={`h-12 w-12 ${profile.iconColor}`}
+                        strokeWidth={profile.id === 'conservative' ? 2 : 1.5}
+                        fill="none"
+                      />
+                    </div>
+
+                    {/* Title */}
+                    <h3 className="text-2xl font-semibold text-foreground mb-2">
+                      {profile.name}
+                    </h3>
+
+                    {/* Description */}
+                    <p className="text-sm text-muted-foreground mb-6">
+                      {profile.description}
+                    </p>
+
+                    {/* Details */}
+                    <div className="space-y-3 text-sm mt-auto">
+                      <div className="font-medium text-foreground">
+                        Allocation: {profile.allocation}
+                      </div>
+                      <div className="font-medium">
+                        APY: <span className={profile.apyColor}>{profile.apy}</span>
+                      </div>
+                      <div className="font-medium text-foreground">
+                        Leverage: {profile.leverage}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Continue Button - Removed since we auto-open the modal */}
+
+            {/* Close Button */}
+            <div className="flex justify-center mt-8">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSelectedDepositType(null);
+                  setSelectedRiskProfile(null);
+                }}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4 mr-2" />
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Deposit Modal */}
-      {selectedDepositType && selectedRiskProfile && (
+      {selectedDepositType && selectedRiskProfile && selectedProfile && (
         <DepositModal
+          key={`${selectedRiskProfile}-${selectedProfile.apy}`} // Force re-render when APY changes
           isOpen={isDepositModalOpen}
-          onClose={() => setIsDepositModalOpen(false)}
-          riskProfile={selectedProfile!}
+          onClose={() => {
+            setIsDepositModalOpen(false);
+            // Reset state to allow selecting a different profile
+            setSelectedRiskProfile(null);
+            setSelectedDepositType(null);
+          }}
+          riskProfile={selectedProfile}
         />
       )}
 
       {/* Footer */}
-      <Footer />
+      {!selectedDepositType && <Footer />}
     </div>
   );
 };

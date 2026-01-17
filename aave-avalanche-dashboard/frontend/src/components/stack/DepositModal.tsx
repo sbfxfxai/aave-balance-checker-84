@@ -578,7 +578,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
     const depositAmount = parseFloat(amount);
     
     // Validate minimum and maximum limits
-    // TEMPORARY: MIN_DEPOSIT is $1 for Morpho testing, will revert to $10 after testing
+    // Minimum deposit is $10
     if (depositAmount < DEPOSIT_LIMITS.MIN_DEPOSIT) {
       toast({
         title: 'Minimum deposit required',
@@ -906,7 +906,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
                       <div className="mt-2 text-xs text-muted-foreground space-y-1 pl-4">
                         {isFree ? (
                           <div className="text-green-600 font-medium">
-                            Platform Fee: 0% (FREE - You have 100+ ERGC and deposit is over $100)
+                            Platform Fee: 0% (FREE - You have 100+ ERGC)
                           </div>
                         ) : (
                           <div>Platform Fee: {(effectivePlatformFeeRate * 100).toFixed(1)}% (${platformFee.toFixed(2)})</div>
@@ -932,18 +932,18 @@ export const DepositModal: React.FC<DepositModalProps> = ({
               <Input
                 id="amount"
                 type="number"
-                placeholder="1.00"
+                placeholder="10.00"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 disabled={isProcessing || isLoadingHubBalance}
-                min={1}
+                min={DEPOSIT_LIMITS.MIN_DEPOSIT}
                 max={maxDepositAmount}
                 step={0.01}
                 aria-describedby="amount-help amount-cooldown"
                 aria-required="true"
               />
               <p id="amount-help" className="text-xs text-muted-foreground">
-                Min: $1 · Max: ${maxDepositAmount.toLocaleString()}
+                Min: ${DEPOSIT_LIMITS.MIN_DEPOSIT} · Max: ${maxDepositAmount.toLocaleString()}
                 {isLoadingHubBalance && (
                   <span aria-live="polite" aria-atomic="true"> (loading...)</span>
                 )}
@@ -1056,7 +1056,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
                       <div className="mt-2 text-xs text-muted-foreground space-y-1 pl-4">
                         {isFree ? (
                           <div className="text-green-600 font-medium">
-                            Platform Fee: 0% (FREE - You have 100+ ERGC and deposit is over $100)
+                            Platform Fee: 0% (FREE - You have 100+ ERGC)
                           </div>
                         ) : (
                           <div>Platform Fee: {(effectivePlatformFeeRate * 100).toFixed(1)}% (${platformFee.toFixed(2)})</div>
@@ -1071,10 +1071,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
                 </div>
               </div>
               <SquarePaymentForm
-                amount={
-                  parseFloat(amount) + 
-                  (parseFloat(amount) * effectivePlatformFeeRate)
-                }
+                amount={totalAmount}
                 onPaymentSuccess={handlePaymentNonce}
                 onPaymentError={handlePaymentError}
               />

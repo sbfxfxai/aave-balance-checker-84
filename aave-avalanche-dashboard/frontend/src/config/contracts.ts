@@ -1,9 +1,9 @@
 import { erc20Abi } from 'viem';
 
-// Avalanche C-Chain Contract Addresses
+// Avalanche C-Chain Contract Addresses (Primary Chain)
 
 export const CONTRACTS = {
-  // Tokens
+  // Tokens - Avalanche C-Chain
   WAVAX: '0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7',
   USDC: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E', // Native USDC
   USDC_E: '0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664', // Bridged USDC.e
@@ -15,16 +15,13 @@ export const CONTRACTS = {
   AAVE_POOL_DATA_PROVIDER: '0x69FA688f1Dc47d4B5d8029D5a35FB7a548310654',
   AAVE_UI_POOL_DATA_PROVIDER: '0x53430E0f88cC6d7b204535B3AF47538C0e0a3d48',
   
-  // DEX Routers
+  // DEX Routers - Avalanche
   TRADER_JOE_ROUTER: '0x60aE616a2155Ee3d9A68541Ba4544862310933d4',
   
-  // Morpho Vaults on Arbitrum (ERC-4626)
-  // Reference: Morpho V2 Contracts on Arbitrum
-  // - VaultV2Factory: 0x6b46fa3cc9EBF8aB230aBAc664E37F2966Bf7971
-  // - MorphoRegistry: 0xc00eb3c7aD1aE986A7f05F5A9d71aCa39c763C65
-  // - MORPHO Token: 0x40BD670A58238e6E230c430BBb5cE6ec0d40df48 (18 decimals)
-  MORPHO_GAUNTLET_USDC_VAULT: '0x7e97fa6893871A2751B5fE961978DCCb2c201E65', // Morpho GauntletUSDC Core Vault on Arbitrum - VERIFIED
-  MORPHO_HYPERITHM_USDC_VAULT: '0x4B6F1C9E5d470b97181786b26da0d0945A7cf027', // Morpho HyperithmUSDC Vault on Arbitrum - VERIFIED
+  // Note: Morpho Vaults are on Arbitrum but accessed via cross-chain protocols
+  // For now, these are references for future cross-chain integration
+  MORPHO_GAUNTLET_USDC_VAULT: '0x7e97fa6893871A2751B5fE961978DCCb2c201E65', // Arbitrum - Reference Only
+  MORPHO_HYPERITHM_USDC_VAULT: '0x4B6F1C9E5d470b97181786b26da0d0945A7cf027', // Arbitrum - Reference Only
 } as const;
 
 // ERGC Fee Discount Constants

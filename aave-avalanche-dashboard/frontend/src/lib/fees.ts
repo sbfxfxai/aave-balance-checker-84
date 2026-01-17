@@ -9,47 +9,48 @@ import {
 } from './constants';
 
 /**
- * Calculate the platform fee rate based on deposit amount
- * Uses tiered fee structure from DEPOSIT_FEE_TIERS
+ * Calculate the platform fee rate based on deposit amount (without ERGC discount)
+ * 
+ * Fee structure:
+ * - $10-$99.99: 7.4%
+ * - $100-$999.99: 4.4%
+ * - $1000+: 3.3%
  * 
  * @param depositAmount - The deposit amount in USD
- * @returns Platform fee rate as a decimal (e.g., 0.033 for 3.3%)
+ * @returns Platform fee rate as a decimal (e.g., 0.074 for 7.4%)
  */
 export function calculatePlatformFeeRate(depositAmount: number): number {
   if (depositAmount >= DEPOSIT_FEE_TIERS.TIER_1000.threshold) {
-    return DEPOSIT_FEE_TIERS.TIER_1000.rate;
+    return DEPOSIT_FEE_TIERS.TIER_1000.rate; // 3.3% for deposits >= $1000
   }
   if (depositAmount >= DEPOSIT_FEE_TIERS.TIER_100.threshold) {
-    return DEPOSIT_FEE_TIERS.TIER_100.rate;
+    return DEPOSIT_FEE_TIERS.TIER_100.rate; // 4.4% for deposits $100-$999.99
   }
-  if (depositAmount >= DEPOSIT_FEE_TIERS.TIER_50.threshold) {
-    return DEPOSIT_FEE_TIERS.TIER_50.rate;
-  }
-  if (depositAmount >= DEPOSIT_FEE_TIERS.TIER_20.threshold) {
-    return DEPOSIT_FEE_TIERS.TIER_20.rate;
-  }
-  return DEPOSIT_FEE_TIERS.DEFAULT_RATE;
+  return DEPOSIT_FEE_TIERS.DEFAULT_RATE; // 7.4% for deposits $10-$99.99
 }
 
 /**
- * Calculate the effective platform fee rate considering ERGC benefits
- * 
- * If user has ERGC_CONSTANTS.FREE_DEPOSIT_THRESHOLD+ ERGC and deposit is >= ERGC_CONSTANTS.FREE_DEPOSIT_MIN_AMOUNT,
- * the fee is 0% (FREE). Otherwise, uses the standard platform fee rate.
+ * Calculate the effective platform fee rate
+ * With 100+ ERGC: All deposits are FREE (0% fee)
+ * Without ERGC:
+ *   - Under $10: 7.4%
+ *   - $10-$99.99: 4.4%
+ *   - $100+: 3.3%
  * 
  * @param depositAmount - The deposit amount in USD
  * @param hasErgcForFreeDeposit - Whether user has enough ERGC for free deposits
- * @returns Effective platform fee rate as a decimal (0 for free deposits, otherwise tiered rate)
+ * @returns Effective platform fee rate as a decimal (0 for free deposits with ERGC, otherwise tiered rate)
  */
 export function calculateEffectiveFeeRate(
   depositAmount: number,
   hasErgcForFreeDeposit: boolean
 ): number {
-  // FREE deposits: If deposit >= FREE_DEPOSIT_MIN_AMOUNT AND user has FREE_DEPOSIT_THRESHOLD+ ERGC, fee is 0
-  if (depositAmount >= ERGC_CONSTANTS.FREE_DEPOSIT_MIN_AMOUNT && hasErgcForFreeDeposit) {
+  // With 100+ ERGC: All deposits are FREE
+  if (hasErgcForFreeDeposit) {
     return 0;
   }
   
+  // Without ERGC: Use tiered fee structure
   return calculatePlatformFeeRate(depositAmount);
 }
 
@@ -84,7 +85,8 @@ export function calculateTotalAmount(
 }
 
 /**
- * Check if a deposit qualifies for free deposits with ERGC
+ * Check if a deposit qualifies for free deposits
+ * With 100+ ERGC: All deposits are FREE (0% fee)
  * 
  * @param depositAmount - The deposit amount in USD
  * @param hasErgcForFreeDeposit - Whether user has enough ERGC for free deposits
@@ -94,7 +96,8 @@ export function isFreeDeposit(
   depositAmount: number,
   hasErgcForFreeDeposit: boolean
 ): boolean {
-  return depositAmount >= ERGC_CONSTANTS.FREE_DEPOSIT_MIN_AMOUNT && hasErgcForFreeDeposit;
+  // With 100+ ERGC: All deposits are FREE
+  return hasErgcForFreeDeposit;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { SimpleDashboard } from '@/components/SimpleDashboard';
-import { NetworkGuard } from '@/components/NetworkGuard';
+import { NetworkGuard, NetworkGuardBanner } from '@/components/NetworkGuard';
 import { Footer } from '@/components/Footer';
 import { useAccount } from 'wagmi';
 import { TrendingUp, Zap, Wallet } from 'lucide-react';
@@ -54,7 +54,7 @@ function DashboardContent() {
       <main>
         <div className="container">
           {/* Network Guard - Shows warning if on wrong chain */}
-          <NetworkGuard />
+          <NetworkGuardBanner />
           
           {/* Simple Dashboard - Shows immediately when connected */}
           <SimpleDashboard />
